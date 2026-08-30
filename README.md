@@ -11,6 +11,10 @@
 
 更细的模块分析见 [`docs/project-analysis.md`](docs/project-analysis.md)；里程碑见 [`docs/todo.md`](docs/todo.md)；LLM / CLI 见 [`docs/lmstudio.md`](docs/lmstudio.md)。
 
+本项目会持续吸取使用反馈与改进建议，用来优化体验、写作质量与稳定性。欢迎在 [Issues](https://github.com/ksasukirk/kk_novel_ai/issues) 提建议，或直接向作者反馈；合理诉求会尽量排进后续迭代（见 [`docs/todo.md`](docs/todo.md) 与本文第 10 节）。
+
+**模型建议**：长篇续写、拆章、润色与蒸馏，优先使用 **DeepSeek**（官方 API，OpenAI 兼容）。应用已对 `deepseek.com` 默认关闭思考链，避免长写作 `content` 为空；强模型槽可指向如 `deepseek-v4-pro`（见 [`src-tauri/src/settings.rs`](src-tauri/src/settings.rs)、[`src/views/SettingsView.vue`](src/views/SettingsView.vue)、[`docs/lmstudio.md`](docs/lmstudio.md)）。本地 LM Studio 仍可用，但默认推荐 DeepSeek。
+
 ---
 
 ## 0. 本文编写 TODO
@@ -24,6 +28,8 @@
 | R5 | 磁盘数据模型 | 完成 | [`src-tauri/src/project/mod.rs`](src-tauri/src/project/mod.rs)、[`src-tauri/src/paths.rs`](src-tauri/src/paths.rs) |
 | R6 | 开发 / 打包 / Android | 完成 | [`build.py`](build.py)、[`build_android.py`](build_android.py)、[`docs/android-setup.md`](docs/android-setup.md) |
 | R7 | 文档索引与后续建议 | 完成 | [`docs/`](docs/) |
+| R8 | 写明持续吸取建议并优化软件 | 完成 | 本文开篇；[`docs/todo.md`](docs/todo.md) |
+| R9 | 写明推荐使用 DeepSeek | 完成 | 本文开篇；[`src-tauri/src/settings.rs`](src-tauri/src/settings.rs)、[`src/views/SettingsView.vue`](src/views/SettingsView.vue) |
 
 ---
 
@@ -33,7 +39,7 @@
 - 续写、润色、拆章、按纲节拍、设定召回、知识库蒸馏，都走同一套 Rust 写作引擎。
 - GUI（Tauri 2 + Vue 3）负责编辑与预览；CLI / RPC 给脚本与外部编排；GUI 在线时 CLI 默认可驱动同一套预览。
 - Windows 桌面为主，Android APK 由 `build_android.py` 引导工具链后打包（见 [`docs/android-setup.md`](docs/android-setup.md)）。
-
+- **持续迭代**：会吸取更多建议来优化本软件；写作模型**最好使用 DeepSeek**（设置页配置端点与模型槽）。
 ---
 
 ## 2. 技术栈
@@ -219,12 +225,14 @@ CLI 调试优先用 `kk_novel_cli`（构建后在 `src-tauri/target/...`）。�
 
 ## 10. 后续可做（建议 TODO）
 
-已完成的产品里程碑见 [`docs/todo.md`](docs/todo.md)（M1–M53）。分析文档里仍开放的工程向建议：
+已完成的产品里程碑见 [`docs/todo.md`](docs/todo.md)（M1–M53）。本仓库会继续收集 Issue / 用户反馈，把有效建议排进迭代。分析文档里仍开放的工程向建议：
 
 | # | 建议项 | 说明 | 涉及路径 |
 |---|---|---|---|
 | N7 | 关系图拖拽 / 自动布局 | 现多为圆形布局 | [`src/views/StoryView.vue`](src/views/StoryView.vue) |
 | N8 | story_sync 结构化 diff UI | 现为 JSON 确认 | [`src/components/AiPanel.vue`](src/components/AiPanel.vue) |
 | N9 | EPUB 导入 | 当前导入以 TXT 为主 | [`src-tauri/src/import/mod.rs`](src-tauri/src/import/mod.rs) |
+| N10 | 吸取更多使用建议并优化 | 持续进行；Issue / 反馈优先入库 | 本文；[`docs/todo.md`](docs/todo.md) |
+| N11 | 默认推荐 DeepSeek 写作 | 设置页与文档引导；强模型槽对齐 DeepSeek | [`settings.rs`](src-tauri/src/settings.rs)、[`SettingsView.vue`](src/views/SettingsView.vue)、[`llm/mod.rs`](src-tauri/src/llm/mod.rs) |
 
-已知约束：Debug GUI 依赖 Vite `5173`；Release 读 `frontend-dist/`；蒸馏依赖本机 LLM + `analysis_model`，长书请用 `--from` / `--to` 分段。
+已知约束：Debug GUI 依赖 Vite `5173`；Release 读 `frontend-dist/`；蒸馏依赖可用的分析模型（推荐 DeepSeek）+ `analysis_model`，长书请用 `--from` / `--to` 分段。
