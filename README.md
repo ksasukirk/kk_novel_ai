@@ -1,6 +1,8 @@
 # Kk Novel Ai
 
-本地优先的小说创作台：作品落在磁盘目录，大模型走 OpenAI 兼容接口（默认 [LM Studio](https://lmstudio.ai/) `http://127.0.0.1:1234/v1`），同时提供 **GUI**、**CLI**、**NDJSON RPC**，以及 CLI 驱动运行中 GUI 的本机 IPC。
+**Kk Novel Ai** 是面向长篇连载的本地小说创作台：大纲、章节、设定与记忆都落在你自己的磁盘目录里，不绑云端作品库；桌面 GUI 负责写与改，命令行 / 脚本也能驱动同一套写作流水线。
+
+写作、拆章、润色与知识蒸馏推荐接 **DeepSeek** 官方 API（OpenAI 兼容）；也支持本机或其他兼容端点。项目会持续听取反馈并迭代体验（详见下文）。
 
 | 项 | 值 |
 |---|---|
@@ -9,11 +11,11 @@
 | 仓库 | [https://github.com/ksasukirk/kk_novel_ai](https://github.com/ksasukirk/kk_novel_ai) |
 | 作者 | kk |
 
-更细的模块分析见 [`docs/project-analysis.md`](docs/project-analysis.md)；里程碑见 [`docs/todo.md`](docs/todo.md)；LLM / CLI 见 [`docs/lmstudio.md`](docs/lmstudio.md)。
+文档：模块分析 [`docs/project-analysis.md`](docs/project-analysis.md) · 里程碑 [`docs/todo.md`](docs/todo.md) · 模型与 CLI [`docs/lmstudio.md`](docs/lmstudio.md)
 
-本项目会持续吸取使用反馈与改进建议，用来优化体验、写作质量与稳定性。欢迎在 [Issues](https://github.com/ksasukirk/kk_novel_ai/issues) 提建议，或直接向作者反馈；合理诉求会尽量排进后续迭代（见 [`docs/todo.md`](docs/todo.md) 与本文第 10 节）。
+**持续优化**：欢迎在 [Issues](https://github.com/ksasukirk/kk_novel_ai/issues) 提建议，或直接向作者反馈。合理诉求会尽量排进后续迭代（见 [`docs/todo.md`](docs/todo.md) 与本文第 10 节）。
 
-**模型建议**：长篇续写、拆章、润色与蒸馏，优先使用 **DeepSeek**（官方 API，OpenAI 兼容）。应用已对 `deepseek.com` 默认关闭思考链，避免长写作 `content` 为空；强模型槽可指向如 `deepseek-v4-pro`（见 [`src-tauri/src/settings.rs`](src-tauri/src/settings.rs)、[`src/views/SettingsView.vue`](src/views/SettingsView.vue)、[`docs/lmstudio.md`](docs/lmstudio.md)）。本地 LM Studio 仍可用，但默认推荐 DeepSeek。
+**模型建议**：长篇续写、拆章、润色与蒸馏，优先使用 **DeepSeek**。应用已对 `deepseek.com` 默认关闭思考链，避免长写作 `content` 为空；强模型槽可指向如 `deepseek-v4-pro`（见 [`src-tauri/src/settings.rs`](src-tauri/src/settings.rs)、[`src/views/SettingsView.vue`](src/views/SettingsView.vue)）。本机 [LM Studio](https://lmstudio.ai/) 等 OpenAI 兼容服务仍可用，配置说明见 [`docs/lmstudio.md`](docs/lmstudio.md)。
 
 ---
 
@@ -21,7 +23,7 @@
 
 | # | 项 | 状态 | 主要代码 / 文档路径 |
 |---|---|---|---|
-| R1 | 产品定位与一句话说明 | 完成 | 本文；[`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json) |
+| R1 | 产品定位与开篇说明 | 完成（已优化为产品向表述） | 本文；[`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json) |
 | R2 | 技术栈与进程入口 | 完成 | [`package.json`](package.json)、[`src-tauri/Cargo.toml`](src-tauri/Cargo.toml)、[`src-tauri/src/main.rs`](src-tauri/src/main.rs) |
 | R3 | 目录结构与前端视图 | 完成 | [`src/App.vue`](src/App.vue)、[`src/views/`](src/views/) |
 | R4 | 后端模块与写作流水线 | 完成 | [`src-tauri/src/lib.rs`](src-tauri/src/lib.rs)、[`src-tauri/src/writing/`](src-tauri/src/writing/) |
@@ -30,6 +32,7 @@
 | R7 | 文档索引与后续建议 | 完成 | [`docs/`](docs/) |
 | R8 | 写明持续吸取建议并优化软件 | 完成 | 本文开篇；[`docs/todo.md`](docs/todo.md) |
 | R9 | 写明推荐使用 DeepSeek | 完成 | 本文开篇；[`src-tauri/src/settings.rs`](src-tauri/src/settings.rs)、[`src/views/SettingsView.vue`](src/views/SettingsView.vue) |
+| R10 | 重写开篇（弱化旧技术堆砌句） | 完成 | 本文标题下首段 |
 
 ---
 
@@ -37,9 +40,10 @@
 
 - 以**本地作品目录**为真相源：`project.json`、章节 Markdown、lore / memory / 总谱 JSON。
 - 续写、润色、拆章、按纲节拍、设定召回、知识库蒸馏，都走同一套 Rust 写作引擎。
-- GUI（Tauri 2 + Vue 3）负责编辑与预览；CLI / RPC 给脚本与外部编排；GUI 在线时 CLI 默认可驱动同一套预览。
+- 桌面 GUI（Tauri 2 + Vue 3）负责编辑与预览；CLI / NDJSON RPC 给脚本编排；GUI 在线时 CLI 默认可经本机 IPC 驱动同一套预览（见 [`src-tauri/src/ipc/mod.rs`](src-tauri/src/ipc/mod.rs)、[`src/services/guiBridge.js`](src/services/guiBridge.js)）。
 - Windows 桌面为主，Android APK 由 `build_android.py` 引导工具链后打包（见 [`docs/android-setup.md`](docs/android-setup.md)）。
 - **持续迭代**：会吸取更多建议来优化本软件；写作模型**最好使用 DeepSeek**（设置页配置端点与模型槽）。
+
 ---
 
 ## 2. 技术栈
