@@ -1,0 +1,18 @@
+{
+  "$schema": "../gen/schemas/windows-schema.json",
+  "identifier": "main-capability",
+  "description": "允许主窗口执行拖拽与窗口控制命令",
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-is-maximized",
+    "core:window:allow-maximize",
+    "core:window:allow-unmaximize",
+    "core:window:allow-close"
+  ]
+}

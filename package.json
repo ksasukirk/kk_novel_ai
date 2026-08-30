@@ -1,0 +1,29 @@
+{
+  "name": "kk_novel_ai",
+  "private": true,
+  "version": "0.1.82",
+  "author": "kk",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "frontend:build": "node build-frontend.mjs",
+    "tauri": "tauri",
+    "android:setup": "node scripts/android-setup.mjs",
+    "android:init": "node scripts/android-setup.mjs",
+    "android:icons": "tauri icon src-tauri/icons/icon.png",
+    "android:dev": "tauri android dev",
+    "android:build": "tauri android build --apk",
+    "android:bootstrap": "python build_android.py --bootstrap-only",
+    "android:release": "python build_android.py --no-bump",
+    "build:all": "python build.py --platform all",
+    "build:windows": "python build.py --platform windows --no-bump",
+    "build:android": "python build.py --platform android --no-bump"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.11.4",
+    "@vitejs/plugin-vue": "^5",
+    "vite": "^5",
+    "vue": "^3"
+  }
+}

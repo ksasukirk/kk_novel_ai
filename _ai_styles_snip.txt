@@ -1,0 +1,322 @@
+<style scoped>
+.ai-panel-root {
+  display: contents;
+}
+.ai-panel-root[data-layout="dock"] {
+  display: flex;
+  flex-shrink: 0;
+  align-self: stretch;
+  min-height: 0;
+}
+.ai-panel {
+  width: 320px;
+  flex-shrink: 0;
+  align-self: stretch;
+  border-left: none;
+  padding: 14px 16px;
+  background: var(--panel);
+  overflow: auto;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.dock-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+.dock-head .panel-heading {
+  margin: 0;
+}
+.focus-hint {
+  font-size: 11px;
+  line-height: 1.4;
+  margin: 0 0 6px;
+  flex-shrink: 0;
+}
+.field-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.field-label-row .field-label {
+  margin: 0;
+}
+.clear-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 6px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+}
+.clear-btn:hover:not(:disabled) {
+  background: var(--accent-soft);
+  color: var(--accent-hover);
+}
+.clear-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.char-tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.char-tag {
+  border: none;
+  background: var(--chip-bg);
+  color: var(--text);
+  border-radius: var(--radius-pill);
+  padding: 3px 10px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.char-tag:hover {
+  background: var(--accent-soft);
+  color: var(--accent-hover);
+}
+.task-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0;
+  flex-shrink: 0;
+}
+.chip {
+  border: none;
+  background: var(--chip-bg);
+  color: var(--muted);
+  border-radius: var(--radius-pill);
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+}
+.chip-active {
+  background: var(--accent-soft);
+  color: var(--accent-hover);
+}
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+  flex-shrink: 0;
+}
+.progress-slot {
+  flex: 0 0 auto;
+  height: auto;
+  max-height: 36px;
+  margin: 8px 0 4px;
+  overflow: hidden;
+}
+.editor-draft-hint {
+  margin-top: 12px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+.editor-draft-hint p {
+  margin: 0 0 6px;
+}
+.preview-field {
+  flex: 1 1 auto;
+  min-height: 120px;
+  margin-top: 8px;
+}
+.preview {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  min-height: 100px;
+  resize: vertical;
+}
+.diff-toggle {
+  margin-left: 8px;
+  font-weight: 500;
+  font-size: 12px;
+  color: var(--muted);
+}
+.preview-meta {
+  font-size: 11px;
+  margin: 4px 0 6px;
+}
+.diff-box {
+  max-height: 220px;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.45;
+  background: var(--surface-solid);
+  border-radius: var(--radius-md);
+  padding: 8px;
+  box-shadow: var(--shadow-sm);
+}
+.diff-line {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.diff-line.add {
+  background: rgba(46, 160, 67, 0.18);
+  color: #1a7f37;
+}
+.diff-line.remove {
+  background: rgba(248, 81, 73, 0.16);
+  color: #cf222e;
+}
+.mark {
+  display: inline-block;
+  width: 1em;
+  opacity: 0.7;
+}
+.error {
+  color: var(--error);
+  margin-top: 8px;
+}
+.link-btn {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: var(--radius-pill);
+}
+.link-btn:hover {
+  color: var(--accent-hover);
+  background: var(--accent-soft);
+}
+
+/* —— 浮条 —— */
+.ai-float {
+  flex-shrink: 0;
+  margin: 0 4px 4px;
+  padding: 10px 12px 8px;
+  background: var(--panel, #fff);
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
+  border-radius: 16px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.1), var(--shadow-sm, none);
+  z-index: 12;
+}
+.ai-float-extra {
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid color-mix(in srgb, var(--muted) 25%, transparent);
+}
+.ai-float-tasks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.ai-float-selection textarea {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 56px;
+  resize: vertical;
+}
+.ai-float-bar {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+.ai-float-task-wrap {
+  flex: 0 0 auto;
+}
+.ai-float-task {
+  height: 36px;
+  border: 1px solid color-mix(in srgb, var(--muted) 35%, transparent);
+  border-radius: var(--radius-pill);
+  background: var(--surface-solid, #f7f7f7);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 650;
+  padding: 0 10px;
+  cursor: pointer;
+}
+.ai-float-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 36px;
+  max-height: 120px;
+  margin: 0;
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--muted) 30%, transparent);
+  border-radius: 12px;
+  background: var(--surface-solid, #fafafa);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.45;
+  resize: none;
+  field-sizing: content;
+}
+.ai-float-input:focus {
+  outline: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+.ai-float-actions {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.ai-float-send {
+  min-width: 64px;
+}
+.ai-float-icon-btn {
+  border: none;
+  background: var(--chip-bg, #f0f0f0);
+  color: var(--muted);
+  border-radius: var(--radius-pill);
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.ai-float-icon-btn:hover {
+  background: var(--accent-soft);
+  color: var(--accent-hover);
+}
+.ai-float-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 6px;
+  min-height: 22px;
+}
+.ai-float-foot .tip {
+  font-size: 11px;
+  flex: 1 1 120px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ai-float-foot-actions {
+  display: flex;
+  gap: 4px;
+  margin-left: auto;
+}
+</style>

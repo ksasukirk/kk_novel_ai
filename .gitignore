@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+
+# Build / output artifacts
+frontend-dist/
+dist/
+outputs/
+src-tauri/target/
+src-tauri/gen/android/app/build/
+src-tauri/gen/android/.gradle/
+src-tauri/gen/android/build/
+
+# Local / reference / temp
+ref/
+.tmp-napcat-shots/
+.DS_Store
+Thumbs.db
+*.log
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+.venv/
+venv/
+
+# Env / secrets
+.env
+.env.*
+test_files/_imported/
+
+# Local persona / Cursor rules (do not publish)
+.cursor/rules/
+
+# Android signing secrets
+src-tauri/gen/android/keystore.properties
+*.jks
+*.keystore
+**/local.properties

@@ -1,0 +1,25 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "identifier": "com.kk.kk-novel-ai",
+  "productName": "Kk Novel Ai",
+  "app": {
+    "windows": [
+      {
+        "title": "Kk Novel Ai",
+        "fullscreen": false,
+        "resizable": true,
+        "width": 390,
+        "height": 844
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "android": {
+      "minSdkVersion": 26
+    }
+  }
+}
