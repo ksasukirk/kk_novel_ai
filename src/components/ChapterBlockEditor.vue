@@ -696,7 +696,7 @@ defineExpose({
           <div
             v-if="nodeVariantsFor(block).length"
             class="block-variants"
-            title="切换本小节变体"
+            title="切换本段变体"
           >
             <button
               v-for="(v, vi) in nodeVariantsFor(block)"

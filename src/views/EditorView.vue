@@ -1523,7 +1523,7 @@ watch(
               type="button"
               class="toc-caret"
               :class="{ open: isExpanded(ch.id) }"
-              :title="isExpanded(ch.id) ? '收起小节' : '展开小节'"
+              :title="isExpanded(ch.id) ? '收起章纲' : '展开章纲'"
               @click="toggleExpand(ch.id, $event)"
             >
               ›
@@ -1595,68 +1595,12 @@ watch(
             <p v-if="ch.summary && editingSummaryId !== ch.id" class="toc-summary-preview muted">
               {{ ch.summary }}
             </p>
-            <p v-if="tocLoading[ch.id]" class="toc-empty muted">加载中…</p>
-            <template v-else>
-              <div
-                v-for="(item, ti) in tocRowsForChapter(ch)"
-                :key="`${item.kind}-${item.nodeId || ''}-${item.variantId || item.key || ti}`"
-                class="toc-block-row"
-                :class="{
-                  active:
-                    item.kind === 'generating'
-                      ? ch.id === tocFocusChapterId || ch.id === outlineQueueState.chapterId
-                      : ch.id === tocFocusChapterId &&
-                        item.key &&
-                        item.key === activeBlockKey &&
-                        (item.kind === 'section' || item.active),
-                  'toc-variant': item.kind === 'variant',
-                  'toc-hint': item.kind === 'branchHint',
-                  'is-generating': item.generating || item.kind === 'generating',
-                }"
-                :style="{ paddingLeft: 6 + (item.depth || 0) * 10 + 'px' }"
-              >
-                <button
-                  type="button"
-                  class="toc-block"
-                  :title="item.generating || item.kind === 'generating' ? `${item.label}（生成中）` : item.label"
-                  @click="
-                    item.kind === 'generating'
-                      ? onTocGeneratingClick(ch.id)
-                      : selectTocItem(ch.id, item)
-                  "
-                >
-                  <span
-                    v-if="item.generating || item.kind === 'generating'"
-                    class="toc-gen-spin"
-                    aria-hidden="true"
-                  />
-                  <span
-                    v-else-if="item.kind === 'section'"
-                    class="toc-block-idx"
-                  >{{ item.genIndex + 1 }}</span>
-                  <span v-else-if="item.kind === 'variant'" class="toc-block-idx toc-var">{{
-                    item.active ? "●" : "○"
-                  }}</span>
-                  <span v-else class="toc-block-idx toc-var">↳</span>
-                  <span class="toc-block-label">{{ item.label }}</span>
-                  <span
-                    v-if="item.generating || item.kind === 'generating'"
-                    class="toc-gen-badge"
-                  >生成中</span>
-                </button>
-                <button
-                  v-if="item.kind === 'section' && item.key && !item.generating"
-                  type="button"
-                  class="toc-block-del"
-                  title="删除此生成块"
-                  :disabled="appState.generating"
-                  @click="deleteTocBlock(ch.id, item.key, $event)"
-                >
-                  删
-                </button>
-              </div>
-              <p v-if="!tocRowsForChapter(ch).length" class="toc-empty muted">暂无生成块</p>
-            </template>
+            <p
+              v-else-if="!ch.summary && editingSummaryId !== ch.id"
+              class="toc-empty muted"
+            >
+              暂无章纲
+            </p>
           </div>
         </div>
       </div>

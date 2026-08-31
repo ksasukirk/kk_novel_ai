@@ -21,7 +21,7 @@ function blockLabel(block, index) {
   if (dig) return dig.length > 48 ? `${dig.slice(0, 48)}…` : dig;
   const instr = String(block.instruction || "").trim();
   if (instr) return instr.length > 48 ? `${instr.slice(0, 48)}…` : instr;
-  return `小节 ${index + 1}`;
+  return `段落 ${index + 1}`;
 }
 
 function onActivate() {

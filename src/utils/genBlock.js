@@ -500,17 +500,17 @@ export function paragraphSummaryTags(paraText, block) {
 }
 
 /**
- * 侧栏小节索引文案（优先指令，否则正文开头）
+ * 侧栏段落索引文案（优先指令，否则正文开头）
  * @param {{type?:string,instruction?:string,text?:string}} block
  * @param {number} [index]
  */
 export function blockTocLabel(block, index = 0) {
-  if (!block) return `小节 ${(index || 0) + 1}`;
+  if (!block) return `段落 ${(index || 0) + 1}`;
   const instr = String(block.instruction || "").trim();
   if (instr) return paragraphSummaryLabel(instr, 28);
   const fromText = paragraphSummaryLabel(block.text || "", 28);
   if (fromText && fromText !== "（空段）") return fromText;
-  return `小节 ${(index || 0) + 1}`;
+  return `段落 ${(index || 0) + 1}`;
 }
 
 /**

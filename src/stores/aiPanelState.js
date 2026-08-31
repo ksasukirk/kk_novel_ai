@@ -17,7 +17,7 @@ export const aiPanelForm = reactive({
   instruction: "",
   selection: "",
   showDiff: true,
-  /** 续写时先规划小节数，再排队逐节生成（默认关；与指令队列互斥） */
+  /** @deprecated 已取消自动分节；保留字段避免旧会话报错，恒为 false */
   sectionQueue: false,
   /** @deprecated 已并入任务 outline_run；保留字段避免旧会话报错 */
   outlineQueue: false,

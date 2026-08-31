@@ -1,9 +1,9 @@
 <!--
-  设置：LM Studio 多模型槽
+  设置：LM Studio 多模型槽（修改即自动保存）
   代码路径: kk_novel_ai/src/views/SettingsView.vue
 -->
 <script setup>
-import { onMounted, ref } from "vue";
+import { onMounted, onUnmounted, ref, watch } from "vue";
 import { appState } from "../stores/appState.js";
 import { loadSettings, saveSettings, refreshHealth, listModels } from "../services/llmClient.js";
 import { invoke } from "../services/tauri.js";
@@ -30,8 +30,15 @@ const apiKeyConfigured = ref(false);
 const mobileUx = ref(isMobileUx());
 /** 内存中保留已保存 key，供未改时原样写回（不进输入框） */
 let savedApiKey = "";
+/** 初始化灌表期间不触发自动保存 */
+let hydrating = true;
+/** 保存写回表单时抑制 watch 再入 */
+let suppressing = false;
+let saveTimer = null;
+let saveSeq = 0;
 
 onMounted(async () => {
+  hydrating = true;
   try {
     const s = await loadSettings();
     savedApiKey = String((s && s.api_key) || "");
@@ -89,7 +96,36 @@ onMounted(async () => {
     await onHealth();
   } catch (e) {
     error.value = String(e.message || e);
+  } finally {
+    // 等下一拍，避免灌表/默认值回填误触发保存
+    queueMicrotask(() => {
+      hydrating = false;
+    });
   }
+});
+
+onUnmounted(() => {
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+  }
+  if (!hydrating && form.value) {
+    void persistSettings({ silent: true });
+  }
+});
+
+watch(
+  form,
+  () => {
+    if (hydrating || suppressing || !form.value) return;
+    scheduleSave();
+  },
+  { deep: true }
+);
+
+watch(apiKeyDraft, () => {
+  if (hydrating || suppressing) return;
+  scheduleSave();
 });
 
 async function onHealth() {
@@ -115,9 +151,22 @@ function syncMaxFromTarget() {
   form.value.max_tokens = Math.max(256, Math.ceil(chars * 1.8));
 }
 
-async function onSave() {
+function scheduleSave() {
+  if (saveTimer) clearTimeout(saveTimer);
+  message.value = "正在保存…";
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
+    void persistSettings();
+  }, 450);
+}
+
+async function persistSettings(opts = {}) {
+  if (!form.value) return;
+  const silent = !!opts.silent;
+  const seq = ++saveSeq;
   error.value = "";
   try {
+    suppressing = true;
     syncMaxFromTarget();
     const nextKey = apiKeyDraft.value.trim();
     const payload = {
@@ -125,6 +174,7 @@ async function onSave() {
       api_key: nextKey || savedApiKey,
     };
     await saveSettings(payload);
+    if (seq !== saveSeq) return;
     applyEditorTypography(form.value);
     if (nextKey) {
       savedApiKey = nextKey;
@@ -132,9 +182,15 @@ async function onSave() {
       apiKeyDraft.value = "";
     }
     form.value.api_key = "";
-    message.value = "设置已保存";
+    if (!silent) message.value = "已自动保存";
   } catch (e) {
+    if (seq !== saveSeq) return;
     error.value = String(e.message || e);
+    if (!silent) message.value = "";
+  } finally {
+    queueMicrotask(() => {
+      suppressing = false;
+    });
   }
 }
 
@@ -175,6 +231,7 @@ async function onRebuildRag() {
       <template v-else>
         对接 LM Studio Local Server（默认 http://127.0.0.1:1234/v1）。写作 / 分析 / Embedding 分槽。
       </template>
+      参数修改后会自动保存。
     </p>
 
     <h2 class="panel-sub">写作区外观</h2>
@@ -220,7 +277,11 @@ async function onRebuildRag() {
         :placeholder="apiKeyConfigured ? '已保存，重新输入以覆盖（不可查看）' : '输入 API Key'"
       />
       <p class="muted api-key-hint">
-        {{ apiKeyConfigured ? "当前已配置密钥，输入框不会回显明文，只能重新填写覆盖。" : "保存后将以密文方式保管，界面不可再查看。" }}
+        {{
+          apiKeyConfigured
+            ? "当前已配置密钥，输入框不会回显明文；重新填写后自动覆盖保存。"
+            : "填写后自动保存，界面不可再查看明文。"
+        }}
       </p>
     </div>
     <div class="field">
@@ -255,7 +316,7 @@ async function onRebuildRag() {
         <input v-model.number="form.analysis_temperature" type="number" step="0.1" />
       </div>
       <div class="field">
-        <label class="field-label">规定字数（每块至少达到；允许超出）</label>
+        <label class="field-label">规定字数（每章至少达到；允许超出）</label>
         <input
           v-model.number="form.writing_target_chars"
           type="number"
@@ -356,7 +417,6 @@ async function onRebuildRag() {
     </div>
 
     <div class="actions">
-      <button type="button" class="app-btn app-btn-primary" @click="onSave">保存</button>
       <button type="button" class="app-btn app-btn-info" @click="onHealth">检测连接 / 刷新模型</button>
       <button type="button" class="app-btn app-btn-warning" @click="onRebuildRag">重建 RAG 索引</button>
     </div>

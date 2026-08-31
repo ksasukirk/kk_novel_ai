@@ -1,6 +1,6 @@
 [package]
 name = "kk_novel_ai"
-version = "0.1.82"
+version = "0.1.84"
 edition = "2021"
 authors = ["kk"]
 

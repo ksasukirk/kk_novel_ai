@@ -18,7 +18,6 @@ import {
   MAX_INSTRUCTION_STEPS,
   queueStatusLine,
   runInstructionQueue,
-  runSectionQueue,
   sectionQueueState,
 } from "../services/sectionQueue.js";
 import {
@@ -240,12 +239,6 @@ watch(instructionQueue, (on) => {
   onInstructionQueueToggle(!!on);
 });
 
-watch(sectionQueue, (on) => {
-  if (on) {
-    instructionQueue.value = false;
-  }
-});
-
 watch(task, (id) => {
   if (id === "polish") floatExpanded.value = true;
 });
@@ -413,13 +406,8 @@ async function onRun() {
       });
       return;
     }
-    if (task.value === "continue" && sectionQueue.value) {
-      await runSectionQueue({
-        instruction: instruction.value,
-        selection: selection.value,
-      });
-      return;
-    }
+    // 已取消「自动分节 / 小节」：续写与按纲都按整章一块
+    sectionQueue.value = false;
     if (appState.dirty) await saveChapter();
     appState.draftPlacement = useEditorDraft.value ? "editor" : "panel";
     appState.draftTask = task.value;
@@ -646,9 +634,6 @@ function runButtonLabel() {
   if (task.value === "continue" && instructionQueue.value) {
     return isFloat.value ? "连跑" : `按队列生成（${filledStepCount.value}）`;
   }
-  if (task.value === "continue" && sectionQueue.value) {
-    return isFloat.value ? "规划" : "规划并生成";
-  }
   return isFloat.value ? "发送" : "开始生成";
 }
 function clearSelection() {
@@ -741,11 +726,6 @@ function onToggleLayout() {
             v-model="instructionQueue"
             label="指令队列"
             :disabled="sectionQueueState.running"
-          />
-          <CapsuleSwitch
-            v-model="sectionQueue"
-            label="自动分节"
-            :disabled="sectionQueueState.running || instructionQueue || outlineQueueState.running"
           />
         </div>
         <div
@@ -980,12 +960,6 @@ function onToggleLayout() {
           label="指令队列"
           :disabled="sectionQueueState.running"
         />
-        <CapsuleSwitch
-          v-if="task === 'continue' && !instructionQueue && !floatExtraVisible"
-          v-model="sectionQueue"
-          label="自动分节"
-          :disabled="sectionQueueState.running || outlineQueueState.running"
-        />
         <GenProgressBar variant="compact" />
         <div class="ai-float-foot-actions">
           <button type="button" class="link-btn" @click="onUndoAi">撤销</button>
@@ -1207,11 +1181,6 @@ function onToggleLayout() {
           label="指令队列：多条指令按顺序连续生成"
           :disabled="sectionQueueState.running"
         />
-        <CapsuleSwitch
-          v-model="sectionQueue"
-          label="自动分节：先分析要几节，再排队逐节续写"
-          :disabled="sectionQueueState.running || instructionQueue || outlineQueueState.running"
-        />
         <p
           v-if="
             sectionQueueState.running ||
@@ -1294,8 +1263,8 @@ function onToggleLayout() {
         <p v-if="task === 'continue' && instructionQueue">
           指令队列：按你填的每一步顺序连续调用续写，一步一节。
         </p>
-        <p v-else-if="task === 'continue' && sectionQueue">
-          已开启自动分节：先分析要几节，再排队逐节续写（默认关闭；普通续写只生成一块）。
+        <p v-else-if="task === 'continue'">
+          续写按整章一块写入；按纲生成也是每章只写一整段。
         </p>
         <p>生成块可点「重写」或「删除」；生成中可取消。</p>
         <p v-if="previewMeta" class="preview-meta">{{ previewMeta }}</p>
