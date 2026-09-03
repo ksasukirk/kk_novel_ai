@@ -1303,8 +1303,10 @@ fn tools_manifest() -> Value {
             {"cmd": "stats_get", "args": ["root"], "desc": "码字统计"},
             {"cmd": "stats_set_goal", "args": ["root", "goal_chars"], "desc": "设置日目标字数"},
             {"cmd": "rag_rebuild", "args": ["root"], "desc": "重建 embedding 索引"},
-            {"cmd": "gen_log_list", "args": ["limit?"], "desc": "生成日志"},
-            {"cmd": "usage_summary", "args": ["root?"], "desc": "token/费用累计摘要"}
+            {"cmd": "gen_log_list", "args": ["limit?"], "desc": "全局生成日志"},
+            {"cmd": "project_gen_log_list", "args": ["root", "limit?"], "desc": "作品目录内生成/保存履历"},
+            {"cmd": "usage_summary", "args": ["root?"], "desc": "token/费用累计摘要"},
+            {"cmd": "provider_balance", "args": [], "desc": "DeepSeek 账户余额（其它提供商无接口）"}
         ],
         "examples": [
             "kk_novel_ai tools",

@@ -17,6 +17,7 @@ mod kb;
 mod llm;
 mod paths;
 mod project;
+mod project_genlog;
 mod rag;
 mod settings;
 mod story;
@@ -125,7 +126,9 @@ pub fn run() {
             commands::pick_directory,
             commands::pick_import_directory,
             commands::gen_log_list,
+            commands::project_gen_log_list,
             commands::usage_summary,
+            commands::provider_balance,
             commands::project_export_backup,
             commands::project_import_backup_base64,
             commands::export_file_read_base64,

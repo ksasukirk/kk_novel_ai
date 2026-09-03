@@ -46,10 +46,34 @@ pub async fn llm_list_models() -> AppResult<Value> {
 pub async fn llm_chat(messages: Vec<ChatMessage>, options: ChatOptions) -> AppResult<Value> {
     let s = settings::load_settings()?;
     let r = LmStudioClient::new().chat(&s, &messages, &options).await?;
-    Ok(json!({ "ok": true, "text": r.text, "usage": r.usage }))
+    let model = options
+        .model
+        .clone()
+        .unwrap_or_else(|| s.model.clone());
+    let entry = genlog::record_llm_call(
+        "llm_chat",
+        "",
+        "",
+        &r.text,
+        &r.text,
+        "llm_chat",
+        false,
+        &model,
+        "",
+        &messages,
+        Some(r.usage.clone()),
+        &s,
+    )?;
+    Ok(json!({
+        "ok": true,
+        "text": r.text,
+        "usage": r.usage,
+        "log_id": entry.id,
+        "cost_cny": entry.cost_cny,
+    }))
 }
 
-fn log_and_enrich_outcome(
+pub(crate) fn log_and_enrich_outcome(
     req: &WritingRequest,
     mut out: writing::WritingOutcome,
     source: &str,
@@ -547,12 +571,29 @@ pub async fn project_suggest_title(root: &str) -> AppResult<Value> {
     let client = LmStudioClient::from_settings(&s);
     let r = client.chat(&s, &messages, &options).await?;
     let title = sanitize_book_title(&r.text)?;
+    let entry = genlog::record_llm_call(
+        "suggest_title",
+        root,
+        "",
+        &r.text,
+        &title,
+        "project_suggest_title",
+        false,
+        &model,
+        "suggest_book_title",
+        &messages,
+        Some(r.usage.clone()),
+        &s,
+    )?;
     Ok(json!({
         "ok": true,
         "title": title,
         "previous_title": opened.project.title,
         "model": model,
         "substance_chars": substance,
+        "usage": r.usage,
+        "log_id": entry.id,
+        "cost_cny": entry.cost_cny,
     }))
 }
 
@@ -1377,10 +1418,16 @@ pub async fn dispatch_rpc(req: Value) -> AppResult<Value> {
             let limit = req.get("limit").and_then(|v| v.as_u64()).unwrap_or(50) as usize;
             genlog::list_as_json(limit)
         }
+        "project_gen_log_list" => {
+            let root = req_str(&req, "root")?;
+            let limit = req.get("limit").and_then(|v| v.as_u64()).unwrap_or(200) as usize;
+            crate::project_genlog::list_as_json(Path::new(root), limit)
+        }
         "usage_summary" => {
             let root = req.get("root").and_then(|v| v.as_str());
             usage_summary(root)
         }
+        "provider_balance" => crate::llm::balance::fetch_provider_balance(&settings::load_settings()?).await,
         other => Err(AppError::msg(format!("未知 cmd: {other}"))),
     }
 }

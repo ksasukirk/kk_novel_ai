@@ -95,7 +95,11 @@ export const appState = reactive({
   deepseekPeakNow: false,
   deepseekPeakNotice: "",
   genLogs: [],
+  /** 当前作品目录内生成/保存履历（优先于全局 genLogs 做分析） */
+  projectGenLogs: [],
   usageSummary: null,
+  /** DeepSeek 余额等；{ ok, total, granted, topped_up, reason? } */
+  providerBalance: null,
   aiUndoStack: [],
   /** 外部写入冲突：{ content, saved, chapter_id } | null */
   externalConflict: null,

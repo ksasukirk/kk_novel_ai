@@ -6,7 +6,7 @@
 
 | 项 | 值 |
 |---|---|
-| 当前版本 | `0.1.82`（`package.json` / `src-tauri/Cargo.toml` / `src-tauri/tauri.conf.json` 同步） |
+| 当前版本 | `0.2.1`（`package.json` / `src-tauri/Cargo.toml` / `src-tauri/tauri.conf.json` 同步） |
 | 标识符 | `com.kk.kk-novel-ai` |
 | 仓库 | [https://github.com/ksasukirk/kk_novel_ai](https://github.com/ksasukirk/kk_novel_ai) |
 | 作者 | kk |
@@ -15,7 +15,9 @@
 
 **持续优化**：欢迎在 [Issues](https://github.com/ksasukirk/kk_novel_ai/issues) 提建议，或直接向作者反馈。合理诉求会尽量排进后续迭代（见 [`docs/todo.md`](docs/todo.md) 与本文第 10 节）。
 
-**模型建议**：长篇续写、拆章、润色与蒸馏，优先使用 **DeepSeek**。应用已对 `deepseek.com` 默认关闭思考链，避免长写作 `content` 为空；强模型槽可指向如 `deepseek-v4-pro`（见 [`src-tauri/src/settings.rs`](src-tauri/src/settings.rs)、[`src/views/SettingsView.vue`](src/views/SettingsView.vue)）。本机 [LM Studio](https://lmstudio.ai/) 等 OpenAI 兼容服务仍可用，配置说明见 [`docs/lmstudio.md`](docs/lmstudio.md)。
+**模型建议**：长篇续写、拆章、润色与蒸馏，优先使用 **DeepSeek**。设置页提供 Flash / Pro / 本机 LM Studio 预设、空闲/高峰单价与缓存友好续写；应用对 `deepseek.com` 默认关闭思考链，避免长写作 `content` 为空（见 [`src-tauri/src/settings.rs`](src-tauri/src/settings.rs)、[`src/views/SettingsView.vue`](src/views/SettingsView.vue)、[`src/utils/deepseekPricing.js`](src/utils/deepseekPricing.js)）。本机 [LM Studio](https://lmstudio.ai/) 等 OpenAI 兼容服务仍可用，配置说明见 [`docs/lmstudio.md`](docs/lmstudio.md)。
+
+**用量与分析**：侧栏「分析」页展示 DeepSeek 官方余额、本应用累计花费 / token、近 14 天趋势与按模型柱状图；无履历时按当前单价与写作参数做约算（不写假账）。业务 AI 调用会记入全局 `gen_log.jsonl` 与作品目录 `gen_activity.jsonl`（见第 7 节）。
 
 ---
 
@@ -33,6 +35,7 @@
 | R8 | 写明持续吸取建议并优化软件 | 完成 | 本文开篇；[`docs/todo.md`](docs/todo.md) |
 | R9 | 写明推荐使用 DeepSeek | 完成 | 本文开篇；[`src-tauri/src/settings.rs`](src-tauri/src/settings.rs)、[`src/views/SettingsView.vue`](src/views/SettingsView.vue) |
 | R10 | 重写开篇（弱化旧技术堆砌句） | 完成 | 本文标题下首段 |
+| R11 | 用量分析 / 作品履历 / 余额 | 完成 | [`UsageAnalyticsView.vue`](src/views/UsageAnalyticsView.vue)、[`project_genlog.rs`](src-tauri/src/project_genlog.rs)、[`llm/balance.rs`](src-tauri/src/llm/balance.rs) |
 
 ---
 
@@ -43,6 +46,7 @@
 - 桌面 GUI（Tauri 2 + Vue 3）负责编辑与预览；CLI / NDJSON RPC 给脚本编排；GUI 在线时 CLI 默认可经本机 IPC 驱动同一套预览（见 [`src-tauri/src/ipc/mod.rs`](src-tauri/src/ipc/mod.rs)、[`src/services/guiBridge.js`](src/services/guiBridge.js)）。
 - Windows 桌面为主，Android APK 由 `build_android.py` 引导工具链后打包（见 [`docs/android-setup.md`](docs/android-setup.md)）。
 - **持续迭代**：会吸取更多建议来优化本软件；写作模型**最好使用 DeepSeek**（设置页配置端点与模型槽）。
+- **用量可追溯**：续写 / 润色 / 书名建议 / 导入蒸馏等业务 AI 调用记 token 与花费；侧栏「分析」可看余额、KPI 与趋势。
 
 ---
 
@@ -94,11 +98,11 @@ kk_novel_ai/
 ├── build-frontend.mjs        # 前端产物 frontend-dist/
 ├── src/                      # Vue 3
 │   ├── App.vue
-│   ├── views/                # 作品 / 知识库 / 写作 / 大纲 / 总谱 / 设定 / 日志 / 设置
-│   ├── components/           # AiPanel、编辑块、壳、思维导图等
+│   ├── views/                # 作品 / 知识库 / 写作 / 大纲 / 总谱 / 设定 / 分析 / 日志 / 设置
+│   ├── components/           # AiPanel、编辑块、壳、思维导图、analytics 图表等
 │   ├── services/             # Tauri / LLM / 作品 / GUI 桥 / 按纲队列
 │   ├── stores/               # appState 等
-│   └── utils/
+│   └── utils/                # 用量格式化 / 序列聚合 / DeepSeek 单价 / 约算
 ├── src-tauri/                # Tauri + Rust
 │   ├── src/                  # 后端模块
 │   ├── prompts/              # 写作 Prompt 模板
@@ -115,7 +119,7 @@ kk_novel_ai/
 
 ## 5. 前端视图与关键路径
 
-侧栏定义：[`src/App.vue`](src/App.vue)（作品、知识库、角色定义、总谱、大纲、写作、设定、日志、设置）。
+侧栏定义：[`src/App.vue`](src/App.vue)（作品、知识库、角色定义、总谱、大纲、写作、设定、分析、日志、设置）。
 
 | 界面 | 路径 | 职责 |
 |---|---|---|
@@ -126,8 +130,10 @@ kk_novel_ai/
 | 大纲 | [`src/views/OutlineView.vue`](src/views/OutlineView.vue) | 全书大纲、卷弧、章纲 |
 | 总谱 | [`src/views/StoryView.vue`](src/views/StoryView.vue)、[`MindMapBoard.vue`](src/components/MindMapBoard.vue) | 故事线 / 时间线 / 关系 / Canon |
 | 设定 / 角色仓 | [`src/views/LoreView.vue`](src/views/LoreView.vue)、[`CharacterRosterView.vue`](src/views/CharacterRosterView.vue) | lore 与全局角色 |
-| 日志 | [`src/views/GenLogView.vue`](src/views/GenLogView.vue) | 生成记录、用量、导出 |
-| 设置 | [`src/views/SettingsView.vue`](src/views/SettingsView.vue) | 端点、多模型槽、写作参数 |
+| 分析 | [`src/views/UsageAnalyticsView.vue`](src/views/UsageAnalyticsView.vue)、[`src/components/analytics/`](src/components/analytics/) | 余额、KPI、折线/柱状、履历详情；无数据时配置约算 |
+| 日志 | [`src/views/GenLogView.vue`](src/views/GenLogView.vue) | 轻量历史与导出 |
+| 设置 | [`src/views/SettingsView.vue`](src/views/SettingsView.vue) | 端点、DeepSeek 预设、多模型槽、写作参数 |
+| 用量工具 | [`usageFormat.js`](src/utils/usageFormat.js)、[`usageSeries.js`](src/utils/usageSeries.js)、[`usageEstimate.js`](src/utils/usageEstimate.js)、[`deepseekPricing.js`](src/utils/deepseekPricing.js) | 格式化、按日聚合、无履历约算、官方单价 |
 | 全局状态 | [`src/stores/appState.js`](src/stores/appState.js) | 当前作品与导航 |
 | 客户端 | [`src/services/tauri.js`](src/services/tauri.js)、[`llmClient.js`](src/services/llmClient.js)、[`projectClient.js`](src/services/projectClient.js)、[`guiBridge.js`](src/services/guiBridge.js) | invoke / 事件桥 |
 
@@ -147,12 +153,12 @@ kk_novel_ai/
 | 召回 / 去重 | [`retrieve.rs`](src-tauri/src/writing/retrieve.rs)、[`dedupe.rs`](src-tauri/src/writing/dedupe.rs)、[`advance.rs`](src-tauri/src/writing/advance.rs) | lore 召回、复读抑制、方向锚点 |
 | 作品磁盘 | [`src-tauri/src/project/mod.rs`](src-tauri/src/project/mod.rs) | 章 / lore / memory / 进度 sidecar |
 | 总谱 | [`src-tauri/src/story/mod.rs`](src-tauri/src/story/mod.rs) | plot / timeline / relations / canon |
-| LLM | [`src-tauri/src/llm/mod.rs`](src-tauri/src/llm/mod.rs)、[`stream.rs`](src-tauri/src/llm/stream.rs) | OpenAI 兼容流式、取消、thinking 关闭 |
+| LLM | [`src-tauri/src/llm/mod.rs`](src-tauri/src/llm/mod.rs)、[`stream.rs`](src-tauri/src/llm/stream.rs)、[`balance.rs`](src-tauri/src/llm/balance.rs) | OpenAI 兼容流式、取消、thinking 关闭；DeepSeek `GET /user/balance` |
 | 知识库 | [`src-tauri/src/kb/mod.rs`](src-tauri/src/kb/mod.rs) | 通用库聚合 |
-| 导入蒸馏 | [`src-tauri/src/import/mod.rs`](src-tauri/src/import/mod.rs) | TXT 切章、lore_extract |
+| 导入蒸馏 | [`src-tauri/src/import/mod.rs`](src-tauri/src/import/mod.rs) | TXT 切章、lore_extract（带 usage 记账） |
 | IPC | [`src-tauri/src/ipc/mod.rs`](src-tauri/src/ipc/mod.rs) | loopback NDJSON，`ipc.json` |
-| 设置 / 路径 | [`settings.rs`](src-tauri/src/settings.rs)、[`paths.rs`](src-tauri/src/paths.rs) | `%APPDATA%/kk_novel_ai/` |
-| 日志 / 用量 | [`genlog.rs`](src-tauri/src/genlog.rs)、[`usage.rs`](src-tauri/src/usage.rs) | `gen_log.jsonl` |
+| 设置 / 路径 | [`settings.rs`](src-tauri/src/settings.rs)、[`paths.rs`](src-tauri/src/paths.rs) | `%APPDATA%/kk_novel_ai/`；DeepSeek 预设与高峰单价 |
+| 日志 / 用量 | [`genlog.rs`](src-tauri/src/genlog.rs)、[`usage.rs`](src-tauri/src/usage.rs)、[`project_genlog.rs`](src-tauri/src/project_genlog.rs) | 全局 `gen_log.jsonl`、账本；作品内 `gen_activity.jsonl` / `.genlog/` |
 
 Prompt 模板目录：[`src-tauri/prompts/`](src-tauri/prompts/)（如 `continue_chapter.md`、`outline_to_chapters.md`、`lore_extract.md`、`suggest_book_title.md`）。
 
@@ -167,16 +173,20 @@ MyNovel/
   project.json
   memory.json
   stats.json
+  gen_activity.jsonl         # 作品级 AI / 保存履历索引（新生成后出现）
   embeddings.sqlite          # 配置 embedding_model 后
   story/plot.json | timeline.json | relations.json | canon.json
   chapters/*.md
   chapters/.progress/        # 按纲节拍进度
   chapters/.genblocks/       # 生成块 sidecar
+  chapters/.genlog/*.jsonl   # 按章履历；项目级任务为 _project.jsonl
   lore/characters/*.json
   lore/world/*.json
 ```
 
-应用数据（Windows 典型 `%APPDATA%\kk_novel_ai\`，[`paths.rs`](src-tauri/src/paths.rs)）：`settings.json`、`ipc.json`、`gen_log.jsonl`。
+应用数据（Windows 典型 `%APPDATA%\kk_novel_ai\`，[`paths.rs`](src-tauri/src/paths.rs)）：`settings.json`、`ipc.json`、`gen_log.jsonl`、用量账本。旧作品无 `gen_activity` 时分析页回退全局日志或按配置约算。
+
+相关命令：`gen_log_list`、`project_gen_log_list`、`usage_summary`、`provider_balance`（见 [`cli.rs`](src-tauri/src/cli.rs) tools 列表）。
 
 ---
 
@@ -238,5 +248,6 @@ CLI 调试优先用 `kk_novel_cli`（构建后在 `src-tauri/target/...`）。�
 | N9 | EPUB 导入 | 当前导入以 TXT 为主 | [`src-tauri/src/import/mod.rs`](src-tauri/src/import/mod.rs) |
 | N10 | 吸取更多使用建议并优化 | 持续进行；Issue / 反馈优先入库 | 本文；[`docs/todo.md`](docs/todo.md) |
 | N11 | 默认推荐 DeepSeek 写作 | 设置页与文档引导；强模型槽对齐 DeepSeek | [`settings.rs`](src-tauri/src/settings.rs)、[`SettingsView.vue`](src/views/SettingsView.vue)、[`llm/mod.rs`](src-tauri/src/llm/mod.rs) |
+| N12 | 分析页跨日账本持久化图表 | 现按已加载履历（约 500 条）聚合近 14 天 | [`UsageAnalyticsView.vue`](src/views/UsageAnalyticsView.vue)、[`usage.rs`](src-tauri/src/usage.rs) |
 
-已知约束：Debug GUI 依赖 Vite `5173`；Release 读 `frontend-dist/`；蒸馏依赖可用的分析模型（推荐 DeepSeek）+ `analysis_model`，长书请用 `--from` / `--to` 分段。
+已知约束：Debug GUI 依赖 Vite `5173`；Release 读 `frontend-dist/`；蒸馏依赖可用的分析模型（推荐 DeepSeek）+ `analysis_model`，长书请用 `--from` / `--to` 分段。DeepSeek 官方仅提供余额 API，无 Bearer 可查的「今日已用 token」；今日/累计消耗以本应用履历与账本为准。

@@ -12,12 +12,19 @@ use std::fs::OpenOptions;
 use std::io::Write;
 use uuid::Uuid;
 
+fn default_gen_event() -> String {
+    "generate".into()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GenLogEntry {
     #[serde(default)]
     pub id: String,
     pub ts: String,
     pub task: String,
+    /// generate | chapter_save | …
+    #[serde(default = "default_gen_event")]
+    pub event: String,
     pub project_root: String,
     pub chapter_id: String,
     /// 定稿预览（前 200 字，兼容旧 UI）
@@ -76,6 +83,8 @@ pub fn append_log(entry: &GenLogEntry) -> AppResult<()> {
     let mut file = OpenOptions::new().create(true).append(true).open(path)?;
     writeln!(file, "{}", serde_json::to_string(entry)?)?;
     let _ = crate::usage::record_entry(entry);
+    // 同步写入作品目录（chapters/.genlog + gen_activity.jsonl）；旧项目无目录则跳过
+    let _ = crate::project_genlog::append_entry(entry);
     Ok(())
 }
 
@@ -143,6 +152,7 @@ pub fn make_entry_full(
         id: Uuid::new_v4().to_string(),
         ts: Utc::now().to_rfc3339(),
         task: task.to_string(),
+        event: default_gen_event(),
         project_root: project_root.to_string(),
         chapter_id: chapter_id.to_string(),
         preview: take_chars(final_text, 200),
@@ -163,4 +173,38 @@ pub fn make_entry_full(
 
 pub fn list_as_json(limit: usize) -> AppResult<serde_json::Value> {
     Ok(json!({ "ok": true, "items": read_recent(limit)? }))
+}
+
+/// 任意业务 AI 调用的统一记账（全局日志 + usage + 作品目录）。
+#[allow(clippy::too_many_arguments)]
+pub fn record_llm_call(
+    task: &str,
+    project_root: &str,
+    chapter_id: &str,
+    raw_text: &str,
+    final_text: &str,
+    source: &str,
+    truncated: bool,
+    model_used: &str,
+    instruction: &str,
+    messages: &[ChatMessage],
+    usage: Option<TokenUsage>,
+    settings: &AppSettings,
+) -> AppResult<GenLogEntry> {
+    let entry = make_entry_full(
+        task,
+        project_root,
+        chapter_id,
+        raw_text,
+        final_text,
+        source,
+        truncated,
+        model_used,
+        instruction,
+        messages,
+        usage,
+        settings,
+    );
+    append_log(&entry)?;
+    Ok(entry)
 }

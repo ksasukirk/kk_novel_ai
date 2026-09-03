@@ -8,6 +8,7 @@ import { appState } from "../stores/appState.js";
 import { loadGenLogs, loadUsageSummary, exportTxt, exportPdf, exportEpub, pickDirectory } from "../services/projectClient.js";
 import CapsuleSwitch from "../components/CapsuleSwitch.vue";
 import { useToastError } from "../services/toast.js";
+import { formatCost, formatMessages, formatTokens } from "../utils/usageFormat.js";
 
 const error = useToastError();
 const exportMsg = ref("");
@@ -119,23 +120,7 @@ watch(
 );
 
 function usageLabel(item) {
-  const u = item.usage;
-  if (!u) return "";
-  const total = u.total_tokens || (u.prompt_tokens || 0) + (u.completion_tokens || 0);
-  const src = u.source === "api" ? "api" : "估";
-  const hit = u.prompt_cache_hit_tokens || 0;
-  const miss = u.prompt_cache_miss_tokens || 0;
-  if (hit > 0 || miss > 0) {
-    const rate = hit + miss > 0 ? Math.round((hit / (hit + miss)) * 100) : 0;
-    return `${total} tok (${src}) · 缓存 ${hit}/${hit + miss} (${rate}%)`;
-  }
-  return `${total} tok (${src})`;
-}
-
-function formatMessages(item) {
-  const msgs = item.messages || [];
-  if (!msgs.length) return item.instruction || "";
-  return msgs.map((m) => `【${m.role}】\n${m.content || ""}`).join("\n\n---\n\n");
+  return formatTokens(item.usage);
 }
 
 async function onExport() {
@@ -195,7 +180,7 @@ async function onExportEpub() {
           <span v-if="item.model_used"> · {{ item.model_used }}</span>
           <span v-if="item.truncated"> · 已截断</span>
           <span v-if="usageLabel(item)"> · {{ usageLabel(item) }}</span>
-          <span v-if="item.cost_cny"> · ¥{{ Number(item.cost_cny).toFixed(4) }}</span>
+          <span v-if="item.cost_cny"> · {{ formatCost(item.cost_cny) }}</span>
         </div>
         <div class="muted">{{ item.project_root }} / {{ item.chapter_id }}</div>
         <details v-if="item.final_text || item.preview">

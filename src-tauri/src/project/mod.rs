@@ -582,6 +582,8 @@ pub fn write_chapter(root: &Path, chapter_id: &str, content: &str) -> AppResult<
     if new_chars > old_chars {
         let _ = add_daily_chars(root, (new_chars - old_chars) as u64);
     }
+    // 正文有变更则写入作品内履历（生成双写之外的保存/修改记录）
+    let _ = crate::project_genlog::record_chapter_save(root, chapter_id, &old, content, "chapter_write");
     Ok(())
 }
 

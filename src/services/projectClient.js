@@ -444,9 +444,28 @@ export async function loadGenLogs(limit = 50) {
   return r.items;
 }
 
+/** 当前作品目录内履历（chapters/.genlog + gen_activity.jsonl）；旧项目无文件则空 */
+export async function loadProjectGenLogs(root = null, limit = 200) {
+  const projectRoot = root || appState.projectRoot;
+  if (!projectRoot) {
+    appState.projectGenLogs = [];
+    return [];
+  }
+  const r = await invoke("project_gen_log_list", { root: projectRoot, limit });
+  appState.projectGenLogs = r.items || [];
+  return r.items;
+}
+
 export async function loadUsageSummary(root = null) {
   const r = await invoke("usage_summary", { root: root || null });
   appState.usageSummary = r;
+  return r;
+}
+
+/** DeepSeek 官方余额；其它提供商返回 ok:false + reason */
+export async function loadProviderBalance() {
+  const r = await invoke("provider_balance");
+  appState.providerBalance = r;
   return r;
 }
 

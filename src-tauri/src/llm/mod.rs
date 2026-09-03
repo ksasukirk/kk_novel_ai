@@ -1,6 +1,7 @@
 //! LLM Provider（LM Studio OpenAI 兼容）
 //! 代码路径: kk_novel_ai/src-tauri/src/llm/mod.rs
 
+pub mod balance;
 pub mod stream;
 
 use crate::error::{AppError, AppResult};

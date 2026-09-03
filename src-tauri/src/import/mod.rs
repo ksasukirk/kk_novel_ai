@@ -362,6 +362,7 @@ async fn call_lore_extract(
     client: &LmStudioClient,
     settings: &AppSettings,
     root: &Path,
+    chapter_id: &str,
     chapter_title: &str,
     content: &str,
     instruction: &str,
@@ -396,10 +397,25 @@ async fn call_lore_extract(
         presence_penalty: Some(0.0),
         stream: false,
     };
-    let raw = client.chat(settings, &messages, &options).await?.text;
-    let cleaned = strip_json_fence(&raw);
+    let raw = client.chat(settings, &messages, &options).await?;
+    let model_used = options.model.clone().unwrap_or_else(|| model.to_string());
+    let _ = genlog::record_llm_call(
+        "lore_extract",
+        &root.to_string_lossy(),
+        chapter_id,
+        &raw.text,
+        &raw.text,
+        "import",
+        false,
+        &model_used,
+        instruction,
+        &messages,
+        Some(raw.usage.clone()),
+        settings,
+    );
+    let cleaned = strip_json_fence(&raw.text);
     serde_json::from_str(&cleaned)
-        .map_err(|e| AppError::msg(format!("lore_extract JSON 解析失败: {e}; 原文前200字: {}", raw.chars().take(200).collect::<String>())))
+        .map_err(|e| AppError::msg(format!("lore_extract JSON 解析失败: {e}; 原文前200字: {}", raw.text.chars().take(200).collect::<String>())))
 }
 
 fn merge_entity_into_lore(
@@ -865,6 +881,7 @@ pub async fn distill_range(
             &client,
             &settings,
             root,
+            &ch.id,
             &ch.title,
             &content,
             instruction,
@@ -912,6 +929,22 @@ pub async fn distill_range(
         let sync_patch = match writing::run_writing(&client, &settings, &sync_req, None, |_| {}).await
         {
             Ok(out) => {
+                let mut entry = genlog::make_entry_full(
+                    &sync_req.task,
+                    &sync_req.project_root,
+                    &sync_req.chapter_id,
+                    &out.raw_text,
+                    &out.text,
+                    "import",
+                    out.truncated,
+                    &out.model_used,
+                    &sync_req.instruction,
+                    &out.prompt_messages,
+                    Some(out.usage.clone()),
+                    &settings,
+                );
+                entry.context_sources = serde_json::to_value(&out.context_sources).ok();
+                let _ = genlog::append_log(&entry);
                 let cleaned = strip_json_fence(&out.text);
                 serde_json::from_str::<Value>(&cleaned).ok()
             }
@@ -995,6 +1028,7 @@ pub async fn distill_range(
             &format!("distilled chapter {chap_no} {}", ch.title),
             "import",
         ));
+        // note: lore_extract / story_sync already recorded with usage above; this marks chapter done
         processed += 1;
 
         // flush progress hint

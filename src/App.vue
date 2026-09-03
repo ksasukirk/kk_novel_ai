@@ -17,6 +17,7 @@ import LoreView from "./views/LoreView.vue";
 import CharacterRosterView from "./views/CharacterRosterView.vue";
 import SettingsView from "./views/SettingsView.vue";
 import GenLogView from "./views/GenLogView.vue";
+import UsageAnalyticsView from "./views/UsageAnalyticsView.vue";
 import StoryView from "./views/StoryView.vue";
 import { isKbProject, restoreWritingSnapshot } from "./stores/appState.js";
 import { isMobileUx, isTauriMobile, watchMobileViewport } from "./utils/platform.js";
@@ -45,6 +46,7 @@ const sidebarTabs = [
   { id: "outline", label: "大纲" },
   { id: "editor", label: "写作" },
   { id: "lore", label: "设定" },
+  { id: "analytics", label: "分析" },
   { id: "log", label: "日志" },
   { id: "settings", label: "设置" },
 ];
@@ -56,7 +58,7 @@ const bottomPrimary = [
   { id: "story", label: "总谱" },
 ];
 
-const moreTabIds = new Set(["knowledge", "characters", "lore", "log", "settings"]);
+const moreTabIds = new Set(["knowledge", "characters", "lore", "analytics", "log", "settings"]);
 
 const titleSuffix = computed(() => {
   if (appState.activeNav === "knowledge" && appState.project && isKbProject(appState.project)) {
@@ -298,6 +300,7 @@ onUnmounted(() => {
           <EditorView v-else-if="appState.activeNav === 'editor'" />
           <CharacterRosterView v-else-if="appState.activeNav === 'characters'" />
           <LoreView v-else-if="appState.activeNav === 'lore'" />
+          <UsageAnalyticsView v-else-if="appState.activeNav === 'analytics'" />
           <GenLogView v-else-if="appState.activeNav === 'log'" />
           <SettingsView v-else-if="appState.activeNav === 'settings'" />
         </div>

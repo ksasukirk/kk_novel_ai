@@ -74,11 +74,46 @@ pub async fn llm_chat_stream(
     cancel_reg.remove(&request_id);
     match result {
         Ok(r) => {
+            let model = opts
+                .model
+                .clone()
+                .unwrap_or_else(|| settings.model.clone());
+            let (log_id, cost_cny) =
+                match crate::genlog::record_llm_call(
+                    "llm_chat",
+                    "",
+                    "",
+                    &r.text,
+                    &r.text,
+                    "llm_chat_stream",
+                    false,
+                    &model,
+                    "",
+                    &messages,
+                    Some(r.usage.clone()),
+                    &settings,
+                ) {
+                    Ok(entry) => (entry.id, entry.cost_cny),
+                    Err(_) => (String::new(), 0.0),
+                };
             let _ = app.emit(
                 "llm-done",
-                json!({ "request_id": request_id, "text": r.text, "usage": r.usage }),
+                json!({
+                    "request_id": request_id,
+                    "text": r.text,
+                    "usage": r.usage,
+                    "log_id": log_id,
+                    "cost_cny": cost_cny,
+                }),
             );
-            Ok(json!({ "ok": true, "request_id": request_id, "text": r.text, "usage": r.usage }))
+            Ok(json!({
+                "ok": true,
+                "request_id": request_id,
+                "text": r.text,
+                "usage": r.usage,
+                "log_id": log_id,
+                "cost_cny": cost_cny,
+            }))
         }
         Err(e) => {
             let _ = app.emit(
@@ -487,8 +522,25 @@ pub fn pick_import_directory() -> Result<Value, String> {
 }
 
 #[tauri::command]
+pub async fn provider_balance() -> Result<Value, String> {
+    let s = crate::settings::load_settings().map_err(|e| e.to_string())?;
+    crate::llm::balance::fetch_provider_balance(&s)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 pub fn gen_log_list(limit: Option<u32>) -> Result<Value, String> {
     genlog::list_as_json(limit.unwrap_or(50) as usize).map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn project_gen_log_list(root: String, limit: Option<u32>) -> Result<Value, String> {
+    crate::project_genlog::list_as_json(
+        std::path::Path::new(&root),
+        limit.unwrap_or(200) as usize,
+    )
+    .map_err(Into::into)
 }
 
 #[tauri::command]
