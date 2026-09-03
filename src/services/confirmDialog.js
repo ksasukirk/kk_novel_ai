@@ -12,6 +12,7 @@ export const confirmState = reactive({
   message: "",
   confirmText: "确定",
   cancelText: "取消",
+  extraText: "",
   danger: false,
 });
 
@@ -33,8 +34,8 @@ export function isSkipDeleteConfirm() {
 
 /**
  * @param {string} message
- * @param {{ title?: string, confirmText?: string, cancelText?: string, danger?: boolean }} [opts]
- * @returns {Promise<boolean>}
+ * @param {{ title?: string, confirmText?: string, cancelText?: string, extraText?: string, danger?: boolean }} [opts]
+ * @returns {Promise<boolean | 'extra'>}
  */
 export function appConfirm(message, opts = {}) {
   if (pendingResolve) {
@@ -49,6 +50,7 @@ export function appConfirm(message, opts = {}) {
     confirmState.message = String(message || "");
     confirmState.confirmText = opts.confirmText || "确定";
     confirmState.cancelText = opts.cancelText || "取消";
+    confirmState.extraText = opts.extraText || "";
     confirmState.danger = !!opts.danger;
   });
 }
@@ -87,6 +89,7 @@ export function appAlert(message, opts = {}) {
     confirmState.message = String(message || "");
     confirmState.confirmText = opts.confirmText || "知道了";
     confirmState.cancelText = "";
+    confirmState.extraText = "";
     confirmState.danger = false;
   });
 }
@@ -94,6 +97,10 @@ export function appAlert(message, opts = {}) {
 export function resolveAppConfirm(ok) {
   if (confirmState.mode === "alert") {
     closeWith(true);
+    return;
+  }
+  if (ok === "extra") {
+    closeWith("extra");
     return;
   }
   closeWith(!!ok);

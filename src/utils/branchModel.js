@@ -814,3 +814,87 @@ export function parseSidecarToBranchDoc(sidecar) {
   if (Array.isArray(sidecar.blocks)) return migrateBlocksToBranchDoc(sidecar.blocks);
   return migrateBlocksToBranchDoc([]);
 }
+
+/**
+ * 旧版分节/多生成块：激活路径上存在多个小节
+ * @param {unknown} doc
+ */
+export function chapterNeedsSectionCollapse(doc) {
+  const d = normalizeBranchDoc(
+    isBranchDoc(doc) ? doc : migrateBlocksToBranchDoc(doc || [])
+  );
+  if (activePathNodes(d).length > 1) return true;
+  if (rootNodes(d).length > 1) return true;
+  return activePathBlocks(d).filter((b) => b.type === "gen").length > 1;
+}
+
+/**
+ * 将一章内多个残留小节合并为整章一块（保留最后一块元数据 + 合并摘要）
+ * @param {unknown} doc
+ * @returns {{ doc: object, changed: boolean }}
+ */
+export function collapseChapterSectionsToWholeChapter(doc) {
+  const d = normalizeBranchDoc(
+    isBranchDoc(doc) ? doc : migrateBlocksToBranchDoc(doc || [])
+  );
+  if (!chapterNeedsSectionCollapse(d)) {
+    return { doc: d, changed: false };
+  }
+
+  const blocks = activePathBlocks(d);
+  /** @type {string[]} */
+  const textParts = [];
+  /** @type {string[]} */
+  const digestParts = [];
+  /** @type {object|null} */
+  let lastGen = null;
+  for (const b of blocks) {
+    const t = String(b.text ?? "").trim();
+    if (t) textParts.push(t);
+    if (b.type === "gen") {
+      lastGen = b;
+      const dg = String(b.digest ?? "").trim();
+      if (dg) digestParts.push(dg);
+    }
+  }
+  const mergedText = textParts.join("\n\n");
+  const mergedDigest = digestParts.join("\n\n");
+
+  if (!lastGen) {
+    return {
+      doc: migrateBlocksToBranchDoc([createPlainBlock(mergedText)]),
+      changed: true,
+    };
+  }
+
+  const mergedBlock = createGenBlock(
+    {
+      id: lastGen.id,
+      ts: lastGen.ts,
+      task: lastGen.task,
+      model: lastGen.model,
+      chars: [...mergedText].length,
+      tokens: lastGen.tokens,
+      cost: lastGen.cost,
+      usageSource: lastGen.usageSource,
+      instruction: lastGen.instruction,
+      sources: lastGen.sources,
+      digest: mergedDigest,
+    },
+    mergedText
+  );
+  if (lastGen.key) mergedBlock.key = lastGen.key;
+
+  const newDoc = emptyBranchDoc();
+  const variant = variantFromGenBlock(mergedBlock, { label: "变体1" });
+  const nodeId = cryptoRandomId();
+  newDoc.nodes.push({
+    id: nodeId,
+    parentId: null,
+    fromVariantId: null,
+    activeVariantId: variant.id,
+    variants: [variant],
+    trailingPlains: [],
+  });
+  return { doc: normalizeBranchDoc(newDoc), changed: true };
+}

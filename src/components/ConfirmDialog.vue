@@ -62,6 +62,14 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
             {{ confirmState.cancelText }}
           </button>
           <button
+            v-if="!isAlert && confirmState.extraText"
+            type="button"
+            class="app-btn"
+            @click="resolveAppConfirm('extra')"
+          >
+            {{ confirmState.extraText }}
+          </button>
+          <button
             ref="primaryBtn"
             type="button"
             class="app-btn"

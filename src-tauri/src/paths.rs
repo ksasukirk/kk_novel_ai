@@ -2,6 +2,7 @@
 //! 代码路径: kk_novel_ai/src-tauri/src/paths.rs
 
 use crate::error::{AppError, AppResult};
+use std::fs;
 use std::path::{Path, PathBuf};
 
 pub fn app_data_dir() -> AppResult<PathBuf> {
@@ -125,6 +126,54 @@ pub fn allocate_novel_folder(title: &str) -> AppResult<PathBuf> {
         "无法在 {} 下为「{base_name}」分配文件夹（重名过多）",
         root.display()
     )))
+}
+
+fn paths_equal(a: &Path, b: &Path) -> bool {
+    if a == b {
+        return true;
+    }
+    match (fs::canonicalize(a), fs::canonicalize(b)) {
+        (Ok(x), Ok(y)) => x == y,
+        _ => false,
+    }
+}
+
+fn folder_available(candidate: &Path, current: &Path) -> bool {
+    if paths_equal(candidate, current) {
+        return true;
+    }
+    !candidate.exists()
+}
+
+fn try_folder_names_in_parent(
+    parent: &Path,
+    base_name: &str,
+    current: &Path,
+) -> AppResult<PathBuf> {
+    let first = parent.join(base_name);
+    if folder_available(&first, current) {
+        return Ok(first);
+    }
+    for n in 2u32..=9999 {
+        let path = parent.join(format!("{base_name}{n}"));
+        if folder_available(&path, current) {
+            return Ok(path);
+        }
+    }
+    Err(AppError::msg(format!(
+        "无法在 {} 下为「{base_name}」分配文件夹（重名过多）",
+        parent.display()
+    )))
+}
+
+/// 在指定父目录下按书名分配文件夹路径；`current` 为当前作品目录（可占用同名路径）
+pub fn allocate_folder_in_parent(
+    parent: &Path,
+    title: &str,
+    current: &Path,
+) -> AppResult<PathBuf> {
+    let base_name = sanitize_folder_name(title);
+    try_folder_names_in_parent(parent, &base_name, current)
 }
 
 /// 是否已是作品根（含 project.json）

@@ -1061,8 +1061,15 @@ pub fn assemble_messages_with_scores(
         }
     };
 
+    let tpl = match task {
+        WritingTask::Continue if settings.writing_cache_friendly_prompt => {
+            include_str!("../../prompts/continue_chapter_cache.md")
+        }
+        _ => task.template(),
+    };
+
     let mut user = render_template(
-        task.template(),
+        tpl,
         &[
             ("style", &style),
             ("lore", &lore_text),

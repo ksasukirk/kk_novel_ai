@@ -3,7 +3,7 @@
   代码路径: kk_novel_ai/src/views/SettingsView.vue
 -->
 <script setup>
-import { onMounted, onUnmounted, ref, watch } from "vue";
+import { onMounted, onUnmounted, ref, watch, computed } from "vue";
 import { appState } from "../stores/appState.js";
 import { loadSettings, saveSettings, refreshHealth, listModels } from "../services/llmClient.js";
 import { invoke } from "../services/tauri.js";
@@ -16,11 +16,16 @@ import {
   applyEditorTypography,
 } from "../utils/editorTypography.js";
 import { isMobileUx } from "../utils/platform.js";
+import { useToastError } from "../services/toast.js";
+import {
+  DEEPSEEK_OFFICIAL_PRICES,
+  resolveDeepseekPeak as resolveDeepseekPeakUtil,
+} from "../utils/deepseekPricing.js";
 
 const form = ref(null);
 const models = ref([]);
 const message = ref("");
-const error = ref("");
+const error = useToastError();
 const pickTarget = ref("model");
 const fontPresets = EDITOR_FONT_PRESETS;
 const fontSizes = EDITOR_FONT_SIZES;
@@ -28,6 +33,8 @@ const fontSizes = EDITOR_FONT_SIZES;
 const apiKeyDraft = ref("");
 const apiKeyConfigured = ref(false);
 const mobileUx = ref(isMobileUx());
+/** DeepSeek 官方单价（与 src/utils/deepseekPricing.js 同步） */
+const DEEPSEEK_PRICE_REF = DEEPSEEK_OFFICIAL_PRICES;
 /** 内存中保留已保存 key，供未改时原样写回（不进输入框） */
 let savedApiKey = "";
 /** 初始化灌表期间不触发自动保存 */
@@ -64,6 +71,10 @@ onMounted(async () => {
       editor_font_size: DEFAULT_EDITOR_FONT_SIZE,
       price_input_per_1m: 0,
       price_output_per_1m: 0,
+      price_cache_hit_per_1m: 0,
+      api_provider: "local",
+      deepseek_pricing_tier: "auto",
+      writing_cache_friendly_prompt: true,
       writing_target_chars: 1800,
       ...s,
       api_key: "",
@@ -92,6 +103,18 @@ onMounted(async () => {
     if (form.value.writing_strip_rhetoric == null) {
       form.value.writing_strip_rhetoric = true;
     }
+    if (form.value.writing_cache_friendly_prompt == null) {
+      form.value.writing_cache_friendly_prompt = true;
+    }
+    if (!form.value.api_provider) {
+      form.value.api_provider = String(form.value.base_url || "").toLowerCase().includes("deepseek.com")
+        ? "deepseek_flash"
+        : "local";
+    }
+    if (!form.value.deepseek_pricing_tier) {
+      form.value.deepseek_pricing_tier = "auto";
+    }
+    form.value.base_url = normalizeBaseUrl(form.value.base_url);
     applyEditorTypography(form.value);
     await onHealth();
   } catch (e) {
@@ -203,6 +226,70 @@ function pickModel(id) {
   form.value[pickTarget.value] = id;
 }
 
+function normalizeBaseUrl(url) {
+  const u = String(url || "").trim().replace(/\/+$/, "");
+  if (u.includes("deepseek.com") && u.endsWith("/v1")) {
+    return u.slice(0, -3);
+  }
+  return u;
+}
+
+function resolveDeepseekPeak() {
+  return resolveDeepseekPeakUtil(form.value || {});
+}
+
+function applyDeepseekPreset(variant) {
+  if (!form.value) return;
+  const peak = resolveDeepseekPeak();
+  const isPro = variant === "deepseek_pro";
+  const ref = DEEPSEEK_PRICE_REF[isPro ? "pro" : "flash"][peak ? "peak" : "idle"];
+  form.value.api_provider = isPro ? "deepseek_pro" : "deepseek_flash";
+  form.value.base_url = "https://api.deepseek.com";
+  form.value.model = isPro ? "deepseek-v4-pro" : "deepseek-v4-flash";
+  form.value.analysis_model = "deepseek-v4-flash";
+  form.value.writing_pro_model = isPro ? "deepseek-v4-pro" : "";
+  form.value.writing_route_pro_on_continue = isPro;
+  form.value.disable_thinking = true;
+  form.value.writing_cache_friendly_prompt = true;
+  form.value.price_cache_hit_per_1m = ref.hit;
+  form.value.price_input_per_1m = ref.miss;
+  form.value.price_output_per_1m = ref.out;
+  form.value.llm_timeout_secs = Math.max(600, Number(form.value.llm_timeout_secs) || 600);
+  form.value.context_budget = Math.max(12000, Number(form.value.context_budget) || 24000);
+  message.value = `已套用 DeepSeek ${isPro ? "Pro" : "Flash"} 预设（${peak ? "高峰" : "空闲"}价）`;
+}
+
+function applyLocalPreset() {
+  if (!form.value) return;
+  form.value.api_provider = "local";
+  form.value.base_url = mobileUx.value ? "" : "http://127.0.0.1:1234/v1";
+  form.value.price_cache_hit_per_1m = 0;
+  form.value.price_input_per_1m = 0;
+  form.value.price_output_per_1m = 0;
+  form.value.disable_thinking = null;
+  message.value = "已套用本地 LM Studio 预设";
+}
+
+function refreshDeepseekPrices() {
+  if (!form.value) return;
+  const u = String(form.value.base_url || "").toLowerCase();
+  if (!u.includes("deepseek.com") && !String(form.value.api_provider || "").startsWith("deepseek")) {
+    message.value = "当前非 DeepSeek 接入，未改单价";
+    return;
+  }
+  const isPro =
+    String(form.value.model || "").toLowerCase().includes("pro") ||
+    form.value.api_provider === "deepseek_pro";
+  const peak = resolveDeepseekPeak();
+  const ref = DEEPSEEK_PRICE_REF[isPro ? "pro" : "flash"][peak ? "peak" : "idle"];
+  form.value.price_cache_hit_per_1m = ref.hit;
+  form.value.price_input_per_1m = ref.miss;
+  form.value.price_output_per_1m = ref.out;
+  message.value = `已按${peak ? "高峰" : "空闲"}时段刷新 DeepSeek 官方单价`;
+}
+
+const deepseekHintPeak = computed(() => resolveDeepseekPeak());
+
 async function onRebuildRag() {
   error.value = "";
   message.value = "";
@@ -233,6 +320,51 @@ async function onRebuildRag() {
       </template>
       参数修改后会自动保存。
     </p>
+
+    <h2 class="panel-sub">API 接入预设</h2>
+    <p class="muted preset-hint">
+      DeepSeek 官方 Base URL 为 <code>https://api.deepseek.com</code>（不要加 /v1）。
+      上下文硬盘缓存默认开启，命中输入约未命中的 1/30；续写时稳定设定放前、易变指令放后可提高命中率。
+      详见
+      <a href="https://api-docs.deepseek.com/zh-cn/guides/kv_cache/" target="_blank" rel="noopener">缓存文档</a>
+      与
+      <a href="https://api-docs.deepseek.com/zh-cn/quick_start/pricing" target="_blank" rel="noopener">价格表</a>。
+      空闲时段价格为高峰的一半。高峰：北京时间周一至周五 9:00–12:00、14:00–18:00。
+      当前推断计费时段：<strong>{{ deepseekHintPeak ? "高峰（×2）" : "空闲（半价）" }}</strong>。
+    </p>
+    <div class="preset-actions">
+      <button type="button" class="app-btn app-btn-primary" @click="applyDeepseekPreset('deepseek_flash')">
+        DeepSeek Flash（性价比最高）
+      </button>
+      <button type="button" class="app-btn" @click="applyDeepseekPreset('deepseek_pro')">
+        DeepSeek Pro（质量优先）
+      </button>
+      <button type="button" class="app-btn" @click="applyLocalPreset">
+        本地 LM Studio
+      </button>
+      <button type="button" class="app-btn app-btn-info" @click="refreshDeepseekPrices">
+        刷新 DeepSeek 单价
+      </button>
+    </div>
+    <div class="grid2">
+      <div class="field">
+        <label class="field-label">api_provider（记录用）</label>
+        <select v-model="form.api_provider">
+          <option value="local">local</option>
+          <option value="deepseek_flash">deepseek_flash</option>
+          <option value="deepseek_pro">deepseek_pro</option>
+          <option value="custom">custom</option>
+        </select>
+      </div>
+      <div class="field">
+        <label class="field-label">deepseek_pricing_tier</label>
+        <select v-model="form.deepseek_pricing_tier">
+          <option value="auto">auto（按北京时间推断）</option>
+          <option value="idle">idle（空闲半价）</option>
+          <option value="peak">peak（高峰）</option>
+        </select>
+      </div>
+    </div>
 
     <h2 class="panel-sub">写作区外观</h2>
     <div class="grid2">
@@ -350,8 +482,12 @@ async function onRebuildRag() {
         <input v-model.number="form.recent_window_chars" type="number" />
       </div>
       <div class="field">
-        <label class="field-label">price_input_per_1m（元/百万输入 token，本地可 0）</label>
+        <label class="field-label">price_input_per_1m（元/百万输入·缓存未命中）</label>
         <input v-model.number="form.price_input_per_1m" type="number" step="0.01" min="0" />
+      </div>
+      <div class="field">
+        <label class="field-label">price_cache_hit_per_1m（元/百万输入·缓存命中）</label>
+        <input v-model.number="form.price_cache_hit_per_1m" type="number" step="0.01" min="0" />
       </div>
       <div class="field">
         <label class="field-label">price_output_per_1m（元/百万输出 token）</label>
@@ -410,6 +546,12 @@ async function onRebuildRag() {
       </div>
       <div class="field capsule-switch-row">
         <CapsuleSwitch
+          v-model="form.writing_cache_friendly_prompt"
+          label="writing_cache_friendly_prompt（续写 prompt 易变字段置后，利于 DeepSeek 前缀缓存）"
+        />
+      </div>
+      <div class="field capsule-switch-row">
+        <CapsuleSwitch
           v-model="form.disable_thinking"
           label="disable_thinking（商汤 / DeepSeek 等推理模建议开，避免 content 为空）"
         />
@@ -434,13 +576,29 @@ async function onRebuildRag() {
         {{ m.id }}
       </button>
     </div>
-    <pre v-if="error" class="out error">{{ error }}</pre>
   </section>
 </template>
 
 <style scoped>
 .panel {
   min-height: calc(100% - 8px);
+}
+.preset-hint {
+  margin: 0 0 10px;
+  line-height: 1.55;
+  font-size: 12px;
+}
+.preset-hint code {
+  font-size: 11px;
+}
+.preset-hint a {
+  color: var(--accent, #3b82f6);
+}
+.preset-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
 }
 .panel-sub {
   margin: 16px 0 8px;

@@ -13,8 +13,9 @@ import LoreView from "./LoreView.vue";
 import StoryView from "./StoryView.vue";
 import { appConfirmDelete } from "../services/confirmDialog.js";
 import { createBackdropDismiss } from "../utils/backdropDismiss.js";
+import { useToastError } from "../services/toast.js";
 
-const error = ref("");
+const error = useToastError();
 const showImport = ref(false);
 const importBackdrop = createBackdropDismiss(() => {
   showImport.value = false;
@@ -24,7 +25,7 @@ const importTitle = ref("问道红尘");
 const distillBusy = ref(false);
 const syncBusy = ref(false);
 const registry = ref(null);
-const corpusError = ref("");
+const corpusError = useToastError();
 
 const subTabs = [
   { id: "home", label: "库列表" },
@@ -289,8 +290,6 @@ watch(
       </span>
     </nav>
 
-    <p v-if="error" class="error">{{ error }}</p>
-
     <!-- 库列表 -->
     <div v-if="subNav === 'home'" class="kb-pane">
       <div class="work-grid">
@@ -369,7 +368,6 @@ watch(
           readonly
           placeholder="选择左侧章节浏览证据语料…"
         />
-        <pre v-if="corpusError" class="error">{{ corpusError }}</pre>
       </div>
     </div>
 

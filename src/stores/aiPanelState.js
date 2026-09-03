@@ -2,7 +2,8 @@
  * AI 面板共享表单状态（浮条 / 侧栏切换不丢内容）
  * 代码路径: kk_novel_ai/src/stores/aiPanelState.js
  */
-import { reactive, ref } from "vue";
+import { reactive, ref, watch } from "vue";
+import { toastErrorLines } from "../services/toast.js";
 
 function newStepId() {
   return `step-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
@@ -13,7 +14,7 @@ export function createInstructionStep(text = "") {
 }
 
 export const aiPanelForm = reactive({
-  task: "continue",
+  task: "outline_run",
   instruction: "",
   selection: "",
   showDiff: true,
@@ -47,3 +48,12 @@ export const activeStepId = ref("");
 export function syncBookOutlineFromProject(project) {
   aiPanelForm.bookOutline = String((project && project.book_outline) || "");
 }
+
+watch(
+  () => aiPanelForm.error,
+  (v) => {
+    if (!v) return;
+    toastErrorLines(v);
+    aiPanelForm.error = "";
+  }
+);

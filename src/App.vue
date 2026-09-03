@@ -5,6 +5,7 @@ import { appState } from "./stores/appState.js";
 import { loadSettings, refreshHealth } from "./services/llmClient.js";
 import { startGuiBridge, resolveExternalConflict } from "./services/guiBridge.js";
 import ConfirmDialog from "./components/ConfirmDialog.vue";
+import ToastHost from "./components/ToastHost.vue";
 import AppSidebar from "./components/shell/AppSidebar.vue";
 import PageHeader from "./components/shell/PageHeader.vue";
 import PageBackground from "./components/shell/PageBackground.vue";
@@ -340,6 +341,7 @@ onUnmounted(() => {
     </div>
 
     <ConfirmDialog />
+    <ToastHost />
   </div>
 </template>
 

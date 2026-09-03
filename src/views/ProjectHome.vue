@@ -13,9 +13,10 @@ import * as kb from "../services/kbClient.js";
 import { appConfirm, appConfirmDelete } from "../services/confirmDialog.js";
 import { createBackdropDismiss } from "../utils/backdropDismiss.js";
 import { isMobileUx } from "../utils/platform.js";
+import { useToastError } from "../services/toast.js";
 
 const title = ref("未命名小说");
-const error = ref("");
+const error = useToastError();
 const stats = ref(null);
 const goalInput = ref(2000);
 const dash = ref(null);
@@ -26,6 +27,10 @@ const mobileUx = ref(isMobileUx());
 const backupInput = ref(null);
 /** path -> 正在 AI 生成书名 */
 const titleBusy = reactive({});
+/** 多选模式 */
+const selectMode = ref(false);
+const selectedPaths = ref([]);
+const bulkBusy = ref(false);
 const createBackdrop = createBackdropDismiss(() => {
   showCreate.value = false;
 });
@@ -34,6 +39,55 @@ const recentList = computed(() => {
   const list = (appState.settings && appState.settings.recent_projects) || [];
   return Array.isArray(list) ? list : [];
 });
+
+const selectedCount = computed(() => selectedPaths.value.length);
+
+const allSelected = computed(
+  () => recentList.value.length > 0 && selectedCount.value === recentList.value.length
+);
+
+function isSelected(path) {
+  return selectedPaths.value.includes(path);
+}
+
+function toggleSelectMode() {
+  selectMode.value = !selectMode.value;
+  if (!selectMode.value) selectedPaths.value = [];
+}
+
+function toggleSelect(path) {
+  if (isSelected(path)) {
+    selectedPaths.value = selectedPaths.value.filter((p) => p !== path);
+  } else {
+    selectedPaths.value = [...selectedPaths.value, path];
+  }
+}
+
+function selectAllRecent() {
+  selectedPaths.value = recentList.value.map((item) => item.path);
+}
+
+function clearSelection() {
+  selectedPaths.value = [];
+}
+
+function onCardClick(item) {
+  if (selectMode.value) {
+    toggleSelect(item.path);
+    return;
+  }
+  openByPath(item.path);
+}
+
+function clearActiveProjectIfNeeded(paths) {
+  if (!paths.includes(appState.projectRoot)) return;
+  appState.projectRoot = "";
+  appState.project = null;
+  appState.chapterId = "";
+  appState.chapterContent = "";
+  dash.value = null;
+  stats.value = null;
+}
 
 async function refreshNovelsHint() {
   try {
@@ -127,8 +181,9 @@ function isActive(path) {
 
 function shortPath(path) {
   if (!path) return "";
-  const parts = path.replace(/\\/g, "/").split("/");
-  return parts.slice(-2).join("/") || path;
+  const parts = path.replace(/\\/g, "/").split("/").filter(Boolean);
+  if (parts.length <= 2) return parts.join("/") || path;
+  return parts.slice(-2).join("/");
 }
 
 async function openByPath(path) {
@@ -162,6 +217,31 @@ async function onBrowseOpen() {
   }
 }
 
+/** 选父目录，检测并批量导入其下所有作品到最近列表 */
+async function onImportDirectoryProjects() {
+  error.value = "";
+  try {
+    const picked = await project.pickImportDirectory();
+    const parent = picked && picked.path;
+    if (!parent) throw new Error("未选择目录");
+    appState.statusMessage = `正在扫描「${parent}」…`;
+    const r = await project.importProjectsFromDirectory(parent, { maxDepth: 2 });
+    if (r.settings) appState.settings = r.settings;
+    else await refreshSettings();
+    const msg =
+      r.message ||
+      `已导入写作 ${r.imported_novels || 0}、知识库 ${r.imported_knowledge || 0}`;
+    appState.statusMessage = msg;
+    if ((r.found || 0) === 0) {
+      error.value = msg;
+    } else if (Array.isArray(r.failed) && r.failed.length) {
+      error.value = `${msg}；失败 ${r.failed.length} 个`;
+    }
+  } catch (e) {
+    error.value = String(e.message || e);
+  }
+}
+
 async function onForget(path, ev) {
   ev.stopPropagation();
   error.value = "";
@@ -173,20 +253,145 @@ async function onForget(path, ev) {
     return;
   }
   try {
-    const r = await invoke("project_forget_recent", { root: path });
-    if (r.settings) appState.settings = r.settings;
-    else await refreshSettings();
-    if (appState.projectRoot === path) {
-      appState.projectRoot = "";
-      appState.project = null;
-      appState.chapterId = "";
-      appState.chapterContent = "";
-      dash.value = null;
-      stats.value = null;
-    }
+    await project.forgetRecentProject(path);
+    clearActiveProjectIfNeeded([path]);
+    selectedPaths.value = selectedPaths.value.filter((p) => p !== path);
   } catch (e) {
     error.value = String(e.message || e);
   }
+}
+
+/** 批量 AI 生成书名并直接应用 */
+async function onBulkSuggestTitles() {
+  const paths = selectedPaths.value.slice();
+  if (!paths.length || bulkBusy.value) return;
+  error.value = "";
+  const ok = await appConfirm(
+    `为已选 ${paths.length} 部作品 AI 生成书名并应用？\n文件夹名不会改动；内容过少或知识库会跳过。`,
+    {
+      title: "批量 AI 生成书名",
+      confirmText: "开始",
+      cancelText: "取消",
+    }
+  );
+  if (!ok) return;
+  bulkBusy.value = true;
+  let okN = 0;
+  const failed = [];
+  try {
+    for (const path of paths) {
+      titleBusy[path] = true;
+      try {
+        const r = await project.suggestBookTitle(path);
+        const next = (r && r.title) || "";
+        if (!next) throw new Error("未生成书名");
+        await project.applyBookTitle(path, next);
+        okN += 1;
+      } catch (e) {
+        const item = recentList.value.find((x) => x.path === path);
+        failed.push(`${item && item.title ? item.title : shortPath(path)}: ${e.message || e}`);
+      } finally {
+        titleBusy[path] = false;
+      }
+    }
+    await refreshSettings();
+    const tail = failed.length ? `；失败 ${failed.length} 个` : "";
+    appState.statusMessage = `批量书名：成功 ${okN}${tail}`;
+    if (failed.length) error.value = failed.slice(0, 5).join("\n");
+  } finally {
+    bulkBusy.value = false;
+  }
+}
+
+/** 批量从最近列表移除 */
+async function onBulkForget() {
+  const paths = selectedPaths.value.slice();
+  if (!paths.length || bulkBusy.value) return;
+  error.value = "";
+  if (
+    !(await appConfirmDelete(`从最近列表移除已选 ${paths.length} 部作品？`, {
+      title: "批量移除",
+      confirmText: "移除",
+    }))
+  ) {
+    return;
+  }
+  bulkBusy.value = true;
+  try {
+    for (const path of paths) {
+      await project.forgetRecentProject(path);
+    }
+    clearActiveProjectIfNeeded(paths);
+    selectedPaths.value = [];
+    appState.statusMessage = `已从列表移除 ${paths.length} 部作品`;
+  } catch (e) {
+    error.value = String(e.message || e);
+  } finally {
+    bulkBusy.value = false;
+  }
+}
+
+/** 批量彻底删除作品目录 */
+async function onBulkPurge() {
+  const paths = selectedPaths.value.slice();
+  if (!paths.length || bulkBusy.value) return;
+  error.value = "";
+  if (
+    !(await appConfirmDelete(
+      `彻底删除已选 ${paths.length} 部作品目录？\n磁盘文件不可恢复；无 project.json 或受保护路径会跳过。`,
+      {
+        title: "批量彻底删除",
+        confirmText: "彻底删除",
+      }
+    ))
+  ) {
+    return;
+  }
+  bulkBusy.value = true;
+  let purged = 0;
+  const failed = [];
+  try {
+    for (const path of paths) {
+      try {
+        const r = await project.deleteProject(path, { purge: true });
+        if (r && r.purged) purged += 1;
+      } catch (e) {
+        const item = recentList.value.find((x) => x.path === path);
+        failed.push(`${item && item.title ? item.title : shortPath(path)}: ${e.message || e}`);
+      }
+    }
+    clearActiveProjectIfNeeded(paths);
+    await refreshSettings();
+    selectedPaths.value = selectedPaths.value.filter((p) => !paths.includes(p));
+    const tail = failed.length ? `；失败 ${failed.length} 个` : "";
+    appState.statusMessage = `已彻底删除 ${purged} 部作品${tail}`;
+    if (failed.length) error.value = failed.slice(0, 5).join("\n");
+  } finally {
+    bulkBusy.value = false;
+  }
+}
+
+const EMPTY_CONTENT_MSG = "内容太少，请先写全书大纲、章纲或正文再生成书名";
+
+/** 空内容作品：提示是否彻底删除 */
+async function offerPurgeEmptyProject(item, path) {
+  const name = (item && item.title) || "未命名小说";
+  const purge = await appConfirmDelete(
+    `「${name}」几乎没有任何大纲或正文，无法 AI 生成书名。\n\n是否彻底删除该作品目录？不可恢复。`,
+    {
+      title: "空内容作品",
+      confirmText: "彻底删除",
+    }
+  );
+  if (!purge) {
+    error.value = EMPTY_CONTENT_MSG;
+    return;
+  }
+  await project.deleteProject(path, { purge: true });
+  clearActiveProjectIfNeeded([path]);
+  selectedPaths.value = selectedPaths.value.filter((p) => p !== path);
+  await refreshSettings();
+  appState.statusMessage = `已彻底删除空内容作品：${name}`;
 }
 
 /** AI 根据内容生成书名，确认后写入 */
@@ -197,24 +402,44 @@ async function onSuggestTitle(item, ev) {
   error.value = "";
   titleBusy[path] = true;
   try {
+    const check = await project.getContentSubstance(path);
+    if (check && check.is_empty) {
+      await offerPurgeEmptyProject(item, path);
+      return;
+    }
     const r = await project.suggestBookTitle(path);
     const next = (r && r.title) || "";
     if (!next) throw new Error("未生成书名");
     const prev = (r && r.previous_title) || item.title || "未命名小说";
-    const ok = await appConfirm(
-      `建议书名：「${next}」\n当前：「${prev}」\n\n应用到这部作品？文件夹名不会改动。`,
+    const choice = await appConfirm(
+      `建议书名：「${next}」\n当前：「${prev}」\n\n「应用」只改书名；「应用并重命名文件夹」会同步改目录名（重名自动加 2、3…）。`,
       {
         title: "AI 生成书名",
         confirmText: "应用",
         cancelText: "不用",
+        extraText: "应用并重命名文件夹",
       }
     );
-    if (!ok) return;
-    await project.applyBookTitle(path, next);
+    if (!choice) return;
+    const renameFolder = choice === "extra";
+    const applied = await project.applyBookTitle(path, next, { renameFolder });
     await refreshSettings();
-    appState.statusMessage = `已更新书名：${next}`;
+    if (renameFolder && applied && applied.folder_renamed) {
+      const folder = applied.folder_name || next;
+      selectedPaths.value = selectedPaths.value.map((p) => (p === path ? applied.root : p));
+      appState.statusMessage = `已更新书名并重命名文件夹：${folder}`;
+    } else if (renameFolder && applied && !applied.folder_renamed) {
+      appState.statusMessage = `已更新书名（文件夹已是「${applied.folder_name || next}」）`;
+    } else {
+      appState.statusMessage = `已更新书名：${next}`;
+    }
   } catch (e) {
-    error.value = String(e.message || e);
+    const msg = String(e.message || e);
+    if (msg.includes("内容太少")) {
+      await offerPurgeEmptyProject(item, path);
+      return;
+    }
+    error.value = msg;
   } finally {
     titleBusy[path] = false;
   }
@@ -372,7 +597,7 @@ const heatDays = computed(() => {
     <div class="page-head">
       <div>
         <h1 class="panel-heading">作品</h1>
-        <p class="muted">以卡片打开写作作品；点「+」新建。导入小说请到「知识库」。</p>
+        <p class="muted">以卡片打开写作作品；点「+」新建。可用「导入目录下作品」批量登记；正文导入请到「知识库」。</p>
       </div>
       <div class="head-actions">
         <button
@@ -382,6 +607,15 @@ const heatDays = computed(() => {
           @click="onBrowseOpen"
         >
           打开其它目录
+        </button>
+        <button
+          v-if="!mobileUx"
+          type="button"
+          class="app-btn"
+          title="选择父目录，自动发现并登记其下所有含 project.json 的作品"
+          @click="onImportDirectoryProjects"
+        >
+          导入目录下作品
         </button>
         <button type="button" class="app-btn" @click="onImportBackupPick">导入备份</button>
         <button
@@ -437,8 +671,56 @@ const heatDays = computed(() => {
       </div>
     </div>
 
+    <div v-if="recentList.length" class="select-bar">
+      <button
+        type="button"
+        class="app-btn"
+        :class="{ 'app-btn-primary': selectMode }"
+        @click="toggleSelectMode"
+      >
+        {{ selectMode ? "完成多选" : "多选" }}
+      </button>
+      <template v-if="selectMode">
+        <span class="select-hint muted">
+          已选 {{ selectedCount }} / {{ recentList.length }}
+        </span>
+        <button
+          type="button"
+          class="app-btn"
+          :disabled="bulkBusy || !recentList.length"
+          @click="allSelected ? clearSelection() : selectAllRecent()"
+        >
+          {{ allSelected ? "取消全选" : "全选" }}
+        </button>
+        <button
+          type="button"
+          class="app-btn"
+          :disabled="bulkBusy || selectedCount < 1"
+          @click="onBulkSuggestTitles"
+        >
+          {{ bulkBusy ? "处理中…" : "AI 生成名称" }}
+        </button>
+        <button
+          type="button"
+          class="app-btn"
+          :disabled="bulkBusy || selectedCount < 1"
+          @click="onBulkForget"
+        >
+          从列表移除
+        </button>
+        <button
+          type="button"
+          class="app-btn app-btn-danger"
+          :disabled="bulkBusy || selectedCount < 1"
+          @click="onBulkPurge"
+        >
+          彻底删除
+        </button>
+      </template>
+    </div>
+
     <div class="work-grid">
-      <button type="button" class="work-card work-card-add" @click="openCreateDialog">
+      <button type="button" class="work-bar work-bar-add" @click="openCreateDialog">
         <span class="plus" aria-hidden="true">+</span>
         <span class="add-label">新建作品</span>
       </button>
@@ -447,29 +729,41 @@ const heatDays = computed(() => {
         v-for="item in recentList"
         :key="item.path"
         type="button"
-        class="work-card"
-        :class="{ active: isActive(item.path) }"
-        @click="openByPath(item.path)"
+        class="work-bar"
+        :class="{
+          active: isActive(item.path),
+          selected: selectMode && isSelected(item.path),
+        }"
+        :title="item.path"
+        @click="onCardClick(item)"
       >
-        <div class="card-top">
-          <span class="card-badge">小说</span>
-          <div class="card-actions">
-            <span
-              class="card-ai-title"
-              :class="{ busy: titleBusy[item.path] }"
-              title="AI 根据内容重新生成书名"
-              @click="onSuggestTitle(item, $event)"
-            >{{ titleBusy[item.path] ? "…" : "AI" }}</span>
-            <span
-              class="card-forget"
-              title="从列表移除"
-              @click="onForget(item.path, $event)"
-            >×</span>
+        <span
+          v-if="selectMode"
+          class="bar-check"
+          :class="{ on: isSelected(item.path) }"
+          aria-hidden="true"
+        />
+        <div class="bar-body">
+          <div class="bar-head">
+            <span class="row-badge">小说</span>
+            <span v-if="isActive(item.path)" class="row-active-tag">当前</span>
+            <div v-if="!selectMode" class="row-actions" @click.stop>
+              <span
+                class="card-ai-title"
+                :class="{ busy: titleBusy[item.path] }"
+                title="AI 根据内容重新生成书名"
+                @click="onSuggestTitle(item, $event)"
+              >{{ titleBusy[item.path] ? "…" : "AI" }}</span>
+              <span
+                class="card-forget"
+                title="从列表移除"
+                @click="onForget(item.path, $event)"
+              >×</span>
+            </div>
           </div>
+          <span class="row-title">{{ item.title || "未命名小说" }}</span>
+          <span class="row-path muted">{{ shortPath(item.path) }}</span>
         </div>
-        <div class="card-title">{{ item.title || "未命名小说" }}</div>
-        <div class="card-path muted">{{ shortPath(item.path) }}</div>
-        <div v-if="isActive(item.path)" class="card-active-tag">当前打开</div>
       </button>
     </div>
 
@@ -575,7 +869,6 @@ const heatDays = computed(() => {
       </div>
     </div>
 
-    <pre v-if="error" class="out error">{{ error }}</pre>
   </section>
 </template>
 
@@ -596,49 +889,106 @@ const heatDays = computed(() => {
   flex-wrap: wrap;
   gap: 8px;
 }
+.select-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.select-hint {
+  font-size: 12px;
+}
 .hidden-file {
   display: none;
 }
 .work-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
-  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
 }
-.work-card {
-  min-height: 148px;
-  padding: 14px 14px 16px;
+.work-bar {
+  min-height: 72px;
+  max-height: 88px;
+  padding: 10px 12px;
   border: none;
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   background: var(--surface-solid);
   box-shadow: var(--shadow-sm);
   text-align: left;
   cursor: pointer;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  align-items: stretch;
   gap: 8px;
   color: var(--text);
-  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+  transition: box-shadow 0.15s ease, background 0.15s ease, transform 0.15s ease;
 }
-.work-card:hover {
-  transform: translateY(-2px);
+.work-bar.selected {
+  box-shadow: 0 0 0 2px var(--accent), var(--shadow-sm);
+  background: var(--accent-soft);
+}
+.bar-check {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  margin-top: 2px;
+  border-radius: 4px;
+  border: 1.5px solid color-mix(in srgb, var(--muted) 55%, transparent);
+  background: var(--panel);
+  position: relative;
+}
+.bar-check.on {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+.bar-check.on::after {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 2px;
+  width: 5px;
+  height: 9px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+.work-bar:hover {
+  transform: translateY(-1px);
   box-shadow: var(--shadow);
   background: var(--accent-soft);
 }
-.work-card.active {
-  box-shadow: 0 0 0 2px var(--accent), var(--shadow);
+.work-bar.active {
+  box-shadow: 0 0 0 2px var(--accent), var(--shadow-sm);
 }
-.work-card-add {
+.work-bar-add {
+  flex-direction: row;
   align-items: center;
   justify-content: center;
+  gap: 8px;
   background: var(--panel-2);
   border: 1.5px dashed color-mix(in srgb, var(--accent) 45%, transparent);
+  box-shadow: none;
 }
-.work-card-add:hover {
+.work-bar-add:hover {
   background: var(--accent-soft);
   border-style: solid;
+  transform: none;
+}
+.bar-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+.bar-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 .plus {
-  font-size: 42px;
+  font-size: 22px;
   font-weight: 300;
   line-height: 1;
   color: var(--accent-hover);
@@ -648,15 +998,42 @@ const heatDays = computed(() => {
   font-weight: 650;
   color: var(--muted);
 }
-.card-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+.row-badge {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--accent-hover);
+  background: var(--accent-soft);
+  border-radius: 999px;
+  padding: 1px 7px;
 }
-.card-actions {
+.row-title {
+  font-size: 14px;
+  font-weight: 750;
+  line-height: 1.25;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.row-path {
+  font-size: 11px;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.row-active-tag {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--accent-hover);
+}
+.row-actions {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 2px;
+  flex-shrink: 0;
+  margin-left: auto;
 }
 .card-ai-title {
   min-width: 22px;
@@ -679,14 +1056,6 @@ const heatDays = computed(() => {
   opacity: 0.65;
   pointer-events: none;
 }
-.card-badge {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--accent-hover);
-  background: var(--accent-soft);
-  border-radius: 999px;
-  padding: 2px 8px;
-}
 .card-forget {
   width: 22px;
   height: 22px;
@@ -701,22 +1070,6 @@ const heatDays = computed(() => {
 .card-forget:hover {
   background: rgba(0, 0, 0, 0.06);
   color: var(--error);
-}
-.card-title {
-  font-size: 16px;
-  font-weight: 750;
-  line-height: 1.3;
-  word-break: break-word;
-}
-.card-path {
-  font-size: 11px;
-  margin-top: auto;
-  word-break: break-all;
-}
-.card-active-tag {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--accent-hover);
 }
 .create-mask {
   position: fixed;

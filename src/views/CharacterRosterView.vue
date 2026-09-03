@@ -7,10 +7,11 @@ import { computed, onMounted, ref } from "vue";
 import * as project from "../services/projectClient.js";
 import CapsuleSwitch from "../components/CapsuleSwitch.vue";
 import { appConfirmDelete } from "../services/confirmDialog.js";
+import { useToastError } from "../services/toast.js";
 
 const items = ref([]);
 const rosterPath = ref("");
-const error = ref("");
+const error = useToastError();
 const status = ref("");
 /** all | character | world */
 const kindFilter = ref("character");
@@ -288,7 +289,6 @@ onMounted(refresh);
           <button type="button" class="app-btn" @click="resetForm">新建</button>
         </div>
         <pre v-if="status" class="out">{{ status }}</pre>
-        <pre v-if="error" class="out error">{{ error }}</pre>
       </div>
     </div>
   </section>

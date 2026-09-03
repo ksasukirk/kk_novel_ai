@@ -136,8 +136,18 @@ pub fn project_open(root: String) -> Result<Value, String> {
 }
 
 #[tauri::command]
+pub fn project_import_directory(root: String, max_depth: Option<u32>) -> Result<Value, String> {
+    api::project_import_directory(&root, max_depth).map_err(Into::into)
+}
+
+#[tauri::command]
 pub fn project_forget_recent(root: String) -> Result<Value, String> {
     api::project_forget_recent(&root).map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn project_delete(root: String, purge: Option<bool>) -> Result<Value, String> {
+    api::project_delete(&root, purge.unwrap_or(false)).map_err(Into::into)
 }
 
 #[tauri::command]
@@ -156,8 +166,17 @@ pub async fn project_suggest_title(root: String) -> Result<Value, String> {
 }
 
 #[tauri::command]
-pub fn project_apply_title(root: String, title: String) -> Result<Value, String> {
-    api::project_apply_title(&root, &title).map_err(Into::into)
+pub fn project_content_substance(root: String) -> Result<Value, String> {
+    api::project_content_substance(&root).map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn project_apply_title(
+    root: String,
+    title: String,
+    rename_folder: Option<bool>,
+) -> Result<Value, String> {
+    api::project_apply_title(&root, &title, rename_folder.unwrap_or(false)).map_err(Into::into)
 }
 
 #[tauri::command]
@@ -460,6 +479,11 @@ pub async fn rag_rebuild(root: String) -> Result<Value, String> {
 #[tauri::command]
 pub fn pick_directory() -> Result<Value, String> {
     api::pick_directory().map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn pick_import_directory() -> Result<Value, String> {
+    api::pick_import_directory().map_err(Into::into)
 }
 
 #[tauri::command]

@@ -8,12 +8,13 @@ import { appState } from "../stores/appState.js";
 import * as project from "../services/projectClient.js";
 import CapsuleSwitch from "./CapsuleSwitch.vue";
 import { appConfirmDelete } from "../services/confirmDialog.js";
+import { useToastError } from "../services/toast.js";
 
 const emit = defineEmits(["changed", "select"]);
 
 const items = ref([]);
 const rosterPath = ref("");
-const error = ref("");
+const error = useToastError();
 const busy = ref(false);
 const newName = ref("");
 /** 新建写入全局仓（否则写本篇 lore） */
@@ -192,7 +193,6 @@ function onSelect(item) {
       <p v-if="!characters.length" class="muted empty">还没有角色，上面填名字添加。</p>
     </div>
 
-    <p v-if="error" class="cast-error">{{ error }}</p>
   </aside>
 </template>
 

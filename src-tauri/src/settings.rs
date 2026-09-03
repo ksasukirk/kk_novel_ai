@@ -36,6 +36,18 @@ fn default_writing_target_chars() -> u32 {
     0
 }
 
+fn default_api_provider() -> String {
+    "local".into()
+}
+
+fn default_deepseek_pricing_tier() -> String {
+    "auto".into()
+}
+
+fn default_true_for_deepseek_cache() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RecentProject {
     pub path: String,
@@ -110,12 +122,24 @@ pub struct AppSettings {
     pub editor_font_size: u32,
     pub context_budget: u32,
     pub recent_window_chars: usize,
-    /// 输入 token 单价（元 / 百万 tokens）；本地默认 0
+    /// 输入 token 单价（元 / 百万 tokens）；本地默认 0；DeepSeek 时作「缓存未命中」单价
     #[serde(default)]
     pub price_input_per_1m: f64,
     /// 输出 token 单价（元 / 百万 tokens）；本地默认 0
     #[serde(default)]
     pub price_output_per_1m: f64,
+    /// API 接入预设：local | deepseek_flash | deepseek_pro | custom
+    #[serde(default = "default_api_provider")]
+    pub api_provider: String,
+    /// DeepSeek 计费时段：idle（空闲半价）| peak（高峰）| auto（按北京时间推断）
+    #[serde(default = "default_deepseek_pricing_tier")]
+    pub deepseek_pricing_tier: String,
+    /// 缓存命中输入单价（元 / 百万 tokens）；0 则回退 price_input 的 1/30（DeepSeek flash 空闲比）
+    #[serde(default)]
+    pub price_cache_hit_per_1m: f64,
+    /// 续写 prompt 把易变字段（节拍状态/方向锚点等）放到末尾，利于 DeepSeek 前缀缓存
+    #[serde(default = "default_true_for_deepseek_cache")]
+    pub writing_cache_friendly_prompt: bool,
     #[serde(default)]
     pub last_project_path: Option<String>,
     /// 最近作品列表（作品页网格）
@@ -161,6 +185,10 @@ impl Default for AppSettings {
             recent_window_chars: 3000,
             price_input_per_1m: 0.0,
             price_output_per_1m: 0.0,
+            api_provider: default_api_provider(),
+            deepseek_pricing_tier: default_deepseek_pricing_tier(),
+            price_cache_hit_per_1m: 0.0,
+            writing_cache_friendly_prompt: true,
             last_project_path: None,
             recent_projects: vec![],
             recent_knowledge_bases: vec![],
@@ -262,6 +290,182 @@ impl AppSettings {
         }
     }
 
+    pub fn is_deepseek(&self) -> bool {
+        let u = self.base_url.to_lowercase();
+        u.contains("deepseek.com")
+            || matches!(
+                self.api_provider.as_str(),
+                "deepseek_flash" | "deepseek_pro"
+            )
+    }
+
+    /// 北京时间是否处于 DeepSeek 高峰（周一至周五 9-12、14-18）
+    pub fn deepseek_is_peak_now() -> bool {
+        use chrono::{Datelike, Timelike, Utc};
+        let bj = Utc::now() + chrono::Duration::hours(8);
+        let wd = bj.weekday().num_days_from_monday();
+        if wd >= 5 {
+            return false;
+        }
+        let h = bj.hour();
+        (9..12).contains(&h) || (14..18).contains(&h)
+    }
+
+    pub fn resolve_deepseek_peak(&self) -> bool {
+        match self.deepseek_pricing_tier.trim().to_lowercase().as_str() {
+            "peak" | "high" => true,
+            "idle" | "off_peak" | "offpeak" => false,
+            _ => Self::deepseek_is_peak_now(),
+        }
+    }
+
+    /// DeepSeek 官方 flash / pro 空闲与高峰单价（元/百万 tokens）
+    pub fn deepseek_official_prices(model: &str, peak: bool) -> (f64, f64, f64) {
+        let pro = model.contains("pro");
+        if peak {
+            if pro {
+                (0.30, 9.0, 27.0)
+            } else {
+                (0.10, 3.0, 9.0)
+            }
+        } else if pro {
+            (0.15, 4.5, 13.5)
+        } else {
+            (0.05, 1.5, 4.5)
+        }
+    }
+
+    /// 应用 DeepSeek 预设到当前设置（保留 api_key）
+    pub fn apply_deepseek_preset(&mut self, variant: &str) {
+        let peak = self.resolve_deepseek_peak();
+        let (hit, miss, out) = match variant {
+            "deepseek_pro" | "pro" => {
+                self.model = "deepseek-v4-pro".into();
+                self.analysis_model = "deepseek-v4-flash".into();
+                self.writing_pro_model = "deepseek-v4-pro".into();
+                Self::deepseek_official_prices("pro", peak)
+            }
+            _ => {
+                self.model = "deepseek-v4-flash".into();
+                self.analysis_model = "deepseek-v4-flash".into();
+                self.writing_pro_model = String::new();
+                Self::deepseek_official_prices("flash", peak)
+            }
+        };
+        self.api_provider = if variant == "deepseek_pro" || variant == "pro" {
+            "deepseek_pro".into()
+        } else {
+            "deepseek_flash".into()
+        };
+        self.base_url = "https://api.deepseek.com".into();
+        self.disable_thinking = Some(true);
+        self.writing_route_pro_on_continue = variant == "deepseek_pro" || variant == "pro";
+        self.writing_cache_friendly_prompt = true;
+        self.price_cache_hit_per_1m = hit;
+        self.price_input_per_1m = miss;
+        self.price_output_per_1m = out;
+        self.llm_timeout_secs = 600;
+        self.context_budget = 24000;
+        self.recent_window_chars = 2500;
+    }
+
+    /// 按当前时段刷新 DeepSeek 官方单价（不改模型与 base_url）
+    pub fn refresh_deepseek_prices(&mut self) {
+        if !self.is_deepseek() {
+            return;
+        }
+        let peak = self.resolve_deepseek_peak();
+        let model_key = if self.model.to_lowercase().contains("pro") {
+            "pro"
+        } else {
+            "flash"
+        };
+        let (hit, miss, out) = Self::deepseek_official_prices(model_key, peak);
+        self.price_cache_hit_per_1m = hit;
+        self.price_input_per_1m = miss;
+        self.price_output_per_1m = out;
+    }
+
+    pub fn resolve_prices_for_model(&self, model_used: &str) -> (f64, f64, f64) {
+        if self.is_deepseek() {
+            let peak = self.resolve_deepseek_peak();
+            let m = if model_used.trim().is_empty() {
+                self.model.as_str()
+            } else {
+                model_used
+            };
+            let pro = m.to_lowercase().contains("pro");
+            return Self::deepseek_official_prices(if pro { "pro" } else { "flash" }, peak);
+        }
+        let hit = if self.price_cache_hit_per_1m > 0.0 {
+            self.price_cache_hit_per_1m
+        } else {
+            self.price_input_per_1m.max(0.0)
+        };
+        (
+            hit,
+            self.price_input_per_1m.max(0.0),
+            self.price_output_per_1m.max(0.0),
+        )
+    }
+
+    /// 高峰时段生成前提示文案；非 DeepSeek 或非高峰返回 None
+    pub fn deepseek_peak_notice(&self) -> Option<String> {
+        if !self.is_deepseek() || !self.resolve_deepseek_peak() {
+            return None;
+        }
+        Some(
+            "当前为 DeepSeek 高峰时段（周一至周五 9:00–12:00、14:00–18:00 北京时间），API 单价为空闲时段的 2 倍；大批量生成建议改到晚间或周末".into(),
+        )
+    }
+
+    /// 加载/保存时把官方单价写入设置字段（便于 UI 展示）
+    pub fn sync_deepseek_price_fields(&mut self) {
+        if !self.is_deepseek() {
+            return;
+        }
+        if self.deepseek_pricing_tier.trim().is_empty() {
+            self.deepseek_pricing_tier = "auto".into();
+        }
+        self.refresh_deepseek_prices();
+    }
+
+    pub fn resolve_cache_hit_price(&self, model_used: &str) -> f64 {
+        if self.is_deepseek() {
+            return self.resolve_prices_for_model(model_used).0;
+        }
+        if self.price_cache_hit_per_1m > 0.0 {
+            return self.price_cache_hit_per_1m;
+        }
+        self.price_input_per_1m.max(0.0)
+    }
+
+    pub fn resolve_cache_miss_price(&self, model_used: &str) -> f64 {
+        if self.is_deepseek() {
+            return self.resolve_prices_for_model(model_used).1;
+        }
+        self.price_input_per_1m.max(0.0)
+    }
+
+    pub fn resolve_output_price(&self, model_used: &str) -> f64 {
+        if self.is_deepseek() {
+            return self.resolve_prices_for_model(model_used).2;
+        }
+        self.price_output_per_1m.max(0.0)
+    }
+
+    pub fn normalize_base_url(url: &str) -> String {
+        let u = url.trim().trim_end_matches('/');
+        if u.is_empty() {
+            return u.to_string();
+        }
+        // DeepSeek 官方不含 /v1；误填时自动纠正
+        if u.contains("deepseek.com") && u.ends_with("/v1") {
+            return u.trim_end_matches("/v1").to_string();
+        }
+        u.to_string()
+    }
+
     pub fn touch_recent_project(&mut self, path: &str, title: &str) {
         let path = path.to_string();
         self.recent_projects.retain(|p| p.path != path);
@@ -277,10 +481,35 @@ impl AppSettings {
                 opened_at: chrono::Utc::now().to_rfc3339(),
             },
         );
-        if self.recent_projects.len() > 24 {
-            self.recent_projects.truncate(24);
-        }
+        // 不截断：作品页需展示全部已登记项目
         self.last_project_path = Some(path);
+    }
+
+    /// 作品目录重命名后，把最近列表里的旧路径换成新路径
+    pub fn replace_recent_project_path(&mut self, old_path: &str, new_path: &str, title: &str) {
+        let new_path = new_path.to_string();
+        let title = if title.is_empty() {
+            "未命名小说".to_string()
+        } else {
+            title.to_string()
+        };
+        let mut item = None;
+        if let Some(i) = self.recent_projects.iter().position(|p| p.path == old_path) {
+            item = Some(self.recent_projects.remove(i));
+        }
+        let entry = item.unwrap_or(RecentProject {
+            path: new_path.clone(),
+            title: title.clone(),
+            opened_at: chrono::Utc::now().to_rfc3339(),
+        });
+        let mut entry = entry;
+        entry.path = new_path.clone();
+        entry.title = title;
+        entry.opened_at = chrono::Utc::now().to_rfc3339();
+        self.recent_projects.insert(0, entry);
+        if self.last_project_path.as_deref() == Some(old_path) {
+            self.last_project_path = Some(new_path);
+        }
     }
 
     pub fn touch_recent_knowledge_base(&mut self, path: &str, title: &str) {
@@ -337,7 +566,21 @@ pub fn load_settings() -> AppResult<AppSettings> {
     // 旧配置无 writing_target_chars 时，用 max_tokens 当作规定字数并回写对齐
     let before = (settings.writing_target_chars, settings.max_tokens);
     settings.sync_max_tokens_to_target();
-    if (settings.writing_target_chars, settings.max_tokens) != before {
+    settings.base_url = AppSettings::normalize_base_url(&settings.base_url);
+    let price_before = (
+        settings.price_cache_hit_per_1m,
+        settings.price_input_per_1m,
+        settings.price_output_per_1m,
+    );
+    settings.sync_deepseek_price_fields();
+    let need_save = (settings.writing_target_chars, settings.max_tokens) != before
+        || (settings.is_deepseek()
+            && (
+                settings.price_cache_hit_per_1m,
+                settings.price_input_per_1m,
+                settings.price_output_per_1m,
+            ) != price_before);
+    if need_save {
         let _ = save_settings(&settings);
     }
     Ok(settings)
@@ -350,6 +593,8 @@ pub fn save_settings(settings: &AppSettings) -> AppResult<()> {
         fs::create_dir_all(parent)?;
     }
     let mut synced = settings.clone();
+    synced.base_url = AppSettings::normalize_base_url(&synced.base_url);
+    synced.sync_deepseek_price_fields();
     synced.sync_max_tokens_to_target();
     let text = serde_json::to_string_pretty(&synced)?;
     fs::write(path, text)?;

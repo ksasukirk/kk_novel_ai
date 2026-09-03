@@ -7,8 +7,9 @@ import { computed, onMounted, ref, watch } from "vue";
 import { appState } from "../stores/appState.js";
 import { loadGenLogs, loadUsageSummary, exportTxt, exportPdf, exportEpub, pickDirectory } from "../services/projectClient.js";
 import CapsuleSwitch from "../components/CapsuleSwitch.vue";
+import { useToastError } from "../services/toast.js";
 
-const error = ref("");
+const error = useToastError();
 const exportMsg = ref("");
 const exporting = ref(false);
 /** 历史对话默认隐藏；用户明确打开后才加载并展示 */
@@ -29,11 +30,17 @@ const usageLine = computed(() => {
   const g = appState.usageSummary && appState.usageSummary.global;
   if (!g) return "";
   const p = appState.usageSummary.project;
+  const hit = g.prompt_cache_hit_tokens || 0;
+  const miss = g.prompt_cache_miss_tokens || 0;
   const parts = [
     `全局 ${g.total_tokens || (g.prompt_tokens || 0) + (g.completion_tokens || 0)} tok`,
     `¥${Number(g.cost_cny || 0).toFixed(4)}`,
     `${g.calls || 0} 次`,
   ];
+  if (hit > 0 || miss > 0) {
+    const rate = hit + miss > 0 ? Math.round((hit / (hit + miss)) * 100) : 0;
+    parts.push(`缓存命中 ${hit}/${hit + miss} (${rate}%)`);
+  }
   if (p) {
     parts.push(
       `本作品 ${(p.prompt_tokens || 0) + (p.completion_tokens || 0)} tok · ¥${Number(p.cost_cny || 0).toFixed(4)}`
@@ -116,6 +123,12 @@ function usageLabel(item) {
   if (!u) return "";
   const total = u.total_tokens || (u.prompt_tokens || 0) + (u.completion_tokens || 0);
   const src = u.source === "api" ? "api" : "估";
+  const hit = u.prompt_cache_hit_tokens || 0;
+  const miss = u.prompt_cache_miss_tokens || 0;
+  if (hit > 0 || miss > 0) {
+    const rate = hit + miss > 0 ? Math.round((hit / (hit + miss)) * 100) : 0;
+    return `${total} tok (${src}) · 缓存 ${hit}/${hit + miss} (${rate}%)`;
+  }
   return `${total} tok (${src})`;
 }
 
@@ -202,7 +215,6 @@ async function onExportEpub() {
         {{ showAllProjects ? "暂无生成记录。" : "当前作品暂无 AI 历史对话。" }}
       </p>
     </template>
-    <pre v-if="error" class="out error">{{ error }}</pre>
   </section>
 </template>
 

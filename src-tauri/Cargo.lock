@@ -2213,7 +2213,7 @@ dependencies = [
 
 [[package]]
 name = "kk_novel_ai"
-version = "0.1.84"
+version = "0.1.97"
 dependencies = [
  "chrono",
  "clap",

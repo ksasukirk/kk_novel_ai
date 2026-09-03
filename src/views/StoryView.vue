@@ -12,9 +12,10 @@ import CapsuleSwitch from "../components/CapsuleSwitch.vue";
 import CastSidePanel from "../components/CastSidePanel.vue";
 import { buildNovelMindTree } from "../utils/mindmapLayout.js";
 import { appConfirmDelete } from "../services/confirmDialog.js";
+import { useToastError } from "../services/toast.js";
 
 const tab = ref("map");
-const error = ref("");
+const error = useToastError();
 const message = ref("");
 const selectedNode = ref(null);
 
@@ -615,7 +616,6 @@ function onMapSelect(n) {
               </div>
             </div>
 
-            <pre v-if="error" class="out error">{{ error }}</pre>
           </div>
         </div>
 

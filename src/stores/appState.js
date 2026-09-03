@@ -91,6 +91,9 @@ export const appState = reactive({
   /** 自动抽角色等变更时 +1，侧栏可 watch 刷新 */
   castRevision: 0,
   statusMessage: "就绪",
+  /** DeepSeek 高峰时段（由 settings_get / 生成启动时更新） */
+  deepseekPeakNow: false,
+  deepseekPeakNotice: "",
   genLogs: [],
   usageSummary: null,
   aiUndoStack: [],

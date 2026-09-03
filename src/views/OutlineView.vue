@@ -10,8 +10,9 @@ import * as story from "../services/storyClient.js";
 import MindMapBoard from "../components/MindMapBoard.vue";
 import CastSidePanel from "../components/CastSidePanel.vue";
 import { buildNovelMindTree } from "../utils/mindmapLayout.js";
+import { useToastError } from "../services/toast.js";
 
-const error = ref("");
+const error = useToastError();
 const drafts = ref({});
 const volumeDrafts = ref({});
 const bookOutlineDraft = ref("");
@@ -241,7 +242,6 @@ async function onCastChanged() {
               <textarea v-model="drafts[ch.id].must_not" rows="2" placeholder="本章禁止" />
               <button type="button" class="app-btn" @click="saveOne(ch.id)">保存本章纲</button>
             </div>
-            <pre v-if="error" class="out error">{{ error }}</pre>
           </div>
         </div>
         <CastSidePanel class="outline-cast" @changed="onCastChanged" />

@@ -68,6 +68,7 @@ import { invoke } from "../services/tauri.js";
 import { appConfirm } from "../services/confirmDialog.js";
 import { updateChapterMeta } from "../services/projectClient.js";
 import { aiPanelForm } from "../stores/aiPanelState.js";
+import { useToastError } from "../services/toast.js";
 
 const mobileUx = ref(isMobileUx());
 const tocDrawerOpen = ref(false);
@@ -117,7 +118,7 @@ function onAiPanelToggleLayout() {
 }
 
 const newTitle = ref("");
-const error = ref("");
+const error = useToastError();
 const blockEditor = ref(null);
 
 /** v-for 内挂载编辑器：避免 ref 变成数组 */
@@ -1788,7 +1789,6 @@ watch(
           @toggle-layout="onAiPanelToggleLayout"
         />
       </div>
-      <pre v-if="error" class="out error">{{ error }}</pre>
     </section>
 
     <AiPanel

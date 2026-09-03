@@ -20,6 +20,8 @@ pub async fn run_writing_emit(
 ) -> AppResult<Value> {
     let request_id = Uuid::new_v4().to_string();
     let cancel = cancel_reg.register(&request_id);
+    let settings = crate::settings::load_settings().unwrap_or_default();
+    let peak_notice = settings.deepseek_peak_notice();
     let app2 = app.clone();
     let rid = request_id.clone();
     let task_label = request.task.clone();
@@ -31,6 +33,8 @@ pub async fn run_writing_emit(
             "request_id": request_id,
             "task": task_label,
             "source": source,
+            "deepseek_peak": peak_notice.is_some(),
+            "deepseek_peak_notice": peak_notice,
         }),
     );
     let result = api::writing_run_stream_full(
@@ -64,7 +68,8 @@ pub async fn run_writing_emit(
                     "log_id": out.log_id,
                     "cost_cny": crate::usage::calc_cost_cny(
                         &out.usage,
-                        &crate::settings::load_settings().unwrap_or_default()
+                        &crate::settings::load_settings().unwrap_or_default(),
+                        &out.model_used,
                     ),
                     "context_sources": out.context_sources,
                 }),

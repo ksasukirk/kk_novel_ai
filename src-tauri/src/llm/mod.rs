@@ -25,6 +25,12 @@ pub struct TokenUsage {
     pub completion_tokens: u32,
     #[serde(default)]
     pub total_tokens: u32,
+    /// DeepSeek：缓存命中输入 tokens（usage.prompt_cache_hit_tokens）
+    #[serde(default)]
+    pub prompt_cache_hit_tokens: u32,
+    /// DeepSeek：缓存未命中输入 tokens（usage.prompt_cache_miss_tokens）
+    #[serde(default)]
+    pub prompt_cache_miss_tokens: u32,
     /// "api" | "estimate"
     #[serde(default = "default_usage_source")]
     pub source: String,
@@ -49,10 +55,20 @@ impl TokenUsage {
             .get("total_tokens")
             .and_then(|x| x.as_u64())
             .unwrap_or(prompt + completion);
+        let cache_hit = v
+            .get("prompt_cache_hit_tokens")
+            .and_then(|x| x.as_u64())
+            .unwrap_or(0) as u32;
+        let cache_miss = v
+            .get("prompt_cache_miss_tokens")
+            .and_then(|x| x.as_u64())
+            .unwrap_or(0) as u32;
         Some(Self {
             prompt_tokens: prompt as u32,
             completion_tokens: completion as u32,
             total_tokens: total as u32,
+            prompt_cache_hit_tokens: cache_hit,
+            prompt_cache_miss_tokens: cache_miss,
             source: "api".into(),
         })
     }
@@ -73,6 +89,8 @@ impl TokenUsage {
             prompt_tokens: prompt,
             completion_tokens,
             total_tokens: prompt.saturating_add(completion_tokens),
+            prompt_cache_hit_tokens: 0,
+            prompt_cache_miss_tokens: 0,
             source: "estimate".into(),
         }
     }

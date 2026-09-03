@@ -18,6 +18,10 @@ pub struct ModelBucket {
     #[serde(default)]
     pub completion_tokens: u64,
     #[serde(default)]
+    pub prompt_cache_hit_tokens: u64,
+    #[serde(default)]
+    pub prompt_cache_miss_tokens: u64,
+    #[serde(default)]
     pub cost_cny: f64,
     #[serde(default)]
     pub calls: u64,
@@ -30,6 +34,10 @@ pub struct UsageLedger {
     #[serde(default)]
     pub total_completion_tokens: u64,
     #[serde(default)]
+    pub total_prompt_cache_hit_tokens: u64,
+    #[serde(default)]
+    pub total_prompt_cache_miss_tokens: u64,
+    #[serde(default)]
     pub total_cost_cny: f64,
     #[serde(default)]
     pub total_calls: u64,
@@ -39,11 +47,29 @@ pub struct UsageLedger {
     pub by_project: HashMap<String, ModelBucket>,
 }
 
-pub fn calc_cost_cny(usage: &TokenUsage, settings: &AppSettings) -> f64 {
-    let pin = settings.price_input_per_1m.max(0.0);
-    let pout = settings.price_output_per_1m.max(0.0);
-    (usage.prompt_tokens as f64 / 1_000_000.0) * pin
-        + (usage.completion_tokens as f64 / 1_000_000.0) * pout
+pub fn calc_cost_cny(usage: &TokenUsage, settings: &AppSettings, model_used: &str) -> f64 {
+    let (pin_hit, pin_miss, pout) = settings.resolve_prices_for_model(model_used);
+    let out_cost = (usage.completion_tokens as f64 / 1_000_000.0) * pout;
+
+    let (hit, miss) = if usage.prompt_cache_hit_tokens > 0 || usage.prompt_cache_miss_tokens > 0 {
+        (
+            usage.prompt_cache_hit_tokens,
+            usage.prompt_cache_miss_tokens,
+        )
+    } else if settings.is_deepseek() && usage.source == "api" {
+        // API 未返回分项时，整段 prompt 按未命中计
+        (0, usage.prompt_tokens)
+    } else {
+        (0, usage.prompt_tokens)
+    };
+
+    if hit > 0 || (miss > 0 && settings.is_deepseek()) {
+        return (hit as f64 / 1_000_000.0) * pin_hit
+            + (miss as f64 / 1_000_000.0) * pin_miss
+            + out_cost;
+    }
+
+    (usage.prompt_tokens as f64 / 1_000_000.0) * pin_miss + out_cost
 }
 
 pub fn load_ledger() -> AppResult<UsageLedger> {
@@ -65,6 +91,8 @@ pub fn save_ledger(ledger: &UsageLedger) -> AppResult<()> {
 fn bump(bucket: &mut ModelBucket, usage: &TokenUsage, cost: f64) {
     bucket.prompt_tokens += usage.prompt_tokens as u64;
     bucket.completion_tokens += usage.completion_tokens as u64;
+    bucket.prompt_cache_hit_tokens += usage.prompt_cache_hit_tokens as u64;
+    bucket.prompt_cache_miss_tokens += usage.prompt_cache_miss_tokens as u64;
     bucket.cost_cny += cost;
     bucket.calls += 1;
 }
@@ -75,6 +103,8 @@ pub fn record_entry(entry: &GenLogEntry) -> AppResult<()> {
     let cost = entry.cost_cny;
     ledger.total_prompt_tokens += usage.prompt_tokens as u64;
     ledger.total_completion_tokens += usage.completion_tokens as u64;
+    ledger.total_prompt_cache_hit_tokens += usage.prompt_cache_hit_tokens as u64;
+    ledger.total_prompt_cache_miss_tokens += usage.prompt_cache_miss_tokens as u64;
     ledger.total_cost_cny += cost;
     ledger.total_calls += 1;
 
@@ -106,6 +136,8 @@ pub fn summary_json(project_root: Option<&str>) -> AppResult<serde_json::Value> 
             "prompt_tokens": ledger.total_prompt_tokens,
             "completion_tokens": ledger.total_completion_tokens,
             "total_tokens": ledger.total_prompt_tokens + ledger.total_completion_tokens,
+            "prompt_cache_hit_tokens": ledger.total_prompt_cache_hit_tokens,
+            "prompt_cache_miss_tokens": ledger.total_prompt_cache_miss_tokens,
             "cost_cny": ledger.total_cost_cny,
             "calls": ledger.total_calls,
         },

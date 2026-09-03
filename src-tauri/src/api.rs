@@ -16,7 +16,14 @@ use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
 pub fn settings_get() -> AppResult<Value> {
-    Ok(json!({ "ok": true, "settings": settings::load_settings()? }))
+    let settings = settings::load_settings()?;
+    let peak = settings.resolve_deepseek_peak();
+    Ok(json!({
+        "ok": true,
+        "settings": settings,
+        "deepseek_peak_now": settings.is_deepseek() && peak,
+        "deepseek_peak_notice": settings.deepseek_peak_notice(),
+    }))
 }
 
 pub fn settings_save(settings: AppSettings) -> AppResult<Value> {
@@ -83,7 +90,7 @@ fn writing_outcome_json(out: &writing::WritingOutcome, task: &str, settings: &Ap
         "loop_retried": out.loop_retried,
         "usage": out.usage,
         "log_id": out.log_id,
-        "cost_cny": crate::usage::calc_cost_cny(&out.usage, settings),
+        "cost_cny": crate::usage::calc_cost_cny(&out.usage, settings, &out.model_used),
         "context_sources": out.context_sources,
     })
 }
@@ -153,6 +160,90 @@ pub fn project_open(root: &str) -> AppResult<Value> {
         });
     }
     Ok(project::project_to_value(&opened.root, &opened.project))
+}
+
+/// 扫描目录（含自身与最多两级子目录），把找到的 `project.json` 作品登记到最近列表。
+/// 不切换当前打开作品；知识库类会进最近知识库列表。
+pub fn project_import_directory(parent: &str, max_depth: Option<u32>) -> AppResult<Value> {
+    if crate::paths::is_mobile() {
+        return Err(AppError::msg(
+            "手机端不支持从任意路径批量导入，请用「导入备份」或应用内目录",
+        ));
+    }
+    let parent_path = Path::new(parent);
+    let depth = max_depth.unwrap_or(2).min(4) as usize;
+    let roots = project::discover_project_roots(parent_path, depth)?;
+    if roots.is_empty() {
+        return Ok(json!({
+            "ok": true,
+            "parent": parent,
+            "found": 0,
+            "imported_novels": 0,
+            "imported_knowledge": 0,
+            "failed": [],
+            "items": [],
+            "settings": settings::load_settings()?,
+            "message": format!("未在「{parent}」下发现含 project.json 的作品（扫描深度 {depth}）"),
+        }));
+    }
+
+    let mut s = settings::load_settings()?;
+    let mut items: Vec<Value> = Vec::new();
+    let mut failed: Vec<Value> = Vec::new();
+    let mut imported_novels = 0u32;
+    let mut imported_knowledge = 0u32;
+
+    // 倒序 touch，使扫描排序靠前的作品排在最近列表前面
+    for root in roots.iter().rev() {
+        let root_str = root.to_string_lossy().to_string();
+        match project::open_project(root) {
+            Ok(opened) => {
+                let title = opened.project.title.clone();
+                let kind = opened.project.kind.clone();
+                let is_kb = project::is_knowledge_kind(&kind);
+                if is_kb {
+                    s.touch_recent_knowledge_base(&root_str, &title);
+                    imported_knowledge += 1;
+                } else {
+                    s.touch_recent_project(&root_str, &title);
+                    imported_novels += 1;
+                }
+                items.push(json!({
+                    "root": root_str,
+                    "title": title,
+                    "kind": kind,
+                    "is_knowledge": is_kb,
+                }));
+            }
+            Err(e) => {
+                failed.push(json!({
+                    "root": root_str,
+                    "error": e.to_string(),
+                }));
+            }
+        }
+    }
+    // items 当前是倒序登记顺序，翻回与扫描排序一致
+    items.reverse();
+    settings::save_settings(&s)?;
+
+    Ok(json!({
+        "ok": true,
+        "parent": parent,
+        "found": roots.len(),
+        "imported_novels": imported_novels,
+        "imported_knowledge": imported_knowledge,
+        "failed": failed,
+        "items": items,
+        "settings": s,
+        "message": format!(
+            "已导入 {} 个写作作品、{} 个知识库（共发现 {}，失败 {}）",
+            imported_novels,
+            imported_knowledge,
+            roots.len(),
+            failed.len()
+        ),
+    }))
 }
 
 pub fn project_forget_recent(root: &str) -> AppResult<Value> {
@@ -348,6 +439,30 @@ fn build_book_title_seed(root: &Path, project: &project::NovelProject) -> (Strin
     (parts.join("\n\n"), substance)
 }
 
+const EMPTY_SUBSTANCE_THRESHOLD: usize = 20;
+
+/// 检测作品有效内容量（与 AI 起书名同一套汇总逻辑）
+pub fn project_content_substance(root: &str) -> AppResult<Value> {
+    let path = Path::new(root);
+    let opened = project::open_project(path)?;
+    if project::is_knowledge_kind(&opened.project.kind) {
+        return Ok(json!({
+            "ok": true,
+            "substance_chars": 0,
+            "is_empty": false,
+            "empty_threshold": EMPTY_SUBSTANCE_THRESHOLD,
+            "kind": opened.project.kind,
+        }));
+    }
+    let (_, substance) = build_book_title_seed(path, &opened.project);
+    Ok(json!({
+        "ok": true,
+        "substance_chars": substance,
+        "is_empty": substance < EMPTY_SUBSTANCE_THRESHOLD,
+        "empty_threshold": EMPTY_SUBSTANCE_THRESHOLD,
+    }))
+}
+
 fn sanitize_book_title(raw: &str) -> AppResult<String> {
     let mut t = raw.trim().to_string();
     if let Some(line) = t.lines().next() {
@@ -402,7 +517,7 @@ pub async fn project_suggest_title(root: &str) -> AppResult<Value> {
         return Err(AppError::msg("知识库不支持生成书名"));
     }
     let (seed, substance) = build_book_title_seed(path, &opened.project);
-    if substance < 20 {
+    if substance < EMPTY_SUBSTANCE_THRESHOLD {
         return Err(AppError::msg(
             "内容太少，请先写全书大纲、章纲或正文再生成书名",
         ));
@@ -441,8 +556,8 @@ pub async fn project_suggest_title(root: &str) -> AppResult<Value> {
     }))
 }
 
-/// 将书名写入 project.json，并刷新最近列表标题（不改文件夹名）
-pub fn project_apply_title(root: &str, title: &str) -> AppResult<Value> {
+/// 将书名写入 project.json，并刷新最近列表标题；可选同步重命名作品文件夹
+pub fn project_apply_title(root: &str, title: &str, rename_folder: bool) -> AppResult<Value> {
     let title = sanitize_book_title(title)?;
     let path = Path::new(root);
     let mut opened = project::open_project(path)?;
@@ -451,13 +566,54 @@ pub fn project_apply_title(root: &str, title: &str) -> AppResult<Value> {
     }
     opened.project.title = title.clone();
     project::save_project_meta(path, &opened.project)?;
+
+    let mut final_path = path.to_path_buf();
+    let mut folder_renamed = false;
+    let mut folder_name = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("")
+        .to_string();
+
+    if rename_folder {
+        let parent = path
+            .parent()
+            .ok_or_else(|| AppError::msg(format!("无法解析作品父目录：{root}")))?;
+        let dest = crate::paths::allocate_folder_in_parent(parent, &title, path)?;
+        if dest != path {
+            fs::rename(path, &dest).map_err(|e| {
+                AppError::msg(format!(
+                    "重命名作品文件夹失败（{} → {}）：{e}",
+                    path.display(),
+                    dest.display()
+                ))
+            })?;
+            final_path = dest;
+            folder_renamed = true;
+            folder_name = final_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("")
+                .to_string();
+        }
+    }
+
+    let final_root = final_path.to_string_lossy().to_string();
     let mut s = settings::load_settings()?;
-    s.touch_recent_project(root, &title);
+    if folder_renamed {
+        s.replace_recent_project_path(root, &final_root, &title);
+    } else {
+        s.touch_recent_project(root, &title);
+    }
     let _ = settings::save_settings(&s);
     Ok(json!({
         "ok": true,
         "title": title,
-        "project": project::project_to_value(path, &opened.project),
+        "root": final_root,
+        "previous_root": root,
+        "folder_renamed": folder_renamed,
+        "folder_name": folder_name,
+        "project": project::project_to_value(&final_path, &opened.project),
         "settings": s,
     }))
 }
@@ -842,6 +998,27 @@ pub fn pick_directory() -> AppResult<Value> {
     }
 }
 
+/// 选择要批量扫描导入的父目录
+pub fn pick_import_directory() -> AppResult<Value> {
+    if crate::paths::is_mobile() {
+        return Err(AppError::msg(
+            "手机端不支持从任意路径批量导入，请用「导入备份」",
+        ));
+    }
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    {
+        return Err(AppError::msg("当前平台不支持桌面目录对话框"));
+    }
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        let folder = rfd::FileDialog::new()
+            .set_title("选择含有多个作品的目录")
+            .pick_folder()
+            .ok_or_else(|| AppError::msg("已取消选择"))?;
+        Ok(json!({ "ok": true, "path": folder.to_string_lossy() }))
+    }
+}
+
 pub fn project_export_backup(root: &str) -> AppResult<Value> {
     crate::project::backup::export_project_zip(Path::new(root))
 }
@@ -936,6 +1113,14 @@ pub async fn dispatch_rpc(req: Value) -> AppResult<Value> {
             }
         }
         "project_forget_recent" => project_forget_recent(req_str(&req, "root")?),
+        "project_import_directory" => {
+            let root = req_str(&req, "root")?;
+            let max_depth = req
+                .get("max_depth")
+                .and_then(|v| v.as_u64())
+                .map(|n| n as u32);
+            project_import_directory(root, max_depth)
+        }
         "project_delete" => {
             let purge = req
                 .get("purge")
@@ -962,8 +1147,18 @@ pub async fn dispatch_rpc(req: Value) -> AppResult<Value> {
         "project_suggest_title" => {
             project_suggest_title(req_str(&req, "root")?).await
         }
+        "project_content_substance" => project_content_substance(req_str(&req, "root")?),
         "project_apply_title" => {
-            project_apply_title(req_str(&req, "root")?, req_str(&req, "title")?)
+            let rename_folder = req
+                .get("rename_folder")
+                .or_else(|| req.get("renameFolder"))
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            project_apply_title(
+                req_str(&req, "root")?,
+                req_str(&req, "title")?,
+                rename_folder,
+            )
         }
         "chapter_read" => {
             chapter_read(req_str(&req, "root")?, req_str(&req, "chapter_id")?)

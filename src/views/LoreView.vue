@@ -8,9 +8,10 @@ import { appState, isKbProject } from "../stores/appState.js";
 import * as project from "../services/projectClient.js";
 import CapsuleSwitch from "../components/CapsuleSwitch.vue";
 import { appConfirmDelete } from "../services/confirmDialog.js";
+import { useToastError } from "../services/toast.js";
 
 const items = ref([]);
-const error = ref("");
+const error = useToastError();
 const status = ref("");
 /** local | global —— 仅小说工程需要本篇 */
 const tab = ref("global");
@@ -370,7 +371,6 @@ async function remove(item) {
       </div>
     </div>
     <pre v-if="status" class="out">{{ status }}</pre>
-    <pre v-if="error" class="out error">{{ error }}</pre>
   </section>
 </template>
 

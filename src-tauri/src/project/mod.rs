@@ -456,6 +456,84 @@ pub fn open_project(root: &Path) -> AppResult<OpenedProject> {
     })
 }
 
+fn should_skip_scan_dir(name: &str) -> bool {
+    matches!(
+        name,
+        ".git"
+            | ".svn"
+            | "node_modules"
+            | "target"
+            | "frontend-dist"
+            | "dist"
+            | "__pycache__"
+            | ".cursor"
+            | ".tmp-napcat-shots"
+            | "ref"
+            | "outputs"
+    ) || name.starts_with('.')
+}
+
+/// 在父目录下发现作品根（含自身与子目录中的 `project.json`）。
+/// `max_depth=0` 只检查自身；`1` 检查子目录；建议导入用 `2`。
+pub fn discover_project_roots(parent: &Path, max_depth: usize) -> AppResult<Vec<PathBuf>> {
+    if !parent.exists() {
+        return Err(AppError::msg(format!(
+            "目录不存在: {}",
+            parent.display()
+        )));
+    }
+    if !parent.is_dir() {
+        return Err(AppError::msg(format!(
+            "不是目录: {}",
+            parent.display()
+        )));
+    }
+
+    let mut found: Vec<PathBuf> = Vec::new();
+    let mut seen = std::collections::HashSet::<PathBuf>::new();
+    let mut queue: Vec<(PathBuf, usize)> = vec![(parent.to_path_buf(), 0)];
+
+    while let Some((dir, depth)) = queue.pop() {
+        let canonical = dir.canonicalize().unwrap_or_else(|_| dir.clone());
+        if !seen.insert(canonical.clone()) {
+            continue;
+        }
+
+        if project_json(&dir).is_file() {
+            found.push(dir.clone());
+            // 作品根内部不再往下扫，避免 chapters 等误命中
+            continue;
+        }
+
+        if depth >= max_depth {
+            continue;
+        }
+
+        let entries = match fs::read_dir(&dir) {
+            Ok(e) => e,
+            Err(_) => continue,
+        };
+        for ent in entries.flatten() {
+            let path = ent.path();
+            if !path.is_dir() {
+                continue;
+            }
+            let name = ent.file_name().to_string_lossy().to_string();
+            if should_skip_scan_dir(&name) {
+                continue;
+            }
+            queue.push((path, depth + 1));
+        }
+    }
+
+    found.sort_by(|a, b| {
+        a.to_string_lossy()
+            .to_lowercase()
+            .cmp(&b.to_string_lossy().to_lowercase())
+    });
+    Ok(found)
+}
+
 pub fn save_project_meta(root: &Path, project: &NovelProject) -> AppResult<()> {
     let mut p = project.clone();
     p.updated_at = now();

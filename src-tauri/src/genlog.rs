@@ -138,7 +138,7 @@ pub fn make_entry_full(
     let usage = usage.unwrap_or_else(|| {
         TokenUsage::estimate_from_messages(messages, final_text)
     });
-    let cost_cny = crate::usage::calc_cost_cny(&usage, settings);
+    let cost_cny = crate::usage::calc_cost_cny(&usage, settings, model_used);
     GenLogEntry {
         id: Uuid::new_v4().to_string(),
         ts: Utc::now().to_rfc3339(),

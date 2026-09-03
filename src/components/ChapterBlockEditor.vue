@@ -39,6 +39,7 @@ import {
 import { canStartMoreJobs, MAX_PARALLEL_GEN } from "../stores/genJobs.js";
 import CharacterHoverCard from "./CharacterHoverCard.vue";
 import EditorDraftPreview from "./EditorDraftPreview.vue";
+import { useToastError } from "../services/toast.js";
 
 const props = defineProps({
   readonly: { type: Boolean, default: false },
@@ -54,7 +55,7 @@ const areaRefs = ref([]);
 const digestRefs = ref([]);
 const blockEls = ref([]);
 const hideTimer = ref(null);
-const blockError = ref("");
+const blockError = useToastError();
 const rewritingKey = ref("");
 const polishingKey = ref("");
 const digestingKey = ref("");
@@ -911,8 +912,6 @@ defineExpose({
         </div>
       </div>
     </div>
-
-    <p v-if="blockError" class="block-error">{{ blockError }}</p>
 
     <Teleport to="body">
       <div

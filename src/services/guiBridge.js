@@ -10,6 +10,11 @@ import { migrateBlocksToBranchDoc, parseSidecarToBranchDoc, isBranchDoc } from "
 import { looksIncomplete } from "../utils/previewText.js";
 import { calcGenProgressPct, estimateTargetChars } from "../utils/genProgress.js";
 import {
+  deepseekGeneratingStatusSuffix,
+  notifyDeepseekPeakIfNeeded,
+} from "../utils/deepseekPricing.js";
+import { toastWarning } from "./toast.js";
+import {
   activeJobCount,
   appendJobDelta,
   bindJobRequestId,
@@ -167,9 +172,19 @@ export async function startGuiBridge() {
     if (!p.request_id) return;
     activeRequestId = p.request_id;
     appState.lastRequestId = p.request_id;
+    const notice = p.deepseek_peak_notice || "";
+    if (notice) {
+      appState.deepseekPeakNow = true;
+      appState.deepseekPeakNotice = notice;
+      notifyDeepseekPeakIfNeeded(appState.settings || {}, { toastFn: toastWarning });
+    }
     const job = bindJobRequestId(p.request_id);
     if (job && job.status === "pending") job.status = "streaming";
     syncGeneratingFromJobs();
+    const peakSuffix = deepseekGeneratingStatusSuffix(appState.settings || {});
+    if (peakSuffix && !isBackgroundAnalysisTask(p.task)) {
+      appState.statusMessage = `生成中${peakSuffix}…`;
+    }
   });
 
   await listen("llm-chunk", (event) => {
@@ -197,7 +212,7 @@ export async function startGuiBridge() {
         true,
         false
       );
-      appState.statusMessage = `生成中… ${n} 字 · ${appState.genProgressPct}%`;
+      appState.statusMessage = `生成中… ${n} 字 · ${appState.genProgressPct}%${deepseekGeneratingStatusSuffix(appState.settings || {})}`;
     }
   });
 

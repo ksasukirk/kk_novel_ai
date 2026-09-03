@@ -11,6 +11,7 @@ import {
 import {
   activePathBlocks,
   branchDocForPersist,
+  collapseChapterSectionsToWholeChapter,
   contentFromActivePath,
   isBranchDoc,
   migrateBlocksToBranchDoc,
@@ -21,6 +22,22 @@ import {
 
 export async function pickDirectory() {
   return await invoke("pick_directory");
+}
+
+/** 选择含多个作品的父目录（批量导入用） */
+export async function pickImportDirectory() {
+  return await invoke("pick_import_directory");
+}
+
+/**
+ * 扫描父目录下的 project.json，登记到最近作品/知识库列表（不切换当前打开）
+ * @param {string} root
+ * @param {{ maxDepth?: number }} [opts]
+ */
+export async function importProjectsFromDirectory(root, opts = {}) {
+  const payload = { root };
+  if (opts.maxDepth != null) payload.maxDepth = opts.maxDepth;
+  return await invoke("project_import_directory", payload);
 }
 
 export async function createProject(root, title) {
@@ -43,6 +60,7 @@ export async function novelsDirInfo() {
 export async function openProject(root) {
   const r = await invoke("project_open", { root });
   applyProject(r);
+  await migrateLegacyChapterSections(root);
   return r;
 }
 
@@ -66,6 +84,59 @@ function applyProject(r) {
     appState.chapterBranchDoc = null;
   }
   syncBookOutlineFromProject(r.project);
+}
+
+function branchDocFromChapterPayload(r) {
+  const sidecar = r && r.blocks;
+  if (
+    isBranchDoc(sidecar) ||
+    (sidecar && typeof sidecar === "object" && !Array.isArray(sidecar) && sidecar.nodes)
+  ) {
+    return parseSidecarToBranchDoc(sidecar);
+  }
+  if (Array.isArray(sidecar) && sidecar.length) {
+    return migrateBlocksToBranchDoc(sidecar);
+  }
+  return migrateBlocksToBranchDoc(blocksFromContent(r.content || "", sidecar));
+}
+
+/** 打开作品时：把各章残留多小节合并为整章一块并落盘 */
+export async function migrateLegacyChapterSections(root) {
+  const projectRoot = root || appState.projectRoot;
+  if (!projectRoot) return { migrated: 0 };
+  let project = appState.project;
+  if (!project || appState.projectRoot !== projectRoot) {
+    const r = await invoke("project_get", { root: projectRoot });
+    project = r.project;
+  }
+  const chapters = (project && project.chapters) || [];
+  let migrated = 0;
+  for (const ch of chapters) {
+    if (!ch || !ch.id) continue;
+    const cr = await invoke("chapter_read", {
+      root: projectRoot,
+      chapterId: ch.id,
+    });
+    const { doc: next, changed } = collapseChapterSectionsToWholeChapter(
+      branchDocFromChapterPayload(cr)
+    );
+    if (!changed) continue;
+    await invoke("chapter_write", {
+      root: projectRoot,
+      chapterId: ch.id,
+      content: contentFromActivePath(next),
+      blocks: branchDocForPersist(next),
+    });
+    migrated += 1;
+    if (appState.chapterId === ch.id) {
+      applyBranchDoc(next);
+      appState.dirty = false;
+    }
+  }
+  if (migrated > 0) {
+    appState.statusMessage = `已自动合并 ${migrated} 章残留小节为整章`;
+  }
+  return { migrated };
 }
 
 /** 用分支文档刷新编辑器投影 */
@@ -99,16 +170,17 @@ export async function loadChapter(chapterId) {
     chapterId,
   });
   appState.chapterId = chapterId;
-  const sidecar = r.blocks;
-  if (isBranchDoc(sidecar) || (sidecar && typeof sidecar === "object" && !Array.isArray(sidecar) && sidecar.nodes)) {
-    applyBranchDoc(parseSidecarToBranchDoc(sidecar));
-  } else if (Array.isArray(sidecar) && sidecar.length) {
-    applyBranchDoc(migrateBlocksToBranchDoc(sidecar));
+  const { doc: next, changed } = collapseChapterSectionsToWholeChapter(
+    branchDocFromChapterPayload(r)
+  );
+  applyBranchDoc(next);
+  if (changed) {
+    appState.dirty = true;
+    await saveChapter();
+    appState.statusMessage = "已自动合并本章残留小节为整章";
   } else {
-    const blocks = blocksFromContent(r.content || "", sidecar);
-    applyBranchDoc(migrateBlocksToBranchDoc(blocks));
+    appState.dirty = false;
   }
-  appState.dirty = false;
   return r;
 }
 
@@ -119,14 +191,8 @@ export async function peekChapterBlocks(chapterId) {
     root: appState.projectRoot,
     chapterId,
   });
-  const sidecar = r.blocks;
-  if (isBranchDoc(sidecar) || (sidecar && typeof sidecar === "object" && !Array.isArray(sidecar) && sidecar.nodes)) {
-    return activePathBlocks(parseSidecarToBranchDoc(sidecar));
-  }
-  if (Array.isArray(sidecar) && sidecar.length) {
-    return activePathBlocks(migrateBlocksToBranchDoc(sidecar));
-  }
-  return blocksFromContent(r.content || "", sidecar);
+  const { doc } = collapseChapterSectionsToWholeChapter(branchDocFromChapterPayload(r));
+  return activePathBlocks(doc);
 }
 
 /** 只读某章分支文档 */
@@ -136,15 +202,8 @@ export async function peekChapterBranchDoc(chapterId) {
     root: appState.projectRoot,
     chapterId,
   });
-  const sidecar = r.blocks;
-  if (isBranchDoc(sidecar) || (sidecar && typeof sidecar === "object" && !Array.isArray(sidecar) && sidecar.nodes)) {
-    return parseSidecarToBranchDoc(sidecar);
-  }
-  if (Array.isArray(sidecar) && sidecar.length) {
-    return migrateBlocksToBranchDoc(sidecar);
-  }
-  const blocks = blocksFromContent(r.content || "", sidecar);
-  return migrateBlocksToBranchDoc(blocks);
+  const { doc } = collapseChapterSectionsToWholeChapter(branchDocFromChapterPayload(r));
+  return doc;
 }
 
 export async function saveChapter() {
@@ -261,16 +320,35 @@ export async function suggestBookTitle(root) {
   return await invoke("project_suggest_title", { root });
 }
 
-/** 写入书名并刷新最近列表标题（不改文件夹名） */
-export async function applyBookTitle(root, title) {
-  const r = await invoke("project_apply_title", { root, title });
+/** 作品有效内容量；is_empty 与 AI 起书名阈值一致 */
+export async function getContentSubstance(root) {
+  return await invoke("project_content_substance", { root });
+}
+
+/** 写入书名并刷新最近列表；可选同步重命名作品文件夹（重名自动加数字） */
+export async function applyBookTitle(root, title, { renameFolder = false } = {}) {
+  const r = await invoke("project_apply_title", { root, title, renameFolder });
   if (r.settings) appState.settings = r.settings;
+  const newRoot = (r && r.root) || root;
   const payload = r.project;
   if (payload && payload.project && appState.projectRoot === root) {
+    appState.projectRoot = newRoot;
     appState.project = payload.project;
     syncBookOutlineFromProject(payload.project);
   }
   return r;
+}
+
+/** 从最近列表移除（不删磁盘） */
+export async function forgetRecentProject(root) {
+  const r = await invoke("project_forget_recent", { root });
+  if (r.settings) appState.settings = r.settings;
+  return r;
+}
+
+/** 从最近列表移除；purge 为 true 时删除含 project.json 的作品目录 */
+export async function deleteProject(root, { purge = false } = {}) {
+  return await invoke("project_delete", { root, purge });
 }
 
 export async function listLore() {

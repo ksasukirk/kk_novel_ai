@@ -244,8 +244,8 @@ watch(task, (id) => {
 });
 
 const tasks = [
+  { id: "outline_run", label: "使用大纲生成章节描述" },
   { id: "continue", label: "续写" },
-  { id: "outline_run", label: "按纲生成" },
   { id: "polish", label: "润色" },
   { id: "outline", label: "章纲" },
   { id: "consistency", label: "一致性" },
@@ -259,7 +259,7 @@ const useEditorDraft = computed(() => EDITOR_DRAFT_TASKS.has(task.value));
 
 const currentTaskLabel = computed(() => {
   const t = tasks.find((x) => x.id === task.value);
-  return (t && t.label) || "续写";
+  return (t && t.label) || "使用大纲生成章节描述";
 });
 
 const selectedPlanCount = computed(
@@ -973,7 +973,6 @@ function onToggleLayout() {
           </button>
         </div>
       </div>
-      <pre v-if="error" class="out error">{{ error }}</pre>
     </div>
 
     <aside v-else class="ai-panel">
@@ -1339,7 +1338,6 @@ function onToggleLayout() {
       </template>
 
       <p v-if="syncMsg" class="muted">{{ syncMsg }}</p>
-      <pre v-if="error" class="out error">{{ error }}</pre>
     </aside>
   </div>
 </template>

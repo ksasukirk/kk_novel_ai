@@ -7,6 +7,11 @@ import { appState } from "../stores/appState.js";
 import { getActiveRequestId } from "./guiBridge.js";
 import { looksIncomplete } from "../utils/previewText.js";
 import {
+  deepseekGeneratingStatusSuffix,
+  notifyDeepseekPeakIfNeeded,
+} from "../utils/deepseekPricing.js";
+import { toastWarning } from "./toast.js";
+import {
   activeJobCount,
   appendJobDelta,
   bindJobRequestId,
@@ -43,6 +48,8 @@ export async function listModels() {
 export async function loadSettings() {
   const r = await invoke("settings_get");
   appState.settings = r.settings;
+  appState.deepseekPeakNow = !!r.deepseek_peak_now;
+  appState.deepseekPeakNotice = r.deepseek_peak_notice || "";
   appState.llmModel = (r.settings && r.settings.model) || "";
   const { applyEditorTypography } = await import("../utils/editorTypography.js");
   applyEditorTypography(r.settings);
@@ -95,8 +102,16 @@ export async function runWriting(request, opts = {}) {
   if (opts.activateVariant === true) job.activateVariant = true;
   mirrorJobToLegacyPreview(job);
   const n = activeJobCount();
+  const peakSuffix = deepseekGeneratingStatusSuffix(appState.settings || {});
+  const peakNotice = notifyDeepseekPeakIfNeeded(appState.settings || {}, {
+    toastFn: toastWarning,
+  });
   appState.statusMessage =
-    n > 1 ? `并发生成 ${n}/${MAX_PARALLEL_GEN}…` : "生成中…";
+    n > 1
+      ? `并发生成 ${n}/${MAX_PARALLEL_GEN}${peakSuffix}…`
+      : peakNotice
+        ? `生成中${peakSuffix}…`
+        : "生成中…";
 
   let result;
   try {
