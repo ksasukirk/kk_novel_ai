@@ -3,6 +3,8 @@
  * 代码路径: kk_novel_ai/src/utils/mindmapLayout.js
  */
 
+import { parseChapterPoints } from "./outlineMindTree.js";
+
 /**
  * @typedef {{ id: string, label: string, kind?: string, meta?: string, children?: object[] }} MindNode
  */
@@ -112,6 +114,7 @@ export function buildNovelMindTree({
   canon = { facts: [] },
   relations = { edges: [] },
   loreItems = [],
+  snapshots = {},
 }) {
   const chapterById = Object.fromEntries(chapters.map((c) => [c.id, c]));
   const loreTitle = (id) => {
@@ -119,52 +122,97 @@ export function buildNovelMindTree({
     return (l && l.title) || (id ? id.slice(0, 8) : "?");
   };
 
+  function chapterChildren(ch) {
+    const kids = [];
+    const beats = ch.beats || [];
+    if (beats.length) {
+      for (let i = 0; i < beats.length; i += 1) {
+        const b = beats[i];
+        kids.push({
+          id: `beat:${ch.id}:${b.id || i}`,
+          label: b.title || `节拍${i + 1}`,
+          kind: "beat",
+          meta: b.purpose || b.conflict || "",
+          children: [],
+        });
+      }
+    } else {
+      const points = parseChapterPoints(ch.summary || "");
+      points.forEach((p, i) => {
+        kids.push({
+          id: `point:${ch.id}:${i}`,
+          label: p,
+          kind: "point",
+          meta: "",
+          children: [],
+        });
+      });
+    }
+    if (String(ch.must_do || "").trim()) {
+      kids.push({
+        id: `must:${ch.id}`,
+        label: "必达",
+        kind: "point",
+        meta: ch.must_do,
+        children: [],
+      });
+    }
+    const written = String(snapshots[ch.id] || "").trim();
+    if (written) {
+      kids.push({
+        id: `written:${ch.id}`,
+        label: "已写总结",
+        kind: "written",
+        meta: written,
+        children: [],
+      });
+    }
+    return kids;
+  }
+
+  function chapterNode(ch) {
+    return {
+      id: `ch:${ch.id}`,
+      label: ch.title,
+      kind: "chapter",
+      meta: ch.summary || ch.must_do || "",
+      children: chapterChildren(ch),
+    };
+  }
+
   const outlineChildren = [];
   if (volumes.length) {
     for (const vol of volumes) {
       const chIds = vol.chapter_ids && vol.chapter_ids.length
         ? vol.chapter_ids
         : chapters.map((c) => c.id);
-      const volNode = {
+      const volKids = [];
+      const arcText = String(vol.arc_goal || vol.arc_summary || "").trim();
+      if (arcText) {
+        volKids.push({
+          id: `volarc:${vol.id}`,
+          label: "本卷弧",
+          kind: "point",
+          meta: arcText,
+          children: [],
+        });
+      }
+      volKids.push(
+        ...chIds
+          .map((id) => chapterById[id])
+          .filter(Boolean)
+          .map(chapterNode)
+      );
+      outlineChildren.push({
         id: `vol:${vol.id}`,
         label: vol.title || "卷",
         kind: "volume",
         meta: vol.arc_goal || vol.arc_summary || "",
-        children: chIds
-          .map((id) => chapterById[id])
-          .filter(Boolean)
-          .map((ch) => ({
-            id: `ch:${ch.id}`,
-            label: ch.title,
-            kind: "chapter",
-            meta: ch.summary || ch.must_do || "",
-            children: (ch.beats || []).map((b, i) => ({
-              id: `beat:${ch.id}:${b.id || i}`,
-              label: b.title || `节拍${i + 1}`,
-              kind: "beat",
-              meta: b.purpose || b.conflict || "",
-              children: [],
-            })),
-          })),
-      };
-      outlineChildren.push(volNode);
+        children: volKids,
+      });
     }
   } else {
-    outlineChildren.push(
-      ...chapters.map((ch) => ({
-        id: `ch:${ch.id}`,
-        label: ch.title,
-        kind: "chapter",
-        meta: ch.summary || "",
-        children: (ch.beats || []).map((b, i) => ({
-          id: `beat:${ch.id}:${b.id || i}`,
-          label: b.title || `节拍${i + 1}`,
-          kind: "beat",
-          meta: "",
-          children: [],
-        })),
-      }))
-    );
+    outlineChildren.push(...chapters.map(chapterNode));
   }
 
   const arcNodes = (plot.arcs || []).map((a) => {

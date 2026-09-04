@@ -633,9 +633,9 @@ async function onTocContinueSplit() {
     const r = await runContinueOutline({
       instruction: aiPanelForm.instruction,
     });
-    appState.statusMessage = `已续拆追加 ${
-      (r.createdIds || []).length
-    } 章到目录`;
+    appState.statusMessage = r.writingCancelled
+      ? `已续拆 ${(r.createdIds || []).length} 章，写作已取消`
+      : `已续拆 ${(r.createdIds || []).length} 章并按纲写完`;
     await refreshAllTocs();
   } catch (e) {
     error.value = String(e.message || e);

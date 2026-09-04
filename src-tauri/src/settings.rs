@@ -31,6 +31,11 @@ fn default_editor_font_size() -> u32 {
     16
 }
 
+/// 分析页列表每页条数
+fn default_analytics_page_size() -> u32 {
+    10
+}
+
 /// 每轮续写规定字数；0 表示未配置（加载时从 max_tokens 迁移）
 fn default_writing_target_chars() -> u32 {
     0
@@ -120,6 +125,9 @@ pub struct AppSettings {
     /// 写作区字号（px），默认 16
     #[serde(default = "default_editor_font_size")]
     pub editor_font_size: u32,
+    /// 分析页列表每页条数（作品 / 章节 / 生成记录），默认 10
+    #[serde(default = "default_analytics_page_size")]
+    pub analytics_page_size: u32,
     pub context_budget: u32,
     pub recent_window_chars: usize,
     /// 输入 token 单价（元 / 百万 tokens）；本地默认 0；DeepSeek 时作「缓存未命中」单价
@@ -181,6 +189,7 @@ impl Default for AppSettings {
             skip_delete_confirm: true,
             editor_font_family: default_editor_font_family(),
             editor_font_size: default_editor_font_size(),
+            analytics_page_size: default_analytics_page_size(),
             context_budget: 12000,
             recent_window_chars: 3000,
             price_input_per_1m: 0.0,

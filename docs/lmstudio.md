@@ -36,7 +36,7 @@ MyNovel/
 | 作品 | 新建/打开写作作品、叙事仪表盘、码字热力、导出 EPUB；导入请用「知识库」 | `src/views/ProjectHome.vue` |
 | **知识库** | **页内**子导航（库列表/实体/关系总谱/语料）；一书一库 + 通用库；不替换全局侧栏 | `src/views/KnowledgeHome.vue` |
 | 总谱 | **思维导图**（大纲+角色+故事线+时间线+Canon+关系）+ **右侧角色栏**添加/删除 + 表单编辑 | `src/views/StoryView.vue`, `CastSidePanel.vue`, `MindMapBoard.vue` |
-| 大纲 | 结构导图 + 卷弧/章纲 + **右侧角色栏** | `src/views/OutlineView.vue`, `CastSidePanel.vue` |
+| 大纲 | 结构导图 / 整理成导图 + 卷弧/章纲 + 已写总结 + **右侧角色栏** | `src/views/OutlineView.vue`, `CastSidePanel.vue`, `MindMapBoard.vue` |
 | 写作 | 章节树 + 编辑器 + Ctrl+K 行内 + AI 面板 | `src/views/EditorView.vue`, `AiPanel.vue` |
 | 设定 | 角色/世界观 + links/attrs | `src/views/LoreView.vue` |
 | 日志 | 生成记录 / 提示词 / token·费用累计 / TXT·EPUB | `src/views/GenLogView.vue` |
@@ -51,36 +51,41 @@ AI 续写会注入总谱块（plot/timeline/relations/canon/focus/beats/volume_a
   - 写作页左侧**目录**即为待写章队列（状态徽章 + 单章「写」/「纲」）
 - **正确流程（章节提示词队列）**：
   1. 在「创作提示 / 全书大纲」或底部指令写提示（如「乐乐与表哥的探索，分几章」）
-  2. 点 **生成章节队列**（红按钮同义）→ 目录出现多章「待写」章名 + 章纲
-  3. 在目录改章名 / 点「纲」改章纲
-  4. 再点目录「写」或「全部按纲写」才开始写正文（红按钮**不会**直接开写）
+  2. 点 **生成章节队列**（红按钮同义）→ 弹出「确认拆章写入」
+  3. 点 **开始写** → 目录写入这些章，并立刻按弹窗里的章节依次写正文
+  4. 也可事后在目录改章名 / 点「纲」改章纲，再点目录「写」或「全部按纲写」补写
 - **全书大纲**：`project.json` 字段 `book_outline`；写作页与大纲页均可编辑，互相同步；短提示也会落盘为大纲种子
 - **章纲 vs 全书大纲**：
   - **章纲** = 单章 `summary`（冲突/推进/钩子）；AI 任务「章纲」预览默认 **写入本章纲**
   - **全书大纲 / 创作提示** = 整书种子；勿把单场章纲误写成 `book_outline`
-- **拆章**（`outline_to_chapters`，`split_mode=full`）：拆出 JSON → 确认后立刻写入目录为 `status=pending` 待写章；空首章可更新，其余追加
+- **拆章**（`outline_to_chapters`，`split_mode=full`）：拆出 JSON → 确认「开始写」后写入目录为 `status=pending` 并立刻按这些章开写正文；空首章可更新，其余追加
 - **章标题**：须为「第N章 + 具体事件」；禁止「隐秘的延续 / 暗流 / 诱惑」等气氛套话；一句纲只按句内动作拆章，禁止为凑三幕编「隐秘循环」段（见 `outline_to_chapters.md`）
 - **续拆后续**（`split_mode=append`）：根据已有章标题+摘要衔接，**只追加**新待写章；目录头与面板均有「续拆后续」
 - **单章生成**：目录行「写」→ `runOutlineQueue({ stopAfterOneChapter: true })`
 - **整队生成**：目录「全部按纲写」或面板「开始按纲生成」→ 跨章队列
+- **跨章硬门槛**：每章正文写入后先等块蒸馏，再阻塞跑 `chapter_summary`；成功才写入 `memory.json` 的 `chapter_snapshots` 并标 `outline_complete`，然后才写下章。总结失败则停队列、保留已写正文（重跑只补总结，不清空重写）
+- **章纲 vs 写后总结**：`chapters[].summary` 是写前计划；写后总结只进快照 / `rolling_summary`，**禁止覆盖章纲**。下章「上章收束」优先用快照
 - **空章裸续写**：本章无 summary 且存在全书大纲时，续写前软拦截，提示先拆章/填章纲
-- **节拍来源**：总谱页 `beats` 优先；若为空则从章纲 `summary` 调用 `outline_to_beats` 自动拆分并写入（**不弹确认**）
-- **正文生成**：逐节拍 `continue` 写入；整队时章完成后自动切下一章
-- **进度 sidecar**：`chapters/.progress/{chapter_id}.json`（pending / in_progress / completed / skipped）
-- **同步记忆**：默认 `writing_outline_run_sync_digest=true`，每节拍 accept 后等待块蒸馏再进下一拍
+- **正文生成**：每章整章一次 `continue` 写入（不再自动拆拍写）
+- **同步记忆**：默认 `writing_outline_run_sync_digest=true`，章内块蒸馏仍保留，但不能替代章末总结
+- **思维导图**：大纲页「整理成导图」→ `outline_to_mindmap`，结果写入 `project.json` 的 `outline_mindmap`；已拆章时结构树把章纲要点 / 已写总结挂成子节点
 - **代码**：
   - [`src/utils/chapterStatus.js`](../src/utils/chapterStatus.js)（待写/写作中/已完成）
   - [`src/services/bookOutlineQueue.js`](../src/services/bookOutlineQueue.js)（保存大纲 / 拆章 / 续拆 / 建章）
-  - [`src/services/outlineQueue.js`](../src/services/outlineQueue.js)（按拍生成；可 `stopAfterOneChapter`）
+  - [`src/services/outlineQueue.js`](../src/services/outlineQueue.js)（按章生成；写完→章总结→再下章）
+  - [`src/services/outlineMindmap.js`](../src/services/outlineMindmap.js)（整理成导图）
+  - [`src/utils/outlineMindTree.js`](../src/utils/outlineMindTree.js)（本地拆树 / 选树）
+  - [`src/utils/mindmapLayout.js`](../src/utils/mindmapLayout.js)
   - [`src/views/EditorView.vue`](../src/views/EditorView.vue)（目录队列 UI）
   - [`src/components/AiPanel.vue`](../src/components/AiPanel.vue)
   - [`src-tauri/prompts/outline_to_chapters.md`](../src-tauri/prompts/outline_to_chapters.md)
-  - [`src-tauri/src/writing/mod.rs`](../src-tauri/src/writing/mod.rs)（`split_mode` + `existing_chapter_summaries`）
-  - [`src-tauri/src/writing/beat_engine.rs`](../src-tauri/src/writing/beat_engine.rs)
-  - [`src/views/StoryView.vue`](../src/views/StoryView.vue)（进度徽章）
-  - [`src/views/OutlineView.vue`](../src/views/OutlineView.vue)（全书大纲）
+  - [`src-tauri/prompts/outline_to_mindmap.md`](../src-tauri/prompts/outline_to_mindmap.md)
+  - [`src-tauri/prompts/chapter_summary.md`](../src-tauri/prompts/chapter_summary.md)
+  - [`src-tauri/src/writing/mod.rs`](../src-tauri/src/writing/mod.rs)
+  - [`src/views/StoryView.vue`](../src/views/StoryView.vue)
+  - [`src/views/OutlineView.vue`](../src/views/OutlineView.vue)
 
-推荐路径：写/贴全书大纲 → 拆成章节 → 目录出现多章「待写」→ 可改某章纲 → 单章「写」或「全部按纲写」→ 已写若干章后「续拆后续」再队列写。
+推荐路径：写/贴全书大纲 → 拆成章节 → 确认「开始写」→ 自动按这些章写正文 → 已写若干章后「续拆后续」再确认开写。
 
 蒸馏（知识库）使用 **`analysis_model`**（空则回退 `model`），按章调用 `lore_extract` + `story_sync`（摘要取自 extract.summary），产物在 `import/jobs/`。`story_sync` 失败不阻断落盘。
 
@@ -269,4 +274,5 @@ stdin 每行一个 NDJSON 请求，stdout 每行一个 JSON 响应：
 | AI Undo | `src/services/aiUndo.js` |
 | 主入口 GUI/CLI 分发 | `src-tauri/src/main.rs` |
 | 前端壳 | `src/App.vue` |
+| 大纲导图 | `src/utils/outlineMindTree.js` / `src/services/outlineMindmap.js` / `src/components/MindMapBoard.vue` |
 | TODO 清单 | `docs/todo.md` |

@@ -9,6 +9,7 @@ import { layoutMindMap } from "../utils/mindmapLayout.js";
 const props = defineProps({
   tree: { type: Object, required: true },
   height: { type: Number, default: 420 },
+  emptyText: { type: String, default: "暂无导图数据，请先填写大纲或总谱。" },
 });
 
 const emit = defineEmits(["select"]);
@@ -136,12 +137,12 @@ function pathD(e) {
             ry="12"
           />
           <text :x="n.x + n.w / 2" :y="n.y + n.h / 2 + 1" text-anchor="middle" dominant-baseline="middle">
-            {{ n.label.length > 14 ? n.label.slice(0, 13) + "…" : n.label }}
+            {{ n.label.length > 22 ? n.label.slice(0, 21) + "…" : n.label }}
           </text>
           <title>{{ n.label }}{{ n.meta ? " — " + n.meta : "" }}</title>
         </g>
       </svg>
-      <p v-if="!layout.nodes.length" class="empty muted">暂无导图数据，请先填写大纲或总谱。</p>
+      <p v-if="!layout.nodes.length" class="empty muted">{{ emptyText }}</p>
     </div>
   </div>
 </template>
@@ -239,8 +240,12 @@ function pathD(e) {
   fill: rgba(232, 93, 150, 0.16);
   stroke: var(--accent);
 }
-.k-section rect {
+.k-point rect {
   fill: rgba(100, 140, 200, 0.12);
+}
+.k-written rect {
+  fill: rgba(80, 160, 120, 0.16);
+  stroke: rgba(80, 160, 120, 0.55);
 }
 .k-variant rect {
   fill: var(--panel);

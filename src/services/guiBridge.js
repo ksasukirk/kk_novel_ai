@@ -117,6 +117,10 @@ export async function startGuiBridge() {
           ? "正在拆分节拍…"
           : task === "outline_to_chapters" || task === "split_chapters"
             ? "正在拆成章节…"
+            : task === "outline_to_mindmap" || task === "mindmap_outline"
+              ? "正在整理思维导图…"
+              : task === "chapter_summary" || task === "summarize"
+                ? "正在生成章节总结…"
             : "后台处理中…";
     } else {
       resetGenProgress("CLI 生成中…");
@@ -228,6 +232,10 @@ export async function startGuiBridge() {
         appState.statusMessage = "节拍拆分完成（结果未写入正文，请在总谱确认 beats）";
       } else if (p.task === "outline_to_chapters" || p.task === "split_chapters") {
         appState.statusMessage = "拆章完成（结果未写入正文，请在按纲生成面板确认）";
+      } else if (p.task === "outline_to_mindmap" || p.task === "mindmap_outline") {
+        appState.statusMessage = "思维导图已整理";
+      } else if (p.task === "chapter_summary" || p.task === "summarize") {
+        appState.statusMessage = "章节总结已写入记忆快照";
       }
       return;
     }

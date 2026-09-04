@@ -143,5 +143,82 @@ pub fn summary_json(project_root: Option<&str>) -> AppResult<serde_json::Value> 
         },
         "project": project,
         "by_model": ledger.by_model,
+        "by_project": ledger.by_project,
+    }))
+}
+
+/// 用履历条目整表重建账本（先清空再累加）
+pub fn rebuild_from_entries(entries: &[GenLogEntry]) -> AppResult<UsageLedger> {
+    let mut ledger = UsageLedger::default();
+    for entry in entries {
+        let usage = entry.usage.clone().unwrap_or_default();
+        let cost = entry.cost_cny;
+        ledger.total_prompt_tokens += usage.prompt_tokens as u64;
+        ledger.total_completion_tokens += usage.completion_tokens as u64;
+        ledger.total_prompt_cache_hit_tokens += usage.prompt_cache_hit_tokens as u64;
+        ledger.total_prompt_cache_miss_tokens += usage.prompt_cache_miss_tokens as u64;
+        ledger.total_cost_cny += cost;
+        ledger.total_calls += 1;
+
+        let model_key = if entry.model_used.trim().is_empty() {
+            "(unknown)".to_string()
+        } else {
+            entry.model_used.clone()
+        };
+        bump(ledger.by_model.entry(model_key).or_default(), &usage, cost);
+
+        let proj = if entry.project_root.trim().is_empty() {
+            "(none)".to_string()
+        } else {
+            entry.project_root.clone()
+        };
+        bump(ledger.by_project.entry(proj).or_default(), &usage, cost);
+    }
+    save_ledger(&ledger)?;
+    Ok(ledger)
+}
+
+/// 按当前设置重算全部履历花费，重建账本，并回写各作品目录 gen_activity / .genlog。
+pub fn backfill_costs_from_genlog(settings: &AppSettings) -> AppResult<serde_json::Value> {
+    let mut entries = crate::genlog::read_all()?;
+    let total = entries.len();
+    let mut updated = 0usize;
+    for e in &mut entries {
+        let usage = e.usage.clone().unwrap_or_default();
+        // chapter_save 等无模型调用保持 0
+        if e.task == "chapter_save" || e.event == "chapter_save" {
+            if e.cost_cny != 0.0 {
+                e.cost_cny = 0.0;
+                updated += 1;
+            }
+            continue;
+        }
+        if usage.prompt_tokens == 0 && usage.completion_tokens == 0 && usage.total_tokens == 0 {
+            continue;
+        }
+        let next = calc_cost_cny(&usage, settings, &e.model_used);
+        if (next - e.cost_cny).abs() > 1e-12 {
+            e.cost_cny = next;
+            updated += 1;
+        }
+    }
+
+    let synced = if updated > 0 {
+        crate::genlog::rewrite_all(&entries)?;
+        let _ledger = rebuild_from_entries(&entries)?;
+        crate::project_genlog::sync_all_from_entries(&entries)?
+    } else {
+        // 花费已对齐时仍补写缺失的作品内履历文件
+        crate::project_genlog::sync_missing_from_entries(&entries)?
+    };
+
+    let ledger = load_ledger()?;
+    Ok(json!({
+        "ok": true,
+        "entries": total,
+        "cost_updated": updated,
+        "projects_synced": synced,
+        "total_cost_cny": ledger.total_cost_cny,
+        "total_calls": ledger.total_calls,
     }))
 }

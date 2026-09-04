@@ -166,6 +166,11 @@ pub fn novels_dir_info() -> Result<Value, String> {
 }
 
 #[tauri::command]
+pub fn novels_list_projects() -> Result<Value, String> {
+    api::novels_list_projects().map_err(Into::into)
+}
+
+#[tauri::command]
 pub fn project_open(root: String) -> Result<Value, String> {
     api::project_open(&root).map_err(Into::into)
 }
@@ -371,6 +376,11 @@ pub fn lore_upsert(root: String, entry: LoreEntry) -> Result<Value, String> {
 }
 
 #[tauri::command]
+pub fn memory_get(root: String) -> Result<Value, String> {
+    api::memory_get(&root).map_err(Into::into)
+}
+
+#[tauri::command]
 pub fn memory_upsert_block_note(
     root: String,
     chapter_id: String,
@@ -546,6 +556,13 @@ pub fn project_gen_log_list(root: String, limit: Option<u32>) -> Result<Value, S
 #[tauri::command]
 pub fn usage_summary(root: Option<String>) -> Result<Value, String> {
     api::usage_summary(root.as_deref()).map_err(Into::into)
+}
+
+/// 按当前单价重算历史花费，重建账本，并回写各作品 gen_activity / .genlog
+#[tauri::command]
+pub fn usage_backfill_costs() -> Result<Value, String> {
+    let s = crate::settings::load_settings().map_err(|e| e.to_string())?;
+    crate::usage::backfill_costs_from_genlog(&s).map_err(Into::into)
 }
 
 #[tauri::command]

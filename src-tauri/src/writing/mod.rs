@@ -35,6 +35,8 @@ pub enum WritingTask {
     OutlineToBeats,
     /** 从全书大纲 book_outline 拆成章节列表 JSON */
     OutlineToChapters,
+    /** 把全书大纲 / 已有卷章纲整理成思维导图 JSON */
+    OutlineToMindmap,
 }
 
 impl WritingTask {
@@ -52,6 +54,7 @@ impl WritingTask {
             "section_plan" | "plan_sections" => Ok(Self::SectionPlan),
             "outline_to_beats" | "split_beats" => Ok(Self::OutlineToBeats),
             "outline_to_chapters" | "split_chapters" => Ok(Self::OutlineToChapters),
+            "outline_to_mindmap" | "mindmap_outline" => Ok(Self::OutlineToMindmap),
             _ => Err(AppError::msg(format!("未知写作任务: {s}"))),
         }
     }
@@ -70,6 +73,7 @@ impl WritingTask {
             Self::SectionPlan => include_str!("../../prompts/section_plan.md"),
             Self::OutlineToBeats => include_str!("../../prompts/outline_to_beats.md"),
             Self::OutlineToChapters => include_str!("../../prompts/outline_to_chapters.md"),
+            Self::OutlineToMindmap => include_str!("../../prompts/outline_to_mindmap.md"),
         }
     }
 
@@ -87,6 +91,7 @@ impl WritingTask {
             Self::SectionPlan => "section_plan",
             Self::OutlineToBeats => "outline_to_beats",
             Self::OutlineToChapters => "outline_to_chapters",
+            Self::OutlineToMindmap => "outline_to_mindmap",
         }
     }
 
@@ -101,6 +106,7 @@ impl WritingTask {
                 | Self::SectionPlan
                 | Self::OutlineToBeats
                 | Self::OutlineToChapters
+                | Self::OutlineToMindmap
         )
     }
 }
@@ -375,16 +381,7 @@ fn build_prev_chapter_bridge(
         .max_by(|a, b| a.updated_at.cmp(&b.updated_at))
         .map(|n| n.summary.trim().to_string())
         .filter(|s| !s.is_empty());
-    let meta_sum = prev_ch.summary.trim();
-    let summary = snap
-        .or(note)
-        .unwrap_or_else(|| {
-            if meta_sum.is_empty() {
-                "（无摘要）".into()
-            } else {
-                meta_sum.to_string()
-            }
-        });
+    let summary = snap.or(note).unwrap_or_else(|| "（无写后总结）".into());
     let tail = take_tail(&prev_content, 700);
     let tail = if tail.trim().is_empty() || tail.lines().all(|l| {
         let t = l.trim();
@@ -569,6 +566,12 @@ fn resolve_writing_options(
     // 写作任务：max_tokens 始终与规定字数同量级；分析任务用较短上限
     let max_tokens = if matches!(task, WritingTask::BlockDigest | WritingTask::CastExtract) {
         req.max_tokens.or(Some(512))
+    } else if matches!(
+        task,
+        WritingTask::OutlineToMindmap | WritingTask::OutlineToChapters
+    ) {
+        req.max_tokens
+            .or(Some(settings.max_tokens.min(4096).max(1024)))
     } else if analysis {
         req.max_tokens
             .or(Some(settings.max_tokens.min(2048).max(512)))
@@ -800,7 +803,7 @@ pub fn assemble_messages_with_scores(
             }
             recent
         }
-        WritingTask::OutlineToChapters => String::new(),
+        WritingTask::OutlineToChapters | WritingTask::OutlineToMindmap => String::new(),
         WritingTask::BlockDigest | WritingTask::CastExtract => req.selection.clone(),
     };
     let style = if opened.project.style.is_empty() {
@@ -944,7 +947,7 @@ pub fn assemble_messages_with_scores(
     };
     // 拆全书大纲：尽量不灌设定，避免模型用角色仓/lore 改写用户意愿
     let (plot_text, timeline_text, relations_text, canon_text, lore_text, memory_text) =
-        if task == WritingTask::OutlineToChapters {
+        if task == WritingTask::OutlineToChapters || task == WritingTask::OutlineToMindmap {
             (
                 "（拆章时忽略，以全书大纲为准）".to_string(),
                 "（拆章时忽略）".to_string(),
@@ -974,7 +977,12 @@ pub fn assemble_messages_with_scores(
 
     let book_outline = if !opened.project.book_outline.trim().is_empty() {
         opened.project.book_outline.clone()
-    } else if !req.instruction.trim().is_empty() && task == WritingTask::OutlineToChapters {
+    } else if !req.instruction.trim().is_empty()
+        && matches!(
+            task,
+            WritingTask::OutlineToChapters | WritingTask::OutlineToMindmap
+        )
+    {
         req.instruction.clone()
     } else {
         "（无全书大纲）".into()
@@ -987,7 +995,10 @@ pub fn assemble_messages_with_scores(
             .chapters
             .iter()
             .filter(|c| {
-                if task != WritingTask::OutlineToChapters {
+                if !matches!(
+                    task,
+                    WritingTask::OutlineToChapters | WritingTask::OutlineToMindmap
+                ) {
                     return !c.summary.trim().is_empty()
                         || !c.beats.is_empty()
                         || c.status == "done"
@@ -1187,6 +1198,7 @@ pub fn assemble_messages_with_scores(
                 content: match task {
                     WritingTask::OutlineToBeats
                     | WritingTask::OutlineToChapters
+                    | WritingTask::OutlineToMindmap
                     | WritingTask::SectionPlan
                     | WritingTask::CastExtract
                     | WritingTask::StorySync => {
@@ -1283,7 +1295,7 @@ pub async fn run_writing(
     let task = WritingTask::from_str_loose(&req.task)?;
     let scores = if matches!(
         task,
-        WritingTask::BlockDigest | WritingTask::CastExtract | WritingTask::SectionPlan | WritingTask::OutlineToBeats | WritingTask::OutlineToChapters
+        WritingTask::BlockDigest | WritingTask::CastExtract | WritingTask::SectionPlan | WritingTask::OutlineToBeats | WritingTask::OutlineToChapters | WritingTask::OutlineToMindmap
     ) {
         None
     } else {
@@ -1617,16 +1629,6 @@ pub async fn run_writing(
 
     if task == WritingTask::ChapterSummary {
         project::upsert_chapter_snapshot(Path::new(&req.project_root), &req.chapter_id, &text)?;
-        let mut opened = project::open_project(Path::new(&req.project_root))?;
-        if let Some(ch) = opened
-            .project
-            .chapters
-            .iter_mut()
-            .find(|c| c.id == req.chapter_id)
-        {
-            ch.summary = text.clone();
-        }
-        project::save_project_meta(Path::new(&req.project_root), &opened.project)?;
     }
 
     if task == WritingTask::BlockDigest {

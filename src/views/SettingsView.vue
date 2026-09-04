@@ -69,6 +69,7 @@ onMounted(async () => {
       disable_thinking: null,
       editor_font_family: "heiti",
       editor_font_size: DEFAULT_EDITOR_FONT_SIZE,
+      analytics_page_size: 10,
       price_input_per_1m: 0,
       price_output_per_1m: 0,
       price_cache_hit_per_1m: 0,
@@ -87,6 +88,11 @@ onMounted(async () => {
     form.value.editor_font_family = presetIdFromSettings(form.value);
     if (!form.value.editor_font_size) {
       form.value.editor_font_size = DEFAULT_EDITOR_FONT_SIZE;
+    }
+    {
+      const n = Number(form.value.analytics_page_size);
+      if (!Number.isFinite(n) || n < 1) form.value.analytics_page_size = 10;
+      else form.value.analytics_page_size = Math.min(200, Math.max(1, Math.floor(n)));
     }
     // Option<bool> from backend may be null → 商汤/DeepSeek 等推理模默认关思考链，避免 content 空
     if (form.value.disable_thinking == null) {
@@ -373,6 +379,16 @@ async function onRebuildRag() {
         <select v-model="form.editor_font_family" @change="onFontPreview">
           <option v-for="p in fontPresets" :key="p.id" :value="p.id">{{ p.label }}</option>
         </select>
+      </div>
+      <div class="field">
+        <label class="field-label">分析页每页条数（作品 / 章节 / 记录，默认 10）</label>
+        <input
+          v-model.number="form.analytics_page_size"
+          type="number"
+          min="1"
+          max="200"
+          step="1"
+        />
       </div>
       <div class="field">
         <label class="field-label">字号（px）</label>

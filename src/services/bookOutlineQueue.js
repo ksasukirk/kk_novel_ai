@@ -1,9 +1,9 @@
 /**
- * 全书大纲：保存、拆章、续拆、落盘建章、编排按纲生成
+ * 全书大纲：保存、拆章、续拆、落盘建章、确认后自动按纲写
  * 代码路径: kk_novel_ai/src/services/bookOutlineQueue.js
  */
 import { appState } from "../stores/appState.js";
-import { aiPanelForm } from "../stores/aiPanelState.js";
+import { aiPanelForm, noteBookOutlineSaved } from "../stores/aiPanelState.js";
 import { isChapterBodyEmpty } from "../utils/chapterStatus.js";
 import { runWriting } from "./llmClient.js";
 import { withBranchContext } from "./draftAccept.js";
@@ -72,9 +72,9 @@ export async function saveBookOutline(text) {
     throw new Error("请先打开作品");
   }
   const outline = String(text != null ? text : aiPanelForm.bookOutline || "").trim();
-  aiPanelForm.bookOutline = outline;
   const next = { ...appState.project, book_outline: outline };
   await saveProjectMeta(next);
+  noteBookOutlineSaved(outline);
   appState.statusMessage = "全书大纲已保存";
   return outline;
 }
@@ -233,7 +233,7 @@ export async function runSplitChapters(opts = {}) {
   aiPanelForm.chapterPlan = chapters;
   appState.statusMessage = reason
     ? `已拆出 ${chapters.length} 章 · ${reason}`
-    : `已拆出 ${chapters.length} 章，写入目录后可编辑再开写`;
+    : `已拆出 ${chapters.length} 章，确认后写入目录并开始写`;
   return { chapters, reason, mode };
 }
 
@@ -264,7 +264,7 @@ export function normalizeChapterPlanTitles(rows) {
 
 /**
  * @param {Array<{title:string, summary:string, must_do?:string, selected?:boolean}>} [plan]
- * @param {{ mode?: "full"|"append", skipConfirm?: boolean }} [opts]
+ * @param {{ mode?: "full"|"append", skipConfirm?: boolean, startWriting?: boolean, instruction?: string }} [opts]
  */
 export async function applyChapterPlan(plan, opts = {}) {
   if (!appState.projectRoot || !appState.project) {
@@ -285,11 +285,11 @@ export async function applyChapterPlan(plan, opts = {}) {
     const titles = rows.map((c, i) => `${i + 1}. ${c.title || "（无标题）"}`).join("\n");
     const tip =
       mode === "append"
-        ? `将追加 ${rows.length} 个待写章节到目录：\n${titles}`
-        : `将写入 ${rows.length} 个章节到目录（空首章会更新为第1条，其余追加；已有正文/章纲的章不覆盖）：\n${titles}`;
+        ? `将追加 ${rows.length} 个待写章节到目录，并开始按纲写正文：\n${titles}`
+        : `将写入 ${rows.length} 个章节到目录并开始按纲写正文（空首章会更新为第1条，其余追加；已有正文/章纲的章不覆盖）：\n${titles}`;
     const ok = await appConfirm(tip, {
       title: mode === "append" ? "确认续拆写入" : "确认拆章写入",
-      confirmText: "写入目录",
+      confirmText: "开始写",
       cancelText: "取消",
     });
     if (!ok) throw new Error("已取消写入章节");
@@ -333,16 +333,32 @@ export async function applyChapterPlan(plan, opts = {}) {
   }
 
   await getProject(appState.projectRoot);
-  const startChapterId = updatedIds[0] || createdIds[0] || appState.chapterId;
+  const writtenIds = [...updatedIds, ...createdIds];
+  const startChapterId = writtenIds[0] || appState.chapterId;
   if (startChapterId && startChapterId !== appState.chapterId) {
     await loadChapter(startChapterId);
   }
 
   aiPanelForm.chapterPlan = [];
-  appState.statusMessage =
-    `已写入目录 ${updatedIds.length + createdIds.length} 章（待写）。` +
-    `请在左侧改章名/章纲，再点「写」或「全部按纲写」`;
-  return { createdIds, updatedIds, startChapterId };
+  const startWriting = opts.startWriting !== false;
+  let writingCancelled = false;
+  if (startWriting && writtenIds.length) {
+    appState.statusMessage = `已写入目录 ${writtenIds.length} 章，正在按纲开写…`;
+    await runOutlineQueue({
+      instruction: String(opts.instruction ?? aiPanelForm.instruction ?? "").trim(),
+      startChapterId,
+      onlyChapterIds: writtenIds,
+    });
+    writingCancelled = outlineQueueState.phase === "cancelled";
+    if (writingCancelled) {
+      appState.statusMessage = `已写入目录 ${writtenIds.length} 章，写作已取消`;
+    }
+  } else {
+    appState.statusMessage =
+      `已写入目录 ${writtenIds.length} 章（待写）。` +
+      `请在左侧改章名/章纲，再点「写」或「全部按纲写」`;
+  }
+  return { createdIds, updatedIds, startChapterId, writingCancelled };
 }
 
 export function findFirstPendingOutlineChapter() {
@@ -376,7 +392,7 @@ export function findFirstPendingOutlineChapter() {
 }
 
 /**
- * 续拆后续章：拆章 → 确认 → 只追加到目录
+ * 续拆后续章：拆章 → 确认「开始写」→ 追加到目录并按这些章开写
  * @param {{ instruction?: string }} [opts]
  */
 export async function runContinueOutline(opts = {}) {
@@ -385,12 +401,15 @@ export async function runContinueOutline(opts = {}) {
     instruction: opts.instruction ?? aiPanelForm.instruction,
     bookOutline: aiPanelForm.bookOutline,
   });
-  const applied = await applyChapterPlan(chapters, { mode: "append" });
+  const applied = await applyChapterPlan(chapters, {
+    mode: "append",
+    instruction: opts.instruction ?? aiPanelForm.instruction,
+  });
   return { ...applied, reason, chapters };
 }
 
 /**
- * 拆章并写入目录（full）
+ * 拆章写入目录并按这些章开写（full）
  */
 export async function runSplitAndApply(opts = {}) {
   const { chapters, reason } = await runSplitChapters({
@@ -398,7 +417,10 @@ export async function runSplitAndApply(opts = {}) {
     instruction: opts.instruction,
     bookOutline: opts.bookOutline,
   });
-  const applied = await applyChapterPlan(chapters, { mode: "full" });
+  const applied = await applyChapterPlan(chapters, {
+    mode: "full",
+    instruction: opts.instruction ?? aiPanelForm.instruction,
+  });
   return { ...applied, reason, chapters };
 }
 
@@ -424,10 +446,9 @@ export async function runFullOutlinePipeline(opts = {}) {
   const userInstr = String(opts.instruction ?? aiPanelForm.instruction ?? "").trim();
 
   if (opts.applyPlanFirst && (aiPanelForm.chapterPlan || []).length) {
-    const applied = await applyChapterPlan(aiPanelForm.chapterPlan, { mode: "full" });
-    await runOutlineQueue({
+    await applyChapterPlan(aiPanelForm.chapterPlan, {
+      mode: "full",
       instruction: userInstr,
-      startChapterId: applied.startChapterId,
     });
     return;
   }
@@ -437,8 +458,11 @@ export async function runFullOutlinePipeline(opts = {}) {
     if (!(aiPanelForm.chapterPlan || []).length) {
       throw new Error("尚无待写章纲：请先「拆成章节」写入目录，或在目录中填写章纲");
     }
-    const applied = await applyChapterPlan(aiPanelForm.chapterPlan, { mode: "full" });
-    start = { id: applied.startChapterId };
+    await applyChapterPlan(aiPanelForm.chapterPlan, {
+      mode: "full",
+      instruction: userInstr,
+    });
+    return;
   }
 
   await runOutlineQueue({

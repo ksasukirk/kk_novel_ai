@@ -100,6 +100,8 @@ export const appState = reactive({
   usageSummary: null,
   /** DeepSeek 余额等；{ ok, total, granted, topped_up, reason? } */
   providerBalance: null,
+  /** 分析页作品目录清单（novels 扫描 + 最近列表） */
+  analyticsProjects: [],
   aiUndoStack: [],
   /** 外部写入冲突：{ content, saved, chapter_id } | null */
   externalConflict: null,

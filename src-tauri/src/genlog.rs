@@ -89,20 +89,37 @@ pub fn append_log(entry: &GenLogEntry) -> AppResult<()> {
 }
 
 pub fn read_recent(limit: usize) -> AppResult<Vec<GenLogEntry>> {
+    let mut items = read_all()?;
+    if items.len() > limit {
+        items = items.split_off(items.len() - limit);
+    }
+    Ok(items)
+}
+
+/// 读取全部生成履历（按文件顺序，通常时间升序追加）
+pub fn read_all() -> AppResult<Vec<GenLogEntry>> {
     let path = gen_log_path()?;
     if !path.exists() {
         return Ok(vec![]);
     }
     let text = std::fs::read_to_string(path)?;
-    let mut items: Vec<GenLogEntry> = text
+    Ok(text
         .lines()
         .filter(|l| !l.trim().is_empty())
         .filter_map(|l| serde_json::from_str(l).ok())
-        .collect();
-    if items.len() > limit {
-        items = items.split_off(items.len() - limit);
+        .collect())
+}
+
+/// 整文件重写全局 gen_log.jsonl（补齐花费等迁移用）
+pub fn rewrite_all(entries: &[GenLogEntry]) -> AppResult<()> {
+    let path = gen_log_path()?;
+    let mut out = String::with_capacity(entries.len().saturating_mul(256));
+    for e in entries {
+        out.push_str(&serde_json::to_string(e)?);
+        out.push('\n');
     }
-    Ok(items)
+    std::fs::write(path, out)?;
+    Ok(())
 }
 
 pub fn make_entry(

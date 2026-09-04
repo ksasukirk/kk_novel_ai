@@ -24,6 +24,7 @@ const timeline = ref({ calendar_note: "", events: [] });
 const canon = ref({ facts: [] });
 const relations = ref({ edges: [] });
 const loreItems = ref([]);
+const snapshots = ref({});
 
 const chapters = computed(() => (appState.project && appState.project.chapters) || []);
 const volumes = computed(() => (appState.project && appState.project.volumes) || []);
@@ -41,6 +42,7 @@ const mindTree = computed(() =>
     canon: canon.value,
     relations: relations.value,
     loreItems: loreItems.value,
+    snapshots: snapshots.value,
   })
 );
 
@@ -181,6 +183,18 @@ async function refreshAll() {
     canon.value = c.canon || { facts: [] };
     relations.value = r.relations || { edges: [] };
     loreItems.value = flattenScopedLore(lore);
+    try {
+      const memory = await project.getMemory();
+      const next = {};
+      for (const s of (memory && memory.chapter_snapshots) || []) {
+        if (!s || !s.chapter_id) continue;
+        const text = String(s.summary || "").trim();
+        if (text) next[s.chapter_id] = text;
+      }
+      snapshots.value = next;
+    } catch {
+      snapshots.value = {};
+    }
     syncFocusDraft();
   } catch (e) {
     error.value = String(e.message || e);

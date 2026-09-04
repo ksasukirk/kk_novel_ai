@@ -107,11 +107,40 @@ pub struct NovelProject {
     pub volumes: Vec<VolumeMeta>,
     #[serde(default)]
     pub chapters: Vec<ChapterMeta>,
+    /// AI/本地整理的情节导图（与章纲分开；旧工程缺字段视为无）
+    #[serde(default)]
+    pub outline_mindmap: Option<OutlineMindMap>,
     pub created_at: String,
     pub updated_at: String,
 }
 fn default_kind_novel() -> String {
     "novel".into()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct OutlineMindNode {
+    #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    pub label: String,
+    #[serde(default)]
+    pub kind: String,
+    #[serde(default)]
+    pub summary: String,
+    #[serde(default)]
+    pub children: Vec<OutlineMindNode>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct OutlineMindMap {
+    #[serde(default)]
+    pub source: String,
+    #[serde(default)]
+    pub generated_at: String,
+    #[serde(default)]
+    pub reason: String,
+    #[serde(default)]
+    pub root: OutlineMindNode,
 }
 
 pub fn is_knowledge_kind(kind: &str) -> bool {
@@ -357,6 +386,7 @@ pub fn create_project(root: &Path, title: &str) -> AppResult<OpenedProject> {
             character_knows: String::new(),
             beats: vec![],
         }],
+        outline_mindmap: None,
         created_at: now(),
         updated_at: now(),
     };
@@ -406,6 +436,7 @@ pub fn create_knowledge_base(
             arc_summary: String::new(),
         }],
         chapters: vec![],
+        outline_mindmap: None,
         created_at: now(),
         updated_at: now(),
     };

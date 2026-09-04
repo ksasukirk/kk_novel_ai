@@ -15,7 +15,10 @@ export function isBackgroundAnalysisTask(task) {
     t === "split_beats" ||
     t === "outline_to_chapters" ||
     t === "split_chapters" ||
+    t === "outline_to_mindmap" ||
+    t === "mindmap_outline" ||
     t === "chapter_summary" ||
+    t === "summarize" ||
     t === "consistency_check"
   );
 }

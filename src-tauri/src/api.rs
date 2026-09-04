@@ -11,7 +11,7 @@ use crate::settings::{self, AppSettings};
 use crate::writing::{self, WritingRequest};
 use serde_json::{json, Value};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 
@@ -160,6 +160,102 @@ pub fn novels_dir_info() -> AppResult<Value> {
         "ok": true,
         "runtime_root": root.to_string_lossy(),
         "novels_dir": novels.to_string_lossy(),
+    }))
+}
+
+/// 列出默认 novels 目录下全部作品（含最近列表中的小说，去重），供分析页作品列表分页。
+pub fn novels_list_projects() -> AppResult<Value> {
+    let primary = crate::paths::novels_dir()?;
+    let mut items: Vec<Value> = Vec::new();
+    let mut seen = std::collections::HashSet::<String>::new();
+    let mut scanned: Vec<String> = Vec::new();
+
+    let mut push_root = |root: &Path, title_hint: Option<&str>| {
+        let root_s = root.to_string_lossy().to_string();
+        let key = root_s.replace('\\', "/").trim_end_matches('/').to_lowercase();
+        if key.is_empty() || !seen.insert(key) {
+            return;
+        }
+        let (title, kind) = match project::open_project(root) {
+            Ok(opened) => (opened.project.title.clone(), opened.project.kind.clone()),
+            Err(_) => (
+                title_hint
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| {
+                        root.file_name()
+                            .and_then(|n| n.to_str())
+                            .unwrap_or("未命名小说")
+                            .to_string()
+                    }),
+                "novel".into(),
+            ),
+        };
+        if project::is_knowledge_kind(&kind) {
+            return;
+        }
+        items.push(json!({
+            "root": root_s,
+            "title": title,
+            "kind": kind,
+        }));
+    };
+
+    let mut scan_dirs: Vec<PathBuf> = vec![primary.clone()];
+    if let Ok(cwd) = std::env::current_dir() {
+        scan_dirs.push(cwd.join("novels"));
+        scan_dirs.push(cwd.join("dist").join("novels"));
+    }
+    if let Ok(root) = crate::paths::runtime_root_dir() {
+        scan_dirs.push(root.join("novels"));
+        if let Some(p1) = root.parent() {
+            scan_dirs.push(p1.join("novels"));
+            scan_dirs.push(p1.join("dist").join("novels"));
+            if let Some(p2) = p1.parent() {
+                scan_dirs.push(p2.join("novels"));
+                scan_dirs.push(p2.join("dist").join("novels"));
+            }
+        }
+    }
+
+    let mut seen_dirs = std::collections::HashSet::<String>::new();
+    for dir in scan_dirs {
+        let key = dir
+            .canonicalize()
+            .unwrap_or_else(|_| dir.clone())
+            .to_string_lossy()
+            .replace('\\', "/")
+            .to_lowercase();
+        if !seen_dirs.insert(key) {
+            continue;
+        }
+        if !dir.is_dir() {
+            continue;
+        }
+        scanned.push(dir.to_string_lossy().to_string());
+        if let Ok(roots) = project::discover_project_roots(&dir, 1) {
+            for root in roots {
+                push_root(&root, None);
+            }
+        }
+    }
+
+    let s = settings::load_settings().unwrap_or_default();
+    for p in &s.recent_projects {
+        push_root(Path::new(&p.path), Some(&p.title));
+    }
+
+    items.sort_by(|a, b| {
+        let ta = a.get("title").and_then(|v| v.as_str()).unwrap_or("");
+        let tb = b.get("title").and_then(|v| v.as_str()).unwrap_or("");
+        ta.cmp(tb)
+    });
+
+    Ok(json!({
+        "ok": true,
+        "novels_dir": primary.to_string_lossy(),
+        "scanned_dirs": scanned,
+        "count": items.len(),
+        "items": items,
     }))
 }
 
@@ -801,6 +897,12 @@ pub fn lore_upsert(root: &str, entry: LoreEntry) -> AppResult<Value> {
     Ok(json!({ "ok": true, "item": item }))
 }
 
+/// 读取记忆（滚动摘要 / 章快照 / 块笔记）
+pub fn memory_get(root: &str) -> AppResult<Value> {
+    let memory = project::load_memory(Path::new(root))?;
+    Ok(json!({ "ok": true, "memory": memory }))
+}
+
 /// 手动写入/覆盖块记忆摘要（会清洗婴儿相关词并重建 rolling_summary）
 pub fn memory_upsert_block_note(
     root: &str,
@@ -1145,6 +1247,7 @@ pub async fn dispatch_rpc(req: Value) -> AppResult<Value> {
             project_create_in_novels(title)
         }
         "novels_dir_info" => novels_dir_info(),
+        "novels_list_projects" => novels_list_projects(),
         "project_open" | "project_get" => {
             let root = req_str(&req, "root")?;
             if cmd == "project_open" {
@@ -1325,6 +1428,7 @@ pub async fn dispatch_rpc(req: Value) -> AppResult<Value> {
             )?;
             lore_upsert(req_str(&req, "root")?, entry)
         }
+        "memory_get" => memory_get(req_str(&req, "root")?),
         "memory_upsert_block_note" => memory_upsert_block_note(
             req_str(&req, "root")?,
             req_str(&req, "chapter_id")?,
@@ -1426,6 +1530,10 @@ pub async fn dispatch_rpc(req: Value) -> AppResult<Value> {
         "usage_summary" => {
             let root = req.get("root").and_then(|v| v.as_str());
             usage_summary(root)
+        }
+        "usage_backfill_costs" => {
+            let s = settings::load_settings()?;
+            crate::usage::backfill_costs_from_genlog(&s)
         }
         "provider_balance" => crate::llm::balance::fetch_provider_balance(&settings::load_settings()?).await,
         other => Err(AppError::msg(format!("未知 cmd: {other}"))),

@@ -26,7 +26,7 @@ export const aiPanelForm = reactive({
   instructionQueue: false,
   /** @type {Array<{id:string, text:string}>} */
   instructionSteps: [createInstructionStep("")],
-  /** 全书大纲（与 project.book_outline 同步） */
+  /** 全书大纲 / 创作提示（与 project.book_outline 同步；未保存草稿不可被冲掉） */
   bookOutline: "",
   /**
    * 拆章预览
@@ -44,9 +44,42 @@ export const instrCaret = ref({ start: null, end: null });
 /** 当前聚焦的指令步骤 id（角色标签插入用） */
 export const activeStepId = ref("");
 
-/** 从工程同步全书大纲到面板 */
-export function syncBookOutlineFromProject(project) {
-  aiPanelForm.bookOutline = String((project && project.book_outline) || "");
+/** 上次从工程同步/保存成功后的创作提示基线；与 bookOutline 不同即视为未保存草稿 */
+let lastSyncedBookOutline = "";
+
+/** 面板创作提示是否相对磁盘有未保存改动 */
+export function isBookOutlineDirty() {
+  return String(aiPanelForm.bookOutline || "") !== lastSyncedBookOutline;
+}
+
+/**
+ * 从工程同步全书大纲到面板。
+ * 默认：有未保存草稿则不覆盖；`force: true` 用于切换/打开作品。
+ * @param {object|null|undefined} project
+ * @param {{ force?: boolean }} [opts]
+ * @returns {boolean} 是否写入了面板
+ */
+export function syncBookOutlineFromProject(project, opts = {}) {
+  const next = String((project && project.book_outline) || "");
+  const force = !!opts.force;
+  const cur = String(aiPanelForm.bookOutline || "");
+  if (!force && cur !== lastSyncedBookOutline) {
+    // 草稿内容已与磁盘一致时只清脏，仍不强制改 UI
+    if (cur === next) {
+      lastSyncedBookOutline = next;
+    }
+    return false;
+  }
+  aiPanelForm.bookOutline = next;
+  lastSyncedBookOutline = next;
+  return true;
+}
+
+/** 保存成功后对齐基线（避免随后 getProject 再冲） */
+export function noteBookOutlineSaved(text) {
+  const v = String(text != null ? text : aiPanelForm.bookOutline || "");
+  aiPanelForm.bookOutline = v;
+  lastSyncedBookOutline = v;
 }
 
 watch(

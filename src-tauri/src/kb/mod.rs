@@ -125,6 +125,7 @@ pub fn ensure_universal() -> AppResult<OpenedKb> {
         linked_kb_roots: vec![],
         volumes: vec![],
         chapters: vec![],
+        outline_mindmap: None,
         created_at: now(),
         updated_at: now(),
     };
@@ -166,6 +167,7 @@ pub fn ensure_character_roster() -> AppResult<OpenedKb> {
         linked_kb_roots: vec![],
         volumes: vec![],
         chapters: vec![],
+        outline_mindmap: None,
         created_at: now(),
         updated_at: now(),
     };

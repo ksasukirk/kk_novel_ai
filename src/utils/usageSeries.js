@@ -22,6 +22,26 @@ function emptyDay(date) {
   };
 }
 
+function bumpAgg(row, item) {
+  row.cost += Number(item.cost_cny) || 0;
+  const u = item.usage || {};
+  row.prompt += u.prompt_tokens || 0;
+  row.completion += u.completion_tokens || 0;
+  row.tokens += usageTotalTokens(u);
+  row.hit += u.prompt_cache_hit_tokens || 0;
+  row.miss += u.prompt_cache_miss_tokens || 0;
+  row.calls += 1;
+  const ts = String(item.ts || "");
+  if (ts && (!row.lastTs || ts > row.lastTs)) row.lastTs = ts;
+  if (ts && (!row.firstTs || ts < row.firstTs)) row.firstTs = ts;
+}
+
+function finalizeAgg(row) {
+  row.hitRate =
+    row.hit + row.miss > 0 ? Math.round((row.hit / (row.hit + row.miss)) * 100) : null;
+  return row;
+}
+
 /** 近 days 天按日桶；无点则填 0 */
 export function buildDailySeries(logs, days = 14) {
   const map = new Map();
@@ -79,6 +99,73 @@ export function aggregateByTask(logs) {
     row.calls += 1;
   }
   return [...map.values()].sort((a, b) => b.calls - a.calls || b.cost - a.cost);
+}
+
+/** 按作品根目录汇总整体统计 */
+export function aggregateByProject(logs) {
+  const map = new Map();
+  for (const item of logs || []) {
+    const root = String(item.project_root || "").trim() || "(none)";
+    let row = map.get(root);
+    if (!row) {
+      row = {
+        root,
+        cost: 0,
+        tokens: 0,
+        prompt: 0,
+        completion: 0,
+        calls: 0,
+        hit: 0,
+        miss: 0,
+        hitRate: null,
+        chapters: new Set(),
+        lastTs: "",
+        firstTs: "",
+      };
+      map.set(root, row);
+    }
+    bumpAgg(row, item);
+    const ch = String(item.chapter_id || "").trim();
+    if (ch && ch !== "_project") row.chapters.add(ch);
+  }
+  return [...map.values()]
+    .map((row) => {
+      const chapterCount = row.chapters.size;
+      delete row.chapters;
+      return finalizeAgg({ ...row, chapterCount });
+    })
+    .sort((a, b) => String(b.lastTs).localeCompare(String(a.lastTs)));
+}
+
+/** 按章节汇总（同一作品内） */
+export function aggregateByChapter(logs) {
+  const map = new Map();
+  for (const item of logs || []) {
+    const raw = String(item.chapter_id || "").trim();
+    const id = raw || "_project";
+    let row = map.get(id);
+    if (!row) {
+      row = {
+        chapterId: id,
+        label: id === "_project" ? "作品级（无章节）" : id,
+        cost: 0,
+        tokens: 0,
+        prompt: 0,
+        completion: 0,
+        calls: 0,
+        hit: 0,
+        miss: 0,
+        hitRate: null,
+        lastTs: "",
+        firstTs: "",
+      };
+      map.set(id, row);
+    }
+    bumpAgg(row, item);
+  }
+  return [...map.values()]
+    .map(finalizeAgg)
+    .sort((a, b) => String(b.lastTs).localeCompare(String(a.lastTs)));
 }
 
 /** 从当前可见日志汇总 KPI */

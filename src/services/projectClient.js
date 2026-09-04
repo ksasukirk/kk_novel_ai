@@ -57,6 +57,11 @@ export async function novelsDirInfo() {
   return await invoke("novels_dir_info");
 }
 
+/** 扫描 novels 目录 + 最近列表，返回全部小说（供分析页分页） */
+export async function listNovelsProjects() {
+  return await invoke("novels_list_projects");
+}
+
 export async function openProject(root) {
   const r = await invoke("project_open", { root });
   applyProject(r);
@@ -71,7 +76,11 @@ export async function getProject(root) {
 }
 
 function applyProject(r) {
-  appState.projectRoot = r.root || "";
+  const prevRoot = appState.projectRoot || "";
+  const nextRoot = r.root || "";
+  // 切换/打开作品时强制对齐；同作品刷新（删章等）保留未保存创作提示草稿
+  const forceOutline = prevRoot !== nextRoot;
+  appState.projectRoot = nextRoot;
   appState.project = r.project || null;
   if (r.project && r.project.chapters && r.project.chapters.length) {
     if (!appState.chapterId || !r.project.chapters.some((c) => c.id === appState.chapterId)) {
@@ -83,7 +92,7 @@ function applyProject(r) {
     appState.chapterBlocks = [];
     appState.chapterBranchDoc = null;
   }
-  syncBookOutlineFromProject(r.project);
+  syncBookOutlineFromProject(r.project, { force: forceOutline });
 }
 
 function branchDocFromChapterPayload(r) {
@@ -312,7 +321,15 @@ export async function skipBeatProgress(chapterId, beatId) {
 export async function saveProjectMeta(project) {
   await invoke("project_save_meta", { root: appState.projectRoot, project });
   appState.project = project;
+  // 保存 meta 时：若面板草稿与本次写入的 book_outline 一致则清脏；否则仍保留其它草稿
   syncBookOutlineFromProject(project);
+}
+
+/** 读取 memory.json（滚动摘要 / 章快照 / 块笔记） */
+export async function getMemory() {
+  if (!appState.projectRoot) return { rolling_summary: "", chapter_snapshots: [], block_notes: [] };
+  const r = await invoke("memory_get", { root: appState.projectRoot });
+  return (r && r.memory) || { rolling_summary: "", chapter_snapshots: [], block_notes: [] };
 }
 
 /** AI 根据大纲/章纲/正文建议书名（不写入） */
@@ -332,9 +349,10 @@ export async function applyBookTitle(root, title, { renameFolder = false } = {})
   const newRoot = (r && r.root) || root;
   const payload = r.project;
   if (payload && payload.project && appState.projectRoot === root) {
+    const renamed = newRoot !== root;
     appState.projectRoot = newRoot;
     appState.project = payload.project;
-    syncBookOutlineFromProject(payload.project);
+    syncBookOutlineFromProject(payload.project, { force: renamed });
   }
   return r;
 }
@@ -460,6 +478,11 @@ export async function loadUsageSummary(root = null) {
   const r = await invoke("usage_summary", { root: root || null });
   appState.usageSummary = r;
   return r;
+}
+
+/** 按当前单价重算历史花费，重建账本并写回各作品 gen_activity / .genlog */
+export async function backfillUsageCosts() {
+  return await invoke("usage_backfill_costs");
 }
 
 /** DeepSeek 官方余额；其它提供商返回 ok:false + reason */

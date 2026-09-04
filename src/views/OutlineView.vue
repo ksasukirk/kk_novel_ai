@@ -10,30 +10,51 @@ import * as story from "../services/storyClient.js";
 import MindMapBoard from "../components/MindMapBoard.vue";
 import CastSidePanel from "../components/CastSidePanel.vue";
 import { buildNovelMindTree } from "../utils/mindmapLayout.js";
-import { useToastError } from "../services/toast.js";
+import {
+  buildOutlinePageTree,
+  hasStructuredOutline,
+} from "../utils/outlineMindTree.js";
+import { runOutlineToMindmap } from "../services/outlineMindmap.js";
+import { toastWarning, useToastError } from "../services/toast.js";
 
 const error = useToastError();
 const drafts = ref({});
 const volumeDrafts = ref({});
 const bookOutlineDraft = ref("");
+/** 与磁盘对齐的基线；不同则视为大纲页未保存草稿 */
+let bookOutlineDraftSynced = "";
+const snapshots = ref({});
+const mapPrefer = ref("auto");
+const mapBusy = ref(false);
+const showMap = ref(true);
+
+watch(
+  () => [appState.projectRoot, appState.project && appState.project.book_outline],
+  ([root, outline], prev) => {
+    const next = String(outline || "");
+    const prevRoot = prev && prev[0];
+    const rootChanged = root !== prevRoot;
+    const cur = String(bookOutlineDraft.value || "");
+    if (!rootChanged && cur !== bookOutlineDraftSynced) {
+      if (cur === next) bookOutlineDraftSynced = next;
+      return;
+    }
+    bookOutlineDraft.value = next;
+    bookOutlineDraftSynced = next;
+  },
+  { immediate: true }
+);
 const plot = ref({ arcs: [], promises: [] });
 const timeline = ref({ events: [] });
 const canon = ref({ facts: [] });
 const relations = ref({ edges: [] });
 const loreItems = ref([]);
-const showMap = ref(true);
 
 const chapters = computed(() => (appState.project && appState.project.chapters) || []);
 const volumes = computed(() => (appState.project && appState.project.volumes) || []);
+const structuredReady = computed(() => hasStructuredOutline(appState.project));
 
-watch(
-  () => appState.project && appState.project.book_outline,
-  (v) => {
-    bookOutlineDraft.value = String(v || "");
-  },
-  { immediate: true }
-);
-const outlineMindTree = computed(() => {
+function buildStructureTree() {
   const full = buildNovelMindTree({
     title: (appState.project && appState.project.title) || "作品",
     volumes: volumes.value,
@@ -43,8 +64,8 @@ const outlineMindTree = computed(() => {
     canon: canon.value,
     relations: relations.value,
     loreItems: loreItems.value,
+    snapshots: snapshots.value,
   });
-  // 大纲页：大纲 + 角色 + 故事线缩略
   return {
     id: full.id,
     label: full.label,
@@ -54,6 +75,24 @@ const outlineMindTree = computed(() => {
       ["branch:outline", "branch:characters", "branch:plot"].includes(c.id)
     ),
   };
+}
+
+const outlinePageTree = computed(() =>
+  buildOutlinePageTree({
+    project: appState.project,
+    snapshots: snapshots.value,
+    prefer: mapPrefer.value,
+    buildStructureTree,
+  })
+);
+
+const outlineMindTree = computed(() => outlinePageTree.value.tree);
+const mapEmptyHint = computed(() => {
+  if (!appState.projectRoot) return "请先打开作品。";
+  const book = String((appState.project && appState.project.book_outline) || "").trim();
+  if (!book && !structuredReady.value) return "还没大纲，先写下全书大纲或拆章。";
+  if (outlinePageTree.value.thin) return "大纲还太整段，点「整理成导图」用 AI 拆树。";
+  return "暂无导图数据。";
 });
 
 watch(
@@ -120,6 +159,18 @@ async function loadStoryLite() {
     canon.value = c.canon || { facts: [] };
     relations.value = r.relations || { edges: [] };
     loreItems.value = flattenScopedLore(lore);
+    try {
+      const memory = await project.getMemory();
+      const next = {};
+      for (const s of (memory && memory.chapter_snapshots) || []) {
+        if (!s || !s.chapter_id) continue;
+        const text = String(s.summary || "").trim();
+        if (text) next[s.chapter_id] = text;
+      }
+      snapshots.value = next;
+    } catch {
+      snapshots.value = {};
+    }
   } catch {
     /* 无总谱也可只看大纲树 */
   }
@@ -156,10 +207,12 @@ async function saveBookOutlineField() {
   if (!appState.project) return;
   error.value = "";
   try {
+    const text = String(bookOutlineDraft.value || "");
     await project.saveProjectMeta({
       ...appState.project,
-      book_outline: String(bookOutlineDraft.value || ""),
+      book_outline: text,
     });
+    bookOutlineDraftSynced = text;
   } catch (e) {
     error.value = String(e.message || e);
   }
@@ -190,6 +243,33 @@ function onMapSelect(n) {
 async function onCastChanged() {
   await loadStoryLite();
 }
+
+async function organizeMindMap() {
+  const book = String(bookOutlineDraft.value || (appState.project && appState.project.book_outline) || "").trim();
+  const ready = hasStructuredOutline(appState.project);
+  if (!book && !ready) {
+    toastWarning("请先填写并保存全书大纲");
+    return;
+  }
+  if (book && String(bookOutlineDraft.value || "") !== bookOutlineDraftSynced) {
+    await saveBookOutlineField();
+  }
+  mapBusy.value = true;
+  error.value = "";
+  try {
+    await runOutlineToMindmap();
+    mapPrefer.value = "plot";
+    await loadStoryLite();
+  } catch (e) {
+    error.value = String(e.message || e);
+  } finally {
+    mapBusy.value = false;
+  }
+}
+
+function useStructureTree() {
+  mapPrefer.value = "structure";
+}
 </script>
 
 <template>
@@ -205,9 +285,27 @@ async function onCastChanged() {
               <button type="button" class="app-btn" @click="showMap = !showMap">
                 {{ showMap ? "收起导图" : "展开导图" }}
               </button>
+              <button type="button" class="app-btn" :disabled="mapBusy" @click="organizeMindMap">
+                {{ mapBusy ? "整理中…" : "整理成导图" }}
+              </button>
+              <button
+                v-if="structuredReady"
+                type="button"
+                class="app-btn"
+                :disabled="mapBusy"
+                @click="useStructureTree"
+              >
+                用结构树
+              </button>
               <button type="button" class="app-btn" @click="loadStoryLite">刷新</button>
             </div>
-            <MindMapBoard v-if="showMap" :tree="outlineMindTree" :height="360" @select="onMapSelect" />
+            <MindMapBoard
+              v-if="showMap"
+              :tree="outlineMindTree"
+              :height="520"
+              :empty-text="mapEmptyHint"
+              @select="onMapSelect"
+            />
 
             <div class="field" style="margin-top: 16px">
               <label class="field-label">全书大纲</label>
@@ -240,6 +338,9 @@ async function onCastChanged() {
               <textarea v-model="drafts[ch.id].summary" rows="3" placeholder="本章冲突 / 推进 / 钩子" />
               <textarea v-model="drafts[ch.id].must_do" rows="2" placeholder="本章必达（焦点）" />
               <textarea v-model="drafts[ch.id].must_not" rows="2" placeholder="本章禁止" />
+              <p v-if="snapshots[ch.id]" class="written-sum muted">
+                已写总结：{{ snapshots[ch.id] }}
+              </p>
               <button type="button" class="app-btn" @click="saveOne(ch.id)">保存本章纲</button>
             </div>
           </div>
@@ -311,6 +412,12 @@ async function onCastChanged() {
 }
 .outline-card .app-btn {
   align-self: flex-start;
+}
+.written-sum {
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 0;
+  white-space: pre-wrap;
 }
 .error {
   color: var(--error);

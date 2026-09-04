@@ -1264,6 +1264,7 @@ fn tools_manifest() -> Value {
             {"cmd": "project_forget_recent", "args": ["root"], "desc": "从最近列表移除"},
             {"cmd": "project_delete", "args": ["root", "purge?"], "desc": "移除最近项；purge 时删含 project.json 的目录"},
             {"cmd": "project_forget_all_novels", "args": ["purge?"], "desc": "清空全部最近小说；可 purge 删盘"},
+            {"cmd": "novels_list_projects", "args": [], "desc": "列出 novels 目录与最近列表中的全部小说"},
             {"cmd": "project_save_meta", "args": ["root", "project"], "desc": "保存元数据"},
             {"cmd": "project_suggest_title", "args": ["root"], "desc": "AI 根据内容建议书名"},
             {"cmd": "project_apply_title", "args": ["root", "title"], "desc": "写入书名并刷新最近列表"},
@@ -1306,6 +1307,7 @@ fn tools_manifest() -> Value {
             {"cmd": "gen_log_list", "args": ["limit?"], "desc": "全局生成日志"},
             {"cmd": "project_gen_log_list", "args": ["root", "limit?"], "desc": "作品目录内生成/保存履历"},
             {"cmd": "usage_summary", "args": ["root?"], "desc": "token/费用累计摘要"},
+            {"cmd": "usage_backfill_costs", "args": [], "desc": "按当前配置重算历史花费并写回作品目录"},
             {"cmd": "provider_balance", "args": [], "desc": "DeepSeek 账户余额（其它提供商无接口）"}
         ],
         "examples": [

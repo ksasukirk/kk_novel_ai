@@ -122,6 +122,78 @@ pub fn list_as_json(root: &Path, limit: usize) -> AppResult<serde_json::Value> {
     }))
 }
 
+fn write_jsonl(path: &Path, entries: &[&GenLogEntry]) -> AppResult<()> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    let mut out = String::with_capacity(entries.len().saturating_mul(256));
+    for e in entries {
+        out.push_str(&serde_json::to_string(e)?);
+        out.push('\n');
+    }
+    fs::write(path, out)?;
+    Ok(())
+}
+
+/// 把全局履历按作品整表回写：覆盖 `gen_activity.jsonl` 与各章 `.genlog/*.jsonl`。
+/// 仅处理仍存在 `project.json` 的目录；返回成功同步的作品数。
+pub fn sync_all_from_entries(entries: &[GenLogEntry]) -> AppResult<usize> {
+    sync_from_entries(entries, false)
+}
+
+/// 仅补写尚无 `gen_activity.jsonl` 的作品目录。
+pub fn sync_missing_from_entries(entries: &[GenLogEntry]) -> AppResult<usize> {
+    sync_from_entries(entries, true)
+}
+
+fn sync_from_entries(entries: &[GenLogEntry], only_missing: bool) -> AppResult<usize> {
+    use std::collections::HashMap;
+    let mut by_root: HashMap<String, Vec<&GenLogEntry>> = HashMap::new();
+    for e in entries {
+        let root = e.project_root.trim();
+        if root.is_empty() || root == "(none)" {
+            continue;
+        }
+        by_root.entry(root.to_string()).or_default().push(e);
+    }
+    let mut synced = 0usize;
+    for (root_s, list) in by_root {
+        let root = Path::new(&root_s);
+        if !is_novel_project(root) {
+            continue;
+        }
+        let activity = project_activity_path(root);
+        if only_missing && activity.exists() {
+            continue;
+        }
+        // 先清旧章级文件，避免残留旧 id / 旧 cost
+        let dir = genlog_dir(root);
+        if dir.is_dir() {
+            if let Ok(rd) = fs::read_dir(&dir) {
+                for ent in rd.flatten() {
+                    let p = ent.path();
+                    if p.extension().and_then(|x| x.to_str()) == Some("jsonl") {
+                        let _ = fs::remove_file(&p);
+                    }
+                }
+            }
+        }
+        write_jsonl(&activity, &list)?;
+
+        let mut by_chapter: HashMap<String, Vec<&GenLogEntry>> = HashMap::new();
+        for e in &list {
+            let cid = e.chapter_id.trim();
+            let key = if cid.is_empty() { "_project" } else { cid };
+            by_chapter.entry(key.to_string()).or_default().push(*e);
+        }
+        for (cid, ch_list) in by_chapter {
+            write_jsonl(&chapter_genlog_path(root, &cid), &ch_list)?;
+        }
+        synced += 1;
+    }
+    Ok(synced)
+}
+
 fn take_chars(s: &str, n: usize) -> String {
     s.chars().take(n).collect()
 }

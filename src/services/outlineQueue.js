@@ -11,6 +11,7 @@ import {
   saveChapter,
   updateChapterMeta,
   applyBranchDoc,
+  getMemory,
 } from "./projectClient.js";
 import { runBlockDigestAndWait } from "./blockDigest.js";
 import {
@@ -21,12 +22,12 @@ import {
 } from "../stores/genJobs.js";
 import { createPlainBlock } from "../utils/genBlock.js";
 import { migrateBlocksToBranchDoc } from "../utils/branchModel.js";
-import { invoke } from "./tauri.js";
+import { isChapterBodyEmpty } from "../utils/chapterStatus.js";
 
 export const outlineQueueState = reactive({
   running: false,
   cancelled: false,
-  /** "" | "splitting_chapters" | "writing" | "switching" | "done" | "cancelled" | "error" */
+  /** "" | "splitting_chapters" | "writing" | "summarizing" | "switching" | "done" | "cancelled" | "error" */
   phase: "",
   chapterId: "",
   chapterTitle: "",
@@ -44,6 +45,9 @@ export function outlineQueueStatusLine() {
   if (s.phase === "switching") return `切换章节 · ${s.chapterTitle}`;
   if (s.phase === "writing") {
     return `按纲生成整章 · ${s.chapterTitle || "本章"}`;
+  }
+  if (s.phase === "summarizing") {
+    return `正在生成章节总结 · ${s.chapterTitle || "本章"}`;
   }
   if (s.phase === "done") {
     return s.chaptersDone > 1
@@ -160,6 +164,81 @@ function wrapChapterInstruction(chapter, userInstr) {
   return parts.join("\n");
 }
 
+function chapterHasSubstantialBody(chapter) {
+  const title = (chapter && chapter.title) || appState.chapterTitle || "";
+  if (isChapterBodyEmpty(appState.chapterContent, title)) return false;
+  const raw = String(appState.chapterContent || "").trim();
+  return raw.replace(/\s+/g, "").length >= 80;
+}
+
+async function chapterHasWrittenSnapshot(chapterId) {
+  try {
+    const memory = await getMemory();
+    const snaps = (memory && memory.chapter_snapshots) || [];
+    const hit = snaps.find((s) => s && s.chapter_id === chapterId);
+    return !!(hit && String(hit.summary || "").trim().length >= 40);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * 写后章节总结：只写入 memory 快照，禁止覆盖章纲。失败则抛错停队列。
+ */
+async function runChapterWrittenSummary(chapter) {
+  outlineQueueState.phase = "summarizing";
+  outlineQueueState.chapterId = chapter.id;
+  outlineQueueState.chapterTitle = chapter.title || "";
+  appState.statusMessage = outlineQueueStatusLine();
+  throwIfCancelled();
+  await waitForSlot();
+
+  const prevPlacement = appState.draftPlacement;
+  appState.draftPlacement = "";
+  const job = createGenJob({
+    label: `章节总结 · ${chapter.title || "本章"}`,
+  });
+  job.draftPlacement = "";
+  job.draftTask = "chapter_summary";
+
+  try {
+    const result = await runWriting(
+      {
+        project_root: appState.projectRoot,
+        chapter_id: chapter.id,
+        task: "chapter_summary",
+        instruction: "",
+        selection: "",
+      },
+      { job, label: job.label }
+    );
+    throwIfCancelled();
+    const text = String(
+      (result && (result.text || result.raw_text)) ||
+        job.previewRawText ||
+        job.previewText ||
+        ""
+    ).trim();
+    if (text.length < 40) {
+      throw new Error(
+        `章节「${chapter.title || "本章"}」总结过短或为空，已停队列。请补总结后再继续。`
+      );
+    }
+    return text;
+  } catch (e) {
+    const msg = String(e.message || e);
+    if (outlineQueueState.cancelled || /取消/.test(msg)) {
+      throw new Error("已取消按纲生成");
+    }
+    throw new Error(
+      `章节「${chapter.title || "本章"}」总结失败：${msg}。已保留正文，未进入下一章。`
+    );
+  } finally {
+    discardJob(job);
+    appState.draftPlacement = prevPlacement;
+  }
+}
+
 async function runChapterOutlineQueue(chapterId, userInstr) {
   const chapter = chapterById(chapterId);
   if (!chapter) throw new Error("章节不存在");
@@ -174,97 +253,102 @@ async function runChapterOutlineQueue(chapterId, userInstr) {
   outlineQueueState.beatIndex = 1;
   outlineQueueState.beatTotal = 1;
   outlineQueueState.beatTitle = "";
-  outlineQueueState.phase = "writing";
   appState.statusMessage = outlineQueueStatusLine();
 
   throwIfCancelled();
-  await waitForSlot();
   if (appState.dirty) await saveChapter();
 
-  // 整章一块：生成前清空旧正文，避免叠出多个生成块
-  const hasBody =
-    String(appState.chapterContent || "").trim() ||
-    (appState.chapterBlocks || []).some((b) => String(b.text || "").trim());
-  if (hasBody) {
-    const empty = [createPlainBlock("")];
-    applyBranchDoc(migrateBlocksToBranchDoc(empty));
-    await saveChapter();
-  }
+  const skipRewrite = chapterHasSubstantialBody(chapter);
 
-  const wrapped = wrapChapterInstruction(chapter, userInstr);
+  if (!skipRewrite) {
+    outlineQueueState.phase = "writing";
+    appState.statusMessage = outlineQueueStatusLine();
+    await waitForSlot();
 
-  appState.draftPlacement = "editor";
-  appState.draftTask = "continue";
-  appState.draftSelection = "";
-  appState.draftInstruction = wrapped;
-  appState.draftPersistInstruction = wrapped;
-  appState.draftActiveBeatId = "";
-  appState.draftRewriteBlockKey = "";
-  appState.draftAnchorBlockKey = "";
-  appState.draftBranchMode = "";
-  appState.draftBranchNodeId = "";
-  appState.draftForkFromVariantId = "";
-
-  const job = createGenJob({
-    label: `整章 · ${chapter.title || "本章"}`,
-  });
-  job.draftActiveBeatId = "";
-
-  try {
-    await runWriting(
-      withBranchContext(
-        {
-          project_root: appState.projectRoot,
-          chapter_id: chapter.id,
-          task: "continue",
-          instruction: wrapped,
-          selection: "",
-        },
-        "continue",
-        ""
-      ),
-      { job, label: job.label }
-    );
-  } catch (e) {
-    const msg = String(e.message || e);
-    if (outlineQueueState.cancelled || /取消/.test(msg)) {
-      throw new Error("已取消按纲生成");
+    // 空章或残稿才清空；已有实质正文（总结失败重跑）禁止抹掉
+    const hasBody =
+      String(appState.chapterContent || "").trim() ||
+      (appState.chapterBlocks || []).some((b) => String(b.text || "").trim());
+    if (hasBody) {
+      const empty = [createPlainBlock("")];
+      applyBranchDoc(migrateBlocksToBranchDoc(empty));
+      await saveChapter();
     }
-    throw e;
-  }
-  throwIfCancelled();
 
-  if (job.status === "done" && !job.accepted) {
-    const acc = await acceptDraft(job);
-    if (!acc.ok) throw new Error(acc.error || "写入失败");
-  }
+    const wrapped = wrapChapterInstruction(chapter, userInstr);
 
-  const blockKey =
-    job.lastWrittenBlockKey ||
-    (appState.chapterBlocks || [])
-      .slice()
-      .reverse()
-      .find((b) => b.type === "gen")?.key ||
-    "";
-  const blockText =
-    (appState.chapterBlocks || []).find((b) => b.key === blockKey)?.text || "";
+    appState.draftPlacement = "editor";
+    appState.draftTask = "continue";
+    appState.draftSelection = "";
+    appState.draftInstruction = wrapped;
+    appState.draftPersistInstruction = wrapped;
+    appState.draftActiveBeatId = "";
+    appState.draftRewriteBlockKey = "";
+    appState.draftAnchorBlockKey = "";
+    appState.draftBranchMode = "";
+    appState.draftBranchNodeId = "";
+    appState.draftForkFromVariantId = "";
 
-  if (blockKey && blockText.trim()) {
-    await runBlockDigestAndWait(
-      { blockKey, text: blockText, instruction: wrapped },
-      { timeoutMs: 120000, force: true }
-    );
-  }
-
-  const chDone = chapterById(chapter.id) || chapter;
-  try {
-    await invoke("memory_sync_chapter_snapshot", {
-      root: appState.projectRoot,
-      chapterId: chapter.id,
-      fallback: String(chDone.summary || chDone.title || ""),
+    const job = createGenJob({
+      label: `整章 · ${chapter.title || "本章"}`,
     });
-  } catch (e) {
-    console.warn("[outlineQueue] sync chapter snapshot failed", e);
+    job.draftActiveBeatId = "";
+
+    try {
+      await runWriting(
+        withBranchContext(
+          {
+            project_root: appState.projectRoot,
+            chapter_id: chapter.id,
+            task: "continue",
+            instruction: wrapped,
+            selection: "",
+          },
+          "continue",
+          ""
+        ),
+        { job, label: job.label }
+      );
+    } catch (e) {
+      const msg = String(e.message || e);
+      if (outlineQueueState.cancelled || /取消/.test(msg)) {
+        throw new Error("已取消按纲生成");
+      }
+      throw e;
+    }
+    throwIfCancelled();
+
+    if (job.status === "done" && !job.accepted) {
+      const acc = await acceptDraft(job);
+      if (!acc.ok) throw new Error(acc.error || "写入失败");
+    }
+
+    const blockKey =
+      job.lastWrittenBlockKey ||
+      (appState.chapterBlocks || [])
+        .slice()
+        .reverse()
+        .find((b) => b.type === "gen")?.key ||
+      "";
+    const blockText =
+      (appState.chapterBlocks || []).find((b) => b.key === blockKey)?.text || "";
+
+    if (blockKey && blockText.trim()) {
+      await runBlockDigestAndWait(
+        { blockKey, text: blockText, instruction: wrapped },
+        { timeoutMs: 120000, force: true }
+      );
+    }
+  }
+
+  if (!(await chapterHasWrittenSnapshot(chapter.id))) {
+    await runChapterWrittenSummary(chapter);
+  }
+
+  if (!(await chapterHasWrittenSnapshot(chapter.id))) {
+    throw new Error(
+      `章节「${chapter.title || "本章"}」总结未写入记忆快照，已停队列。请补总结后再继续。`
+    );
   }
 
   await updateChapterMeta(chapter.id, {
@@ -284,14 +368,36 @@ function assertCanStartOutlineQueue() {
   }
 }
 
+function chapterHasWritableOutline(chapter) {
+  if (!chapter) return false;
+  const st = String(chapter.status || "").toLowerCase();
+  if (st === "outline_complete" || st === "done" || st === "completed") return false;
+  return (
+    String(chapter.summary || "").trim() ||
+    (Array.isArray(chapter.beats) && chapter.beats.length > 0)
+  );
+}
+
+function nextOnlyChapterId(onlyIds, currentId) {
+  const idx = onlyIds.indexOf(currentId);
+  const start = idx >= 0 ? idx + 1 : 0;
+  for (let i = start; i < onlyIds.length; i += 1) {
+    if (chapterHasWritableOutline(chapterById(onlyIds[i]))) return onlyIds[i];
+  }
+  return "";
+}
+
 /**
  * 按纲生成（跨章）：从指定章（或当前章）起，每章整章写一次，完成后切下一章
- * @param {{ instruction?: string, startChapterId?: string, stopAfterOneChapter?: boolean }} opts
+ * @param {{ instruction?: string, startChapterId?: string, stopAfterOneChapter?: boolean, onlyChapterIds?: string[] }} opts
  */
 export async function runOutlineQueue(opts = {}) {
   assertCanStartOutlineQueue();
   const userInstr = String(opts.instruction || "").trim();
-  const startId = String(opts.startChapterId || "").trim() || appState.chapterId;
+  const onlyIds = Array.isArray(opts.onlyChapterIds)
+    ? opts.onlyChapterIds.map((id) => String(id || "").trim()).filter(Boolean)
+    : [];
+  const startId = String(opts.startChapterId || "").trim() || onlyIds[0] || appState.chapterId;
   const stopAfterOne = !!opts.stopAfterOneChapter;
 
   resetOutlineQueue();
@@ -299,6 +405,9 @@ export async function runOutlineQueue(opts = {}) {
   appState.statusMessage = stopAfterOne ? "单章按纲生成启动…" : "按纲生成启动…";
 
   let chapterId = startId;
+  if (onlyIds.length && !chapterHasWritableOutline(chapterById(chapterId))) {
+    chapterId = nextOnlyChapterId(onlyIds, "") || onlyIds[0];
+  }
   let chaptersDone = 0;
 
   try {
@@ -317,6 +426,11 @@ export async function runOutlineQueue(opts = {}) {
       outlineQueueState.chaptersDone = chaptersDone;
 
       if (stopAfterOne) break;
+
+      if (onlyIds.length) {
+        chapterId = nextOnlyChapterId(onlyIds, chapterId);
+        continue;
+      }
 
       const next = findNextOutlineChapter(chapterId);
       if (!next) break;

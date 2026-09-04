@@ -12,6 +12,7 @@ import { saveChapter, updateChapterMeta } from "../services/projectClient.js";
 import { undoLastAi } from "../services/aiUndo.js";
 import { applyStoryPatch } from "../services/storyClient.js";
 import { lineDiff } from "../utils/lineDiff.js";
+import { isBackgroundAnalysisTask } from "../utils/writingTasks.js";
 import { clearDraftPreview, rejectDraft } from "../services/draftAccept.js";
 import { canStartMoreJobs } from "../stores/genJobs.js";
 import {
@@ -386,7 +387,7 @@ async function onRun() {
   }
   try {
     if (task.value === "outline_run") {
-      // 主按钮：只生成「章节名 + 章纲」队列写入目录，不写正文
+      // 主按钮：拆章写入目录后立刻按弹窗里的章开写正文
       // 目录可为空（会自动建占位章再拆）
       await onGenerateChapterQueue();
       return;
@@ -409,7 +410,11 @@ async function onRun() {
     // 已取消「自动分节 / 小节」：续写与按纲都按整章一块
     sectionQueue.value = false;
     if (appState.dirty) await saveChapter();
-    appState.draftPlacement = useEditorDraft.value ? "editor" : "panel";
+    appState.draftPlacement = isBackgroundAnalysisTask(task.value)
+      ? "panel"
+      : useEditorDraft.value
+        ? "editor"
+        : "panel";
     appState.draftTask = task.value;
     appState.draftSelection = selection.value || "";
     appState.draftInstruction = instruction.value || "";
@@ -484,9 +489,10 @@ async function onGenerateChapterQueue() {
       bookOutline: seed,
       instruction: instruction.value,
     });
-    syncMsg.value = `已生成 ${
-      (r.updatedIds || []).length + (r.createdIds || []).length
-    } 章到左侧目录，可改章名/章纲后再写正文`;
+    const n = (r.updatedIds || []).length + (r.createdIds || []).length;
+    syncMsg.value = r.writingCancelled
+      ? `已写入目录 ${n} 章，写作已取消`
+      : `已写入 ${n} 章并按纲写完`;
   } catch (e) {
     const msg = String(e.message || e);
     if (msg.includes("取消")) {
@@ -523,7 +529,9 @@ async function onContinueSplit() {
     const r = await runContinueOutline({
       instruction: instruction.value,
     });
-    syncMsg.value = `已续拆追加 ${(r.createdIds || []).length} 章到目录`;
+    syncMsg.value = r.writingCancelled
+      ? `已续拆 ${(r.createdIds || []).length} 章，写作已取消`
+      : `已续拆 ${(r.createdIds || []).length} 章并按纲写完`;
   } catch (e) {
     const msg = String(e.message || e);
     if (msg.includes("取消")) {
@@ -539,10 +547,13 @@ async function onApplyChapterPlan() {
   error.value = "";
   syncMsg.value = "";
   try {
-    const r = await applyChapterPlan(chapterPlan.value);
-    syncMsg.value = `已写入目录 ${
-      r.updatedIds.length + r.createdIds.length
-    } 章，请在左侧编辑后再开写`;
+    const r = await applyChapterPlan(chapterPlan.value, {
+      instruction: instruction.value,
+    });
+    const n = r.updatedIds.length + r.createdIds.length;
+    syncMsg.value = r.writingCancelled
+      ? `已写入目录 ${n} 章，写作已取消`
+      : `已写入 ${n} 章并按纲写完`;
   } catch (e) {
     error.value = String(e.message || e);
   }
