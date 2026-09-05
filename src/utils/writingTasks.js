@@ -21,7 +21,11 @@ export function isBackgroundAnalysisTask(task) {
     t === "summarize" ||
     t === "consistency_check" ||
     t === "story_sync" ||
-    t === "sync_story"
+    t === "sync_story" ||
+    t === "beats_to_storyboard" ||
+    t === "storyboard_from_beats" ||
+    t === "content_to_image_prompt" ||
+    t === "image_prompt"
   );
 }
 

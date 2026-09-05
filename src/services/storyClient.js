@@ -45,6 +45,17 @@ export async function getDashboard() {
   return await invoke("story_dashboard", { root: appState.projectRoot });
 }
 
+export async function getStoryboard() {
+  return await invoke("story_storyboard_get", { root: appState.projectRoot });
+}
+
+export async function saveStoryboard(storyboard) {
+  return await invoke("story_storyboard_save", {
+    root: appState.projectRoot,
+    storyboard,
+  });
+}
+
 export function newId() {
   if (typeof crypto !== "undefined" && crypto.randomUUID) return crypto.randomUUID();
   return `id-${Date.now()}-${Math.random().toString(16).slice(2)}`;

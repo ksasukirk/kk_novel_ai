@@ -753,6 +753,13 @@ export async function autoAcceptJobIfNeeded(job) {
 
 export async function deleteGenBlock(blockKey) {
   if (!blockKey) return false;
+  const { isIllustrationBlock } = await import("../utils/genBlock.js");
+  const list = ensureBlockList();
+  const hitBlock = list.find((b) => b.key === blockKey);
+  if (hitBlock && isIllustrationBlock(hitBlock)) {
+    const { deleteIllustrationBlock } = await import("./illustration.js");
+    return await deleteIllustrationBlock(blockKey);
+  }
   await pushAiUndo("删除生成块");
   const doc = ensureBranchDoc();
   const hit = findNodeByBlockKey(doc, blockKey);

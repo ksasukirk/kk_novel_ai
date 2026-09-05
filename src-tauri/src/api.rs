@@ -980,6 +980,21 @@ pub fn story_canon_save(root: &str, canon: crate::story::CanonStore) -> AppResul
     Ok(json!({ "ok": true, "canon": canon }))
 }
 
+pub fn story_storyboard_get(root: &str) -> AppResult<Value> {
+    Ok(json!({
+        "ok": true,
+        "storyboard": crate::story::load_storyboard(Path::new(root))?
+    }))
+}
+
+pub fn story_storyboard_save(
+    root: &str,
+    storyboard: crate::story::StoryboardStore,
+) -> AppResult<Value> {
+    crate::story::save_storyboard(Path::new(root), &storyboard)?;
+    Ok(json!({ "ok": true, "storyboard": storyboard }))
+}
+
 pub fn story_apply_patch(root: &str, patch: Value) -> AppResult<Value> {
     crate::story::apply_story_patch(Path::new(root), &patch)
 }
@@ -1414,6 +1429,15 @@ pub async fn dispatch_rpc(req: Value) -> AppResult<Value> {
             story_apply_patch(req_str(&req, "root")?, patch)
         }
         "story_dashboard" => story_dashboard(req_str(&req, "root")?),
+        "story_storyboard_get" => story_storyboard_get(req_str(&req, "root")?),
+        "story_storyboard_save" => {
+            let storyboard = serde_json::from_value(
+                req.get("storyboard")
+                    .cloned()
+                    .ok_or_else(|| AppError::msg("缺少 storyboard"))?,
+            )?;
+            story_storyboard_save(req_str(&req, "root")?, storyboard)
+        }
         "lore_list" => lore_list(req_str(&req, "root")?),
         "lore_list_scoped" => lore_list_scoped(req_str(&req, "root")?),
         "character_roster_ensure" => character_roster_ensure(),
@@ -1536,6 +1560,18 @@ pub async fn dispatch_rpc(req: Value) -> AppResult<Value> {
             crate::usage::backfill_costs_from_genlog(&s)
         }
         "provider_balance" => crate::llm::balance::fetch_provider_balance(&settings::load_settings()?).await,
+        "image_generate" => {
+            let request: crate::image::ImageGenerateRequest = serde_json::from_value(
+                req.get("request")
+                    .cloned()
+                    .ok_or_else(|| AppError::msg("缺少 request"))?,
+            )?;
+            crate::image::generate(&settings::load_settings()?, request).await
+        }
+        "image_read_data_url" => crate::image::read_data_url(
+            req_str(&req, "root")?,
+            req_str(&req, "rel")?,
+        ),
         other => Err(AppError::msg(format!("未知 cmd: {other}"))),
     }
 }

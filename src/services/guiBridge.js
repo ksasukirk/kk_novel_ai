@@ -128,6 +128,10 @@ export async function startGuiBridge() {
                 ? "正在生成章节总结…"
               : task === "story_sync" || task === "sync_story"
                 ? "正在同步总谱…"
+              : task === "beats_to_storyboard" || task === "storyboard_from_beats"
+                ? "正在生成分镜…"
+              : task === "content_to_image_prompt" || task === "image_prompt"
+                ? "正在写绘图提示词…"
             : "后台处理中…";
     } else {
       resetGenProgress("CLI 生成中…");

@@ -38,6 +38,11 @@ export async function runBlockDigest(opts) {
   const blockKey = (opts && opts.blockKey) || "";
   const text = ((opts && opts.text) || "").trim();
   if (!blockKey || !text) return null;
+  if (opts && opts.blockType === "illustration") return null;
+  {
+    const hit = (appState.chapterBlocks || []).find((b) => b && b.key === blockKey);
+    if (hit && (hit.type === "illustration" || hit.type === "illus")) return null;
+  }
   if (!appState.projectRoot || !appState.chapterId) return null;
   if (!autoDigestEnabled()) return null;
   if (inFlightKeys.has(blockKey)) return null;

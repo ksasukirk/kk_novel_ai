@@ -351,6 +351,19 @@ pub fn story_dashboard(root: String) -> Result<Value, String> {
 }
 
 #[tauri::command]
+pub fn story_storyboard_get(root: String) -> Result<Value, String> {
+    api::story_storyboard_get(&root).map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn story_storyboard_save(
+    root: String,
+    storyboard: crate::story::StoryboardStore,
+) -> Result<Value, String> {
+    api::story_storyboard_save(&root, storyboard).map_err(Into::into)
+}
+
+#[tauri::command]
 pub fn lore_list(root: String) -> Result<Value, String> {
     api::lore_list(&root).map_err(Into::into)
 }
@@ -586,4 +599,66 @@ pub fn export_file_read_base64(path: String) -> Result<Value, String> {
 #[tauri::command]
 pub fn platform_info() -> Result<Value, String> {
     api::platform_info().map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn app_version() -> Value {
+    json!({
+        "version": crate::update::current_version(),
+        "github_url": crate::update::github_repo_url(),
+    })
+}
+
+#[tauri::command]
+pub async fn update_check() -> Result<Value, String> {
+    crate::update::check_update().await.map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn update_download(
+    app: AppHandle,
+    download_url: String,
+    asset_name: String,
+    latest: String,
+    api_download_url: Option<String>,
+) -> Result<Value, String> {
+    crate::update::download_update(
+        app,
+        download_url,
+        asset_name,
+        latest,
+        api_download_url.unwrap_or_default(),
+    )
+    .await
+    .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn update_reveal(path: String) -> Result<Value, String> {
+    crate::update::reveal_path(path).map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn update_launch_and_quit(app: AppHandle, path: String) -> Result<Value, String> {
+    crate::update::launch_and_quit(app, path).map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn open_external_url(url: String) -> Result<Value, String> {
+    crate::update::open_external_url(url).map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn image_generate(
+    request: crate::image::ImageGenerateRequest,
+) -> Result<Value, String> {
+    let settings = crate::settings::load_settings().map_err(Into::<String>::into)?;
+    crate::image::generate(&settings, request)
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn image_read_data_url(root: String, rel: String) -> Result<Value, String> {
+    crate::image::read_data_url(&root, &rel).map_err(Into::into)
 }

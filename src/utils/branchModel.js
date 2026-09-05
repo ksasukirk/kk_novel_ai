@@ -10,6 +10,9 @@ import {
   normalizeBlocks,
   normalizeSources,
   blockTocLabel,
+  isIllustrationType,
+  illustrationToInlineEntry,
+  inlineEntryToBlock,
 } from "./genBlock.js";
 
 function nextPlainKey() {
@@ -54,9 +57,14 @@ export function migrateBlocksToBranchDoc(raw) {
   };
 
   for (const b of list) {
+    if (isIllustrationType(b?.type)) {
+      pendingPlains.push(illustrationToInlineEntry({ ...b, key: b.key }));
+      continue;
+    }
     if (!b || b.type !== "gen") {
       pendingPlains.push({
         key: b?.key || nextPlainKey(),
+        type: "plain",
         text: String(b?.text ?? ""),
       });
       continue;
@@ -94,10 +102,7 @@ export function normalizeBranchDoc(raw) {
   if (!isBranchDoc(raw)) return migrateBlocksToBranchDoc(raw);
 
   const plains = Array.isArray(raw.plains)
-    ? raw.plains.map((p) => ({
-        key: String(p?.key || nextPlainKey()),
-        text: String(p?.text ?? ""),
-      }))
+    ? raw.plains.map((p) => normalizeInlineEntry(p))
     : [];
 
   const nodes = (Array.isArray(raw.nodes) ? raw.nodes : []).map((n) => {
@@ -111,10 +116,7 @@ export function normalizeBranchDoc(raw) {
       activeVariantId = variants[0].id;
     }
     const trailingPlains = Array.isArray(n.trailingPlains)
-      ? n.trailingPlains.map((p) => ({
-          key: String(p?.key || nextPlainKey()),
-          text: String(p?.text ?? ""),
-        }))
+      ? n.trailingPlains.map((p) => normalizeInlineEntry(p))
       : [];
     return {
       id: String(n.id || cryptoRandomId()),
@@ -130,6 +132,44 @@ export function normalizeBranchDoc(raw) {
   }).filter(Boolean);
 
   return { format: 2, nodes, plains };
+}
+
+function normalizeInlineEntry(p) {
+  if (isIllustrationType(p?.type)) {
+    return illustrationToInlineEntry({ ...p, key: p?.key || nextPlainKey() });
+  }
+  return {
+    key: String(p?.key || nextPlainKey()),
+    type: "plain",
+    text: String(p?.text ?? ""),
+  };
+}
+
+function applyInlineFromBlock(p, b) {
+  if (!b) return;
+  if (isIllustrationType(b.type)) {
+    const next = illustrationToInlineEntry({ ...b, key: p.key });
+    Object.keys(p).forEach((k) => {
+      delete p[k];
+    });
+    Object.assign(p, next);
+    return;
+  }
+  if (!p.type || p.type === "plain") {
+    p.type = "plain";
+    p.text = String(b.text ?? "");
+  }
+}
+
+function persistInlineEntry(p) {
+  if (isIllustrationType(p?.type)) {
+    return illustrationToInlineEntry(p);
+  }
+  return {
+    key: p.key,
+    type: "plain",
+    text: String(p.text ?? ""),
+  };
 }
 
 function normalizeVariant(v, index = 0) {
@@ -310,14 +350,14 @@ export function activePathBlocks(doc) {
   /** @type {Array} */
   const blocks = [];
   for (const p of d.plains) {
-    blocks.push({ key: p.key, type: "plain", text: p.text });
+    blocks.push(inlineEntryToBlock(p));
   }
   for (const node of activePathNodes(d)) {
     const v = node.variants.find((x) => x.id === node.activeVariantId) || node.variants[0];
     if (!v) continue;
     blocks.push(genBlockFromVariant(v, node.id));
     for (const p of node.trailingPlains || []) {
-      blocks.push({ key: p.key, type: "plain", text: p.text });
+      blocks.push(inlineEntryToBlock(p));
     }
   }
   if (!blocks.length) return [createPlainBlock("")];
@@ -341,7 +381,7 @@ export function syncDocFromBlocks(doc, blocks) {
 
   for (const p of d.plains) {
     const b = byKey.get(p.key);
-    if (b && b.type === "plain") p.text = String(b.text ?? "");
+    if (b) applyInlineFromBlock(p, b);
   }
 
   for (const node of d.nodes) {
@@ -358,7 +398,7 @@ export function syncDocFromBlocks(doc, blocks) {
     }
     for (const p of node.trailingPlains || []) {
       const b = byKey.get(p.key);
-      if (b && b.type === "plain") p.text = String(b.text ?? "");
+      if (b) applyInlineFromBlock(p, b);
     }
   }
   return d;
@@ -555,14 +595,19 @@ export function deleteVariantOrNode(doc, nodeId, variantId) {
   return { doc: d, removedKeys };
 }
 
-export function findNodeByBlockKey(doc, blockKey) {
-  const d = normalizeBranchDoc(doc);
-  for (const n of d.nodes) {
-    for (const v of n.variants) {
-      if (v.key === blockKey) return { node: n, variant: v };
+function findNodeByBlockKeyIn(d, blockKey) {
+  const k = String(blockKey || "");
+  if (!k) return null;
+  for (const n of d.nodes || []) {
+    for (const v of n.variants || []) {
+      if (v.key === k) return { node: n, variant: v };
     }
   }
   return null;
+}
+
+export function findNodeByBlockKey(doc, blockKey) {
+  return findNodeByBlockKeyIn(normalizeBranchDoc(doc), blockKey);
 }
 
 export function findNodeById(doc, nodeId) {
@@ -578,6 +623,7 @@ export function branchContextText(doc, mode, nodeId) {
   const d = normalizeBranchDoc(doc);
   const parts = [];
   for (const p of d.plains) {
+    if (isIllustrationType(p?.type)) continue;
     if (String(p.text || "").trim()) parts.push(String(p.text).replace(/\s+$/g, ""));
   }
 
@@ -588,6 +634,7 @@ export function branchContextText(doc, mode, nodeId) {
       const v = node.variants.find((x) => x.id === node.activeVariantId);
       if (v && String(v.text || "").trim()) parts.push(String(v.text).replace(/\s+$/g, ""));
       for (const p of node.trailingPlains || []) {
+        if (isIllustrationType(p?.type)) continue;
         if (String(p.text || "").trim()) parts.push(String(p.text).replace(/\s+$/g, ""));
       }
     }
@@ -596,6 +643,7 @@ export function branchContextText(doc, mode, nodeId) {
       const v = node.variants.find((x) => x.id === node.activeVariantId);
       if (v && String(v.text || "").trim()) parts.push(String(v.text).replace(/\s+$/g, ""));
       for (const p of node.trailingPlains || []) {
+        if (isIllustrationType(p?.type)) continue;
         if (String(p.text || "").trim()) parts.push(String(p.text).replace(/\s+$/g, ""));
       }
       if (node.id === nodeId) break;
@@ -606,6 +654,7 @@ export function branchContextText(doc, mode, nodeId) {
       const v = node.variants.find((x) => x.id === node.activeVariantId);
       if (v && String(v.text || "").trim()) parts.push(String(v.text).replace(/\s+$/g, ""));
       for (const p of node.trailingPlains || []) {
+        if (isIllustrationType(p?.type)) continue;
         if (String(p.text || "").trim()) parts.push(String(p.text).replace(/\s+$/g, ""));
       }
     }
@@ -770,16 +819,13 @@ export function branchDocForPersist(doc) {
   const d = normalizeBranchDoc(doc);
   return {
     format: 2,
-    plains: d.plains.map((p) => ({ key: p.key, text: p.text })),
+    plains: d.plains.map((p) => persistInlineEntry(p)),
     nodes: d.nodes.map((n) => ({
       id: n.id,
       parentId: n.parentId,
       fromVariantId: n.fromVariantId,
       activeVariantId: n.activeVariantId,
-      trailingPlains: (n.trailingPlains || []).map((p) => ({
-        key: p.key,
-        text: p.text,
-      })),
+      trailingPlains: (n.trailingPlains || []).map((p) => persistInlineEntry(p)),
       variants: n.variants.map((v) => ({
         id: v.id,
         key: v.key,
@@ -846,9 +892,15 @@ export function collapseChapterSectionsToWholeChapter(doc) {
   const textParts = [];
   /** @type {string[]} */
   const digestParts = [];
+  /** @type {object[]} */
+  const illusAfter = [];
   /** @type {object|null} */
   let lastGen = null;
   for (const b of blocks) {
+    if (isIllustrationType(b?.type)) {
+      illusAfter.push(illustrationToInlineEntry(b));
+      continue;
+    }
     const t = String(b.text ?? "").trim();
     if (t) textParts.push(t);
     if (b.type === "gen") {
@@ -861,8 +913,13 @@ export function collapseChapterSectionsToWholeChapter(doc) {
   const mergedDigest = digestParts.join("\n\n");
 
   if (!lastGen) {
+    const fallback = [];
+    if (mergedText) fallback.push(createPlainBlock(mergedText));
+    for (const i of illusAfter) fallback.push(inlineEntryToBlock(i));
     return {
-      doc: migrateBlocksToBranchDoc([createPlainBlock(mergedText)]),
+      doc: migrateBlocksToBranchDoc(
+        fallback.length ? fallback : [createPlainBlock("")]
+      ),
       changed: true,
     };
   }
@@ -894,7 +951,52 @@ export function collapseChapterSectionsToWholeChapter(doc) {
     fromVariantId: null,
     activeVariantId: variant.id,
     variants: [variant],
-    trailingPlains: [],
+    trailingPlains: illusAfter,
   });
   return { doc: normalizeBranchDoc(newDoc), changed: true };
+}
+
+/**
+ * 在指定 gen 块后插入或替换插图（写入该 node 的 trailingPlains 最前）
+ * @param {object} doc
+ * @param {string} genBlockKey
+ * @param {object} illus
+ */
+export function insertIllustrationAfterGen(doc, genBlockKey, illus) {
+  const d = normalizeBranchDoc(doc);
+  const entry = illustrationToInlineEntry(illus);
+  const hit = findNodeByBlockKeyIn(d, genBlockKey);
+  if (hit?.node) {
+    const list = Array.isArray(hit.node.trailingPlains) ? hit.node.trailingPlains : [];
+    const srcKey = String(entry.source?.block_key || genBlockKey);
+    const idx = list.findIndex(
+      (p) =>
+        isIllustrationType(p?.type) &&
+        (p.key === entry.key ||
+          String(p.source?.block_key || "") === srcKey ||
+          String(p.id || "") === String(entry.id || ""))
+    );
+    if (idx >= 0) list[idx] = entry;
+    else list.unshift(entry);
+    hit.node.trailingPlains = list;
+    return d;
+  }
+  const pidx = d.plains.findIndex(
+    (p) => isIllustrationType(p?.type) && p.key === entry.key
+  );
+  if (pidx >= 0) d.plains[pidx] = entry;
+  else d.plains.push(entry);
+  return d;
+}
+
+/** 按 key 删除 plains / trailingPlains 中的插图或纯文本 */
+export function removeInlineByKey(doc, key) {
+  const d = normalizeBranchDoc(doc);
+  const k = String(key || "");
+  if (!k) return d;
+  d.plains = (d.plains || []).filter((p) => p.key !== k);
+  for (const node of d.nodes) {
+    node.trailingPlains = (node.trailingPlains || []).filter((p) => p.key !== k);
+  }
+  return d;
 }

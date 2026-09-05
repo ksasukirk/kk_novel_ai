@@ -21,6 +21,17 @@ import {
   rebuildStoryFromExistingWork,
   storyRebuildState,
 } from "../services/storySync.js";
+import {
+  generateImageFile,
+  hashSourceText,
+  illustrationRel,
+  imageGenState,
+  loadIllustrationDataUrl,
+  persistIllustrationAfterGen,
+  promptFromShot,
+  runBeatsToStoryboard,
+} from "../services/illustration.js";
+import { createIllustrationBlock, cryptoRandomId } from "../utils/genBlock.js";
 
 defineProps({
   embedded: { type: Boolean, default: false },
@@ -75,6 +86,9 @@ const focusDraft = ref({
 });
 
 const beatProgress = ref({ current_beat_id: "", beats: {} });
+const storyboard = ref({ style_prefix: "", negative: "", chapters: [] });
+const shotThumbs = ref({});
+const boardBusy = ref(false);
 
 const beatProgressRows = computed(() => {
   const ch = currentChapter.value;
@@ -128,6 +142,219 @@ function beatStatusLabel(st) {
   return "待写";
 }
 
+const chapterShots = computed(() => {
+  const cid = appState.chapterId;
+  if (!cid) return [];
+  const ch = (storyboard.value.chapters || []).find((c) => c.chapter_id === cid);
+  return ch ? ch.shots || [] : [];
+});
+
+function ensureBoardChapter() {
+  const cid = appState.chapterId;
+  if (!cid) return null;
+  if (!Array.isArray(storyboard.value.chapters)) storyboard.value.chapters = [];
+  let ch = storyboard.value.chapters.find((c) => c.chapter_id === cid);
+  if (!ch) {
+    ch = { chapter_id: cid, shots: [] };
+    storyboard.value.chapters.push(ch);
+  }
+  if (!Array.isArray(ch.shots)) ch.shots = [];
+  return ch;
+}
+
+function addShot() {
+  const ch = ensureBoardChapter();
+  if (!ch) {
+    error.value = "请先选择章节";
+    return;
+  }
+  const beats = (currentChapter.value && currentChapter.value.beats) || [];
+  ch.shots.push({
+    id: story.newId(),
+    beat_id: beats[0] ? beats[0].id : "",
+    seq: ch.shots.length + 1,
+    location: "",
+    character_lore_ids: [],
+    visual: "",
+    dialogue: "",
+    mood: "",
+    note: "",
+    image: null,
+  });
+}
+
+function removeShot(i) {
+  const ch = ensureBoardChapter();
+  if (!ch) return;
+  ch.shots.splice(i, 1);
+  ch.shots.forEach((s, idx) => {
+    s.seq = idx + 1;
+  });
+}
+
+function moveShot(i, dir) {
+  const ch = ensureBoardChapter();
+  if (!ch) return;
+  const j = i + dir;
+  if (j < 0 || j >= ch.shots.length) return;
+  const tmp = ch.shots[i];
+  ch.shots[i] = ch.shots[j];
+  ch.shots[j] = tmp;
+  ch.shots.forEach((s, idx) => {
+    s.seq = idx + 1;
+  });
+}
+
+function loreTitle(id) {
+  const e = loreItems.value.find((x) => x.id === id);
+  return e ? e.title : id;
+}
+
+function toggleShotChar(shot, loreId) {
+  const ids = Array.isArray(shot.character_lore_ids) ? shot.character_lore_ids : [];
+  const i = ids.indexOf(loreId);
+  if (i >= 0) ids.splice(i, 1);
+  else ids.push(loreId);
+  shot.character_lore_ids = ids;
+}
+
+async function refreshShotThumbs() {
+  const next = { ...shotThumbs.value };
+  for (const s of chapterShots.value) {
+    const rel = s.image && s.image.rel;
+    if (!rel) continue;
+    if (next[rel]) continue;
+    next[rel] = await loadIllustrationDataUrl(rel);
+  }
+  shotThumbs.value = next;
+}
+
+watch(chapterShots, () => {
+  void refreshShotThumbs();
+}, { deep: true });
+
+async function onSaveStoryboard() {
+  try {
+    await story.saveStoryboard(storyboard.value);
+    message.value = "分镜表已保存";
+  } catch (e) {
+    error.value = String(e.message || e);
+  }
+}
+
+async function onGenerateStoryboard() {
+  if (!appState.chapterId) {
+    error.value = "请先选择章节";
+    return;
+  }
+  boardBusy.value = true;
+  try {
+    const shots = await runBeatsToStoryboard({});
+    const ch = ensureBoardChapter();
+    const beats = (currentChapter.value && currentChapter.value.beats) || [];
+    ch.shots = (shots || []).map((s, i) => {
+      let beatId = String(s.beat_id || "");
+      if (!beatId && beats[i]) beatId = beats[i].id;
+      const titles = Array.isArray(s.character_titles) ? s.character_titles : [];
+      const ids = titles
+        .map((t) => {
+          const hit = loreItems.value.find(
+            (e) => (e.title || "") === t || (e.title || "").endsWith(t)
+          );
+          return hit ? hit.id : "";
+        })
+        .filter(Boolean);
+      return {
+        id: story.newId(),
+        beat_id: beatId || null,
+        seq: Number(s.seq) || i + 1,
+        location: String(s.location || ""),
+        character_lore_ids: ids,
+        visual: String(s.visual || ""),
+        dialogue: String(s.dialogue || ""),
+        mood: String(s.mood || ""),
+        note: String(s.note || ""),
+        image: null,
+      };
+    });
+    await story.saveStoryboard(storyboard.value);
+    message.value = `已生成 ${ch.shots.length} 镜`;
+  } catch (e) {
+    error.value = String(e.message || e);
+  } finally {
+    boardBusy.value = false;
+  }
+}
+
+async function onGenerateShotImage(shot) {
+  if (!shot) return;
+  boardBusy.value = true;
+  try {
+    const drafted = await promptFromShot(shot, loreItems.value, storyboard.value);
+    const { openImagePromptDialog } = await import("../services/illustration.js");
+    const confirmed = await openImagePromptDialog({
+      title: "生成本镜图像",
+      prompt: drafted.prompt,
+      negative: drafted.negative || storyboard.value.negative || "",
+      caption: drafted.caption,
+    });
+    if (!confirmed) return;
+    const id = shot.id || cryptoRandomId();
+    const rel = illustrationRel(appState.chapterId, `shot-${id}`);
+    const gen = await generateImageFile({
+      rel,
+      prompt: confirmed.prompt,
+      negative: confirmed.negative,
+    });
+    shot.image = {
+      rel: gen.rel || rel,
+      prompt: confirmed.prompt,
+      negative: confirmed.negative,
+      seed: null,
+      model: (gen && gen.model) || "",
+      source_hash: await hashSourceText(shot.visual || ""),
+    };
+    await story.saveStoryboard(storyboard.value);
+    shotThumbs.value = { ...shotThumbs.value, [shot.image.rel]: "" };
+    await refreshShotThumbs();
+    message.value = "本镜图像已生成";
+  } catch (e) {
+    error.value = String(e.message || e);
+  } finally {
+    boardBusy.value = false;
+  }
+}
+
+async function onInsertShotIntoChapter(shot) {
+  if (!shot || !appState.chapterId) return;
+  try {
+    if (!appState.chapterBranchDoc) {
+      await project.loadChapter(appState.chapterId);
+    }
+    let rel = shot.image && shot.image.rel;
+    if (!rel) {
+      await onGenerateShotImage(shot);
+      rel = shot.image && shot.image.rel;
+    }
+    if (!rel) return;
+    const genBlocks = (appState.chapterBlocks || []).filter((b) => b.type === "gen");
+    const genKey = genBlocks.length ? genBlocks[genBlocks.length - 1].key : "";
+    const illus = createIllustrationBlock({
+      caption: shot.visual ? String(shot.visual).slice(0, 40) : "分镜插图",
+      rel,
+      prompt: (shot.image && shot.image.prompt) || "",
+      negative: (shot.image && shot.image.negative) || "",
+      model: (shot.image && shot.image.model) || "",
+      source_hash: (shot.image && shot.image.source_hash) || "",
+      source: { kind: "shot", block_key: genKey, shot_id: shot.id },
+    });
+    await persistIllustrationAfterGen(genKey, illus);
+    message.value = "已插入本章";
+  } catch (e) {
+    error.value = String(e.message || e);
+  }
+}
+
 function flattenScopedLore(scoped) {
   const local = (scoped.local || []).map((row) => row.entry);
   const global = (scoped.global || []).map((row) => row.entry);
@@ -160,6 +387,12 @@ async function refreshAll() {
     canon.value = c.canon || { facts: [] };
     relations.value = r.relations || { edges: [] };
     loreItems.value = flattenScopedLore(lore);
+    try {
+      const sb = await story.getStoryboard();
+      storyboard.value = sb.storyboard || { style_prefix: "", negative: "", chapters: [] };
+    } catch {
+      storyboard.value = { style_prefix: "", negative: "", chapters: [] };
+    }
     try {
       const memory = await project.getMemory();
       const next = {};
@@ -492,6 +725,7 @@ function onMapSelect(n) {
                   { id: 'canon', label: 'Canon' },
                   { id: 'relations', label: '关系' },
                   { id: 'beats', label: '节拍' },
+                  { id: 'board', label: '分镜' },
                 ]"
                 :key="t.id"
                 type="button"
@@ -626,6 +860,70 @@ function onMapSelect(n) {
                 </div>
               </div>
               <button type="button" class="app-btn app-btn-primary" @click="onSaveFocus">保存本章焦点</button>
+            </div>
+
+            <div v-if="tab === 'board'" class="block">
+              <p class="muted">当前章：{{ currentChapter?.title || "未选" }}。分镜不随「按正文重建总谱」改写。</p>
+              <div class="field">
+                <label class="field-label">全书画风锁</label>
+                <input v-model="storyboard.style_prefix" type="text" placeholder="如 cinematic still, muted colors" />
+              </div>
+              <div class="field">
+                <label class="field-label">默认负向提示</label>
+                <input v-model="storyboard.negative" type="text" placeholder="text, watermark, extra fingers" />
+              </div>
+              <div class="row-actions">
+                <button type="button" class="app-btn" :disabled="boardBusy" @click="addShot">加一镜</button>
+                <button type="button" class="app-btn" :disabled="boardBusy || !appState.chapterId" @click="onGenerateStoryboard">
+                  {{ boardBusy ? "处理中…" : "按节拍生成分镜" }}
+                </button>
+                <button type="button" class="app-btn app-btn-primary" @click="onSaveStoryboard">保存分镜</button>
+              </div>
+              <p v-if="imageGenState.message" class="muted">{{ imageGenState.message }}</p>
+              <div v-for="(s, i) in chapterShots" :key="s.id" class="card board-shot">
+                <div class="grid2">
+                  <input v-model.number="s.seq" type="number" min="1" title="序" />
+                  <select v-model="s.beat_id">
+                    <option value="">（无节拍）</option>
+                    <option v-for="b in (currentChapter && currentChapter.beats) || []" :key="b.id" :value="b.id">
+                      {{ b.title || b.purpose || b.id.slice(0, 8) }}
+                    </option>
+                  </select>
+                </div>
+                <input v-model="s.location" placeholder="地点" />
+                <textarea v-model="s.visual" rows="2" placeholder="画面" />
+                <textarea v-model="s.dialogue" rows="2" placeholder="对白要点" />
+                <input v-model="s.mood" placeholder="氛围" />
+                <p class="hint muted">人物</p>
+                <div class="tag-row">
+                  <button
+                    v-for="l in loreItems.filter((x) => x.kind === 'character')"
+                    :key="l.id"
+                    type="button"
+                    class="chip"
+                    :class="(s.character_lore_ids || []).includes(l.id) ? 'chip-active' : ''"
+                    @click="toggleShotChar(s, l.id)"
+                  >
+                    {{ l.title }}
+                  </button>
+                </div>
+                <p v-if="(s.character_lore_ids || []).length" class="hint muted">
+                  已选：{{ (s.character_lore_ids || []).map(loreTitle).join("、") }}
+                </p>
+                <img
+                  v-if="s.image && s.image.rel && shotThumbs[s.image.rel]"
+                  class="shot-thumb"
+                  :src="shotThumbs[s.image.rel]"
+                  alt=""
+                />
+                <div class="row-actions">
+                  <button type="button" class="app-btn" :disabled="boardBusy" @click="moveShot(i, -1)">上移</button>
+                  <button type="button" class="app-btn" :disabled="boardBusy" @click="moveShot(i, 1)">下移</button>
+                  <button type="button" class="app-btn" :disabled="boardBusy" @click="onGenerateShotImage(s)">生成本镜图</button>
+                  <button type="button" class="app-btn" :disabled="boardBusy" @click="onInsertShotIntoChapter(s)">插入本章</button>
+                  <button type="button" class="app-btn" @click="removeShot(i)">删除</button>
+                </div>
+              </div>
             </div>
 
             <div v-if="tab === 'timeline'" class="block">
@@ -869,6 +1167,20 @@ function onMapSelect(n) {
 }
 .timeline-card {
   border-left: 3px solid var(--accent-hover);
+}
+.shot-thumb {
+  display: block;
+  max-width: 220px;
+  max-height: 160px;
+  object-fit: cover;
+  border-radius: 8px;
+  margin: 8px 0;
+}
+.tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 8px;
 }
 .map-hint,
 .select-hint {

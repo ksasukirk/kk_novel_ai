@@ -8,6 +8,12 @@ import * as project from "../services/projectClient.js";
 import CapsuleSwitch from "../components/CapsuleSwitch.vue";
 import { appConfirmDelete } from "../services/confirmDialog.js";
 import { useToastError } from "../services/toast.js";
+import {
+  emptyVisualSheet,
+  isVisualAttrKey,
+  mergeVisualIntoAttrs,
+  visualFromAttrs,
+} from "../utils/loreVisual.js";
 
 const items = ref([]);
 const rosterPath = ref("");
@@ -27,6 +33,7 @@ function emptyForm(kind) {
     linksText: "",
     attrsText: "",
     unique: kind !== "world",
+    visual: emptyVisualSheet(),
   };
 }
 
@@ -50,7 +57,7 @@ function linksToText(links) {
 function attrsToText(attrs) {
   if (!attrs || typeof attrs !== "object") return "";
   return Object.entries(attrs)
-    .filter(([k]) => k !== "unique" && !k.startsWith("_"))
+    .filter(([k]) => k !== "unique" && !k.startsWith("_") && !isVisualAttrKey(k))
     .map(([k, v]) => `${k}=${v}`)
     .join("\n");
 }
@@ -107,6 +114,7 @@ function edit(item) {
     linksText: linksToText(item.links),
     attrsText: attrsToText(item.attrs),
     unique: item.kind === "character" ? entryIsUnique(item) : false,
+    visual: visualFromAttrs(item.attrs),
   };
   if (item.kind === "world" || item.kind === "character") {
     kindFilter.value = item.kind;
@@ -136,7 +144,7 @@ async function save() {
         .map((s) => s.trim())
         .filter(Boolean),
       links: parseLinks(form.value.linksText),
-      attrs: parseAttrs(form.value.attrsText),
+      attrs: mergeVisualIntoAttrs(parseAttrs(form.value.attrsText), form.value.visual),
       unique: isChar ? !!form.value.unique : false,
       sources: [],
       updated_at: "",
@@ -259,6 +267,16 @@ onMounted(refresh);
         <div class="field">
           <label class="field-label">关键词（逗号分隔）</label>
           <input v-model="form.keywords" type="text" placeholder="娜娜, 清理, 女体" />
+        </div>
+        <div class="field" v-if="form.kind === 'character'">
+          <label class="field-label">形象卡（出图用）</label>
+          <input v-model="form.visual.外貌" type="text" placeholder="外貌" />
+          <input v-model="form.visual.发型" type="text" placeholder="发型" />
+          <input v-model="form.visual.瞳色" type="text" placeholder="瞳色" />
+          <input v-model="form.visual.体态" type="text" placeholder="体态" />
+          <input v-model="form.visual.常服" type="text" placeholder="常服" />
+          <input v-model="form.visual.画风锚" type="text" placeholder="画风锚（英文短 token）" />
+          <input v-model="form.visual.portrait_rel" type="text" placeholder="立绘路径 assets/portraits/…（可空）" />
         </div>
         <div class="field">
           <label class="field-label">属性（每行 key=value）</label>

@@ -241,6 +241,73 @@ pub fn save_canon(root: &Path, canon: &CanonStore) -> AppResult<()> {
     write_json(&story_dir(root).join("canon.json"), canon)
 }
 
+// --- storyboard（分镜表，不接入 apply_story_patch / story_sync） ---
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct StoryboardImageMeta {
+    #[serde(default)]
+    pub rel: String,
+    #[serde(default)]
+    pub prompt: String,
+    #[serde(default)]
+    pub negative: String,
+    #[serde(default)]
+    pub seed: Option<i64>,
+    #[serde(default)]
+    pub model: String,
+    #[serde(default)]
+    pub source_hash: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct StoryboardShot {
+    pub id: String,
+    #[serde(default)]
+    pub beat_id: Option<String>,
+    #[serde(default)]
+    pub seq: u32,
+    #[serde(default)]
+    pub location: String,
+    #[serde(default)]
+    pub character_lore_ids: Vec<String>,
+    #[serde(default)]
+    pub visual: String,
+    #[serde(default)]
+    pub dialogue: String,
+    #[serde(default)]
+    pub mood: String,
+    #[serde(default)]
+    pub note: String,
+    #[serde(default)]
+    pub image: Option<StoryboardImageMeta>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct StoryboardChapter {
+    pub chapter_id: String,
+    #[serde(default)]
+    pub shots: Vec<StoryboardShot>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct StoryboardStore {
+    #[serde(default)]
+    pub style_prefix: String,
+    #[serde(default)]
+    pub negative: String,
+    #[serde(default)]
+    pub chapters: Vec<StoryboardChapter>,
+}
+
+pub fn load_storyboard(root: &Path) -> AppResult<StoryboardStore> {
+    read_json_or_default(&story_dir(root).join("storyboard.json"))
+}
+
+pub fn save_storyboard(root: &Path, board: &StoryboardStore) -> AppResult<()> {
+    ensure_story_dir(root)?;
+    write_json(&story_dir(root).join("storyboard.json"), board)
+}
+
 // --- prompt helpers ---
 
 pub fn plot_for_prompt(plot: &PlotStore, focus_arc_ids: &[String]) -> String {

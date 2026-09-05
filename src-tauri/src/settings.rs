@@ -53,6 +53,14 @@ fn default_true_for_deepseek_cache() -> bool {
     true
 }
 
+fn default_image_provider() -> String {
+    "openai_compat".into()
+}
+
+fn default_image_size() -> String {
+    "1024x1024".into()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RecentProject {
     #[serde(default)]
@@ -152,6 +160,17 @@ pub struct AppSettings {
     /// 续写 prompt 把易变字段（节拍状态/方向锚点等）放到末尾，利于 DeepSeek 前缀缓存
     #[serde(default = "default_true_for_deepseek_cache")]
     pub writing_cache_friendly_prompt: bool,
+    /// 图像 API：openai_compat（Comfy 第二期）
+    #[serde(default = "default_image_provider")]
+    pub image_provider: String,
+    #[serde(default)]
+    pub image_base_url: String,
+    #[serde(default)]
+    pub image_api_key: String,
+    #[serde(default)]
+    pub image_model: String,
+    #[serde(default = "default_image_size")]
+    pub image_size: String,
     #[serde(default)]
     pub last_project_path: Option<String>,
     /// 最近作品列表（作品页网格）
@@ -203,6 +222,11 @@ impl Default for AppSettings {
             deepseek_pricing_tier: default_deepseek_pricing_tier(),
             price_cache_hit_per_1m: 0.0,
             writing_cache_friendly_prompt: true,
+            image_provider: default_image_provider(),
+            image_base_url: String::new(),
+            image_api_key: String::new(),
+            image_model: String::new(),
+            image_size: default_image_size(),
             last_project_path: None,
             recent_projects: vec![],
             recent_knowledge_bases: vec![],

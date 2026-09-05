@@ -10,6 +10,7 @@ import {
   createPlainBlock,
   formatBlockMeta,
   formatBlockSources,
+  isIllustrationBlock,
   paragraphSummaryLabel,
   paragraphSummaryTags,
 } from "../utils/genBlock.js";
@@ -37,6 +38,14 @@ import {
   saveChapterProgress,
 } from "../services/editorReadingProgress.js";
 import { canStartMoreJobs, MAX_PARALLEL_GEN } from "../stores/genJobs.js";
+import {
+  deleteIllustrationBlock,
+  illustrateGenBlock,
+  imageGenState,
+  isIllustrationStale,
+  loadIllustrationDataUrl,
+  regenerateIllustration,
+} from "../services/illustration.js";
 import CharacterHoverCard from "./CharacterHoverCard.vue";
 import EditorDraftPreview from "./EditorDraftPreview.vue";
 import { useToastError } from "../services/toast.js";
@@ -59,6 +68,9 @@ const blockError = useToastError();
 const rewritingKey = ref("");
 const polishingKey = ref("");
 const digestingKey = ref("");
+const illustratingKey = ref("");
+const illusUrls = reactive({});
+const illusStale = reactive({});
 const copiedInstrKey = ref("");
 let copiedInstrTimer = null;
 
@@ -124,6 +136,9 @@ function mirrorHtml(block, index) {
 
 /** 整块总结标题：生成块优先指令，否则取正文开头 */
 function blockSummaryLabel(block, index) {
+  if (isIllustrationBlock(block)) {
+    return block.caption ? `插图 · ${block.caption}` : "插图";
+  }
   if (block.type === "gen") {
     const instr = String(block.instruction || "").trim();
     if (instr) return paragraphSummaryLabel(instr, 40);
@@ -309,6 +324,7 @@ function onCardLeave() {
 }
 
 function blockBusy(block) {
+  if (illustratingKey.value && block?.key === illustratingKey.value) return true;
   return anchoredJobsFor(block?.key).length > 0;
 }
 
@@ -319,6 +335,21 @@ function genSlotsFree(n = 1) {
 async function onDeleteBlock(block) {
   blockError.value = "";
   if (!block?.key || blockBusy(block)) return;
+  if (isIllustrationBlock(block)) {
+    if (
+      !(await appConfirmDelete("删除这张插图？正文不会改。", {
+        title: "删除插图",
+      }))
+    ) {
+      return;
+    }
+    try {
+      await deleteIllustrationBlock(block.key);
+    } catch (e) {
+      blockError.value = String(e.message || e);
+    }
+    return;
+  }
   if (
     !(await appConfirmDelete("删除这一段生成内容？", {
       title: "删除生成块",
@@ -332,6 +363,50 @@ async function onDeleteBlock(block) {
     blockError.value = String(e.message || e);
   }
 }
+
+async function onIllustrate(block) {
+  blockError.value = "";
+  if (!block?.key || props.readonly) return;
+  illustratingKey.value = block.key;
+  try {
+    await illustrateGenBlock(block, []);
+  } catch (e) {
+    blockError.value = String(e.message || e);
+  } finally {
+    illustratingKey.value = "";
+  }
+}
+
+async function onRegenIllustration(block) {
+  blockError.value = "";
+  illustratingKey.value = block.key;
+  try {
+    const srcKey = block.source && block.source.block_key;
+    const src = (blocks.value || []).find((b) => b.key === srcKey);
+    await regenerateIllustration(block, src ? src.text : block.prompt);
+    if (block.rel) delete illusUrls[block.rel];
+  } catch (e) {
+    blockError.value = String(e.message || e);
+  } finally {
+    illustratingKey.value = "";
+  }
+}
+
+watch(
+  blocks,
+  async (list) => {
+    for (const b of list || []) {
+      if (!isIllustrationBlock(b) || !b.rel) continue;
+      if (!illusUrls[b.rel]) {
+        illusUrls[b.rel] = await loadIllustrationDataUrl(b.rel);
+      }
+      const srcKey = b.source && b.source.block_key;
+      const src = (list || []).find((x) => x.key === srcKey);
+      illusStale[b.key] = await isIllustrationStale(b, src ? src.text : "");
+    }
+  },
+  { deep: true, immediate: true }
+);
 
 function closeActionPopup() {
   actionPopup.open = false;
@@ -674,7 +749,7 @@ defineExpose({
       :ref="(el) => setBlockRef(el, index)"
       class="chapter-block"
       :class="[
-        block.type === 'gen' ? 'is-gen' : 'is-plain',
+        block.type === 'gen' ? 'is-gen' : isIllustrationBlock(block) ? 'is-illustration' : 'is-plain',
         { 'is-drafting': isAnchoredDraft(block) },
       ]"
       :data-block-key="block.key || ''"
@@ -803,6 +878,36 @@ defineExpose({
           </button>
           <button
             type="button"
+            class="block-act"
+            :disabled="
+              readonly ||
+              illustratingKey === block.key ||
+              imageGenState.busy
+            "
+            @click.stop="onIllustrate(block)"
+          >
+            {{ illustratingKey === block.key ? "配图中…" : "配图" }}
+          </button>
+          <button
+            type="button"
+            class="block-act danger"
+            :disabled="readonly || blockBusy(block)"
+            @click.stop="onDeleteBlock(block)"
+          >
+            删除
+          </button>
+        </div>
+        <div v-else-if="isIllustrationBlock(block)" class="block-sticky-actions">
+          <button
+            type="button"
+            class="block-act"
+            :disabled="readonly || illustratingKey === block.key || imageGenState.busy"
+            @click.stop="onRegenIllustration(block)"
+          >
+            {{ illustratingKey === block.key ? "生成中…" : "重生成" }}
+          </button>
+          <button
+            type="button"
             class="block-act danger"
             :disabled="readonly || blockBusy(block)"
             @click.stop="onDeleteBlock(block)"
@@ -819,8 +924,19 @@ defineExpose({
         embedded
       />
 
+      <figure v-if="isIllustrationBlock(block)" class="illus-figure">
+        <img
+          v-if="block.rel && illusUrls[block.rel]"
+          :src="illusUrls[block.rel]"
+          :alt="block.caption || '插图'"
+        />
+        <p v-else class="muted">{{ block.rel ? "正在载入插图…" : "尚未出图" }}</p>
+        <figcaption v-if="block.caption">{{ block.caption }}</figcaption>
+        <p v-if="illusStale[block.key]" class="illus-stale">正文已改，图可能不符</p>
+      </figure>
+
       <div
-        v-show="!hideBodyForAnchoredDraft(block)"
+        v-show="!isIllustrationBlock(block) && !hideBodyForAnchoredDraft(block)"
         class="block-stack"
         @mouseover="onHitOver"
         @mousemove="onHitMove"
@@ -990,6 +1106,33 @@ defineExpose({
   box-shadow: var(--shadow-sm);
   border-left: 3px solid var(--accent);
   box-sizing: border-box;
+}
+.chapter-block.is-illustration {
+  padding: 10px 12px 12px;
+  background: var(--surface-solid);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  border-left: 3px solid color-mix(in srgb, var(--accent) 55%, #888);
+  box-sizing: border-box;
+}
+.illus-figure {
+  margin: 0;
+}
+.illus-figure img {
+  display: block;
+  max-width: min(100%, 520px);
+  height: auto;
+  border-radius: 8px;
+}
+.illus-figure figcaption {
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.illus-stale {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--error, #c44);
 }
 .chapter-block.is-plain {
   padding-bottom: 4px;

@@ -48,6 +48,69 @@ export function createGenBlock(meta = {}, text = "") {
   };
 }
 
+export function isIllustrationType(type) {
+  return type === "illustration" || type === "illus";
+}
+
+export function isIllustrationBlock(b) {
+  return !!(b && isIllustrationType(b.type));
+}
+
+function normalizeIllusSource(raw) {
+  const s = raw && typeof raw === "object" ? raw : {};
+  return {
+    kind: String(s.kind || "block"),
+    block_key: String(s.block_key || ""),
+    shot_id: String(s.shot_id || ""),
+  };
+}
+
+/**
+ * @param {Partial<{key:string,id:string,caption:string,rel:string,prompt:string,negative:string,seed:number|null,model:string,source_hash:string,source:object}>} meta
+ */
+export function createIllustrationBlock(meta = {}) {
+  const block = {
+    key: meta.key || nextKey(),
+    type: "illustration",
+    id: meta.id || cryptoRandomId(),
+    caption: String(meta.caption || ""),
+    rel: String(meta.rel || ""),
+    prompt: String(meta.prompt || ""),
+    negative: String(meta.negative || ""),
+    seed: meta.seed != null && meta.seed !== "" ? Number(meta.seed) : null,
+    model: String(meta.model || ""),
+    source_hash: String(meta.source_hash || ""),
+    source: normalizeIllusSource(meta.source),
+    text: "",
+  };
+  return block;
+}
+
+export function illustrationToInlineEntry(block) {
+  const b = createIllustrationBlock(block || {});
+  return {
+    key: b.key,
+    type: "illustration",
+    id: b.id,
+    caption: b.caption,
+    rel: b.rel,
+    prompt: b.prompt,
+    negative: b.negative,
+    seed: b.seed,
+    model: b.model,
+    source_hash: b.source_hash,
+    source: b.source,
+    text: "",
+  };
+}
+
+export function inlineEntryToBlock(p) {
+  if (isIllustrationType(p?.type)) {
+    return createIllustrationBlock({ ...p, key: p.key });
+  }
+  return { key: p?.key || nextKey(), type: "plain", text: String(p?.text ?? "") };
+}
+
 /** @param {unknown} raw */
 export function normalizeSources(raw) {
   if (!raw) return [];
@@ -92,14 +155,21 @@ export function normalizeBlocks(rawList) {
       if (b.key) gen.key = b.key;
       return gen;
     }
-    return createPlainBlock(b.text || "");
+    if (isIllustrationType(b.type)) {
+      return createIllustrationBlock({ ...b, key: b.key });
+    }
+    const plain = createPlainBlock(b.text || "");
+    if (b.key) plain.key = b.key;
+    return plain;
   });
 }
 
-/** 块列表 → 落盘正文（无标记） */
+/** 块列表 → 落盘正文（无标记；插图不进章节文件） */
 export function contentFromBlocks(blocks) {
   if (!Array.isArray(blocks) || !blocks.length) return "";
-  const parts = blocks.map((b) => String(b?.text ?? "").replace(/\s+$/g, ""));
+  const parts = blocks
+    .filter((b) => !isIllustrationBlock(b))
+    .map((b) => String(b?.text ?? "").replace(/\s+$/g, ""));
   while (parts.length > 1 && !parts[parts.length - 1].trim()) parts.pop();
   return parts.join("\n\n").replace(/^\n+/, "") + (parts.some((p) => p.length) ? "\n" : "");
 }
@@ -241,6 +311,9 @@ export function blocksForPersist(blocks) {
         digest: b.digest || "",
         text: b.text || "",
       };
+    }
+    if (isIllustrationBlock(b)) {
+      return illustrationToInlineEntry(b);
     }
     return { type: "plain", key: b.key || "", text: b.text || "" };
   });

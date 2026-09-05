@@ -1,6 +1,6 @@
 [package]
 name = "kk_novel_ai"
-version = "0.2.18"
+version = "0.2.20"
 edition = "2021"
 authors = ["kk"]
 
@@ -34,6 +34,7 @@ parking_lot = "0.12"
 rusqlite = { version = "0.32", features = ["bundled"] }
 zip = { version = "2", default-features = false, features = ["deflate"] }
 krilla = "0.8"
+base64 = "0.22"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 rfd = "0.15"

@@ -21,6 +21,16 @@ import {
   DEEPSEEK_OFFICIAL_PRICES,
   resolveDeepseekPeak as resolveDeepseekPeakUtil,
 } from "../utils/deepseekPricing.js";
+import {
+  checkAppUpdate,
+  downloadAppUpdate,
+  getAppAbout,
+  GITHUB_REPO_URL,
+  launchDownloadedUpdate,
+  openExternalUrl,
+  revealDownloadedUpdate,
+} from "../services/appUpdate.js";
+import { formatUpdateSpeedMbs } from "../services/updateFlow.js";
 
 const form = ref(null);
 const models = ref([]);
@@ -29,14 +39,25 @@ const error = useToastError();
 const pickTarget = ref("model");
 const fontPresets = EDITOR_FONT_PRESETS;
 const fontSizes = EDITOR_FONT_SIZES;
+const appVersion = ref("");
+const githubUrl = ref(GITHUB_REPO_URL);
+const updateInfo = ref(null);
+const updateChecking = ref(false);
+const updateDownloading = ref(false);
+const updateProgress = ref({ received: 0, total: 0 });
+const updateStartedAt = ref(0);
+const downloadedPath = ref("");
 /** 仅用于重新输入；不回填已保存明文 */
 const apiKeyDraft = ref("");
 const apiKeyConfigured = ref(false);
+const imageApiKeyDraft = ref("");
+const imageApiKeyConfigured = ref(false);
 const mobileUx = ref(isMobileUx());
 /** DeepSeek 官方单价（与 src/utils/deepseekPricing.js 同步） */
 const DEEPSEEK_PRICE_REF = DEEPSEEK_OFFICIAL_PRICES;
 /** 内存中保留已保存 key，供未改时原样写回（不进输入框） */
 let savedApiKey = "";
+let savedImageApiKey = "";
 /** 初始化灌表期间不触发自动保存 */
 let hydrating = true;
 /** 保存写回表单时抑制 watch 再入 */
@@ -51,6 +72,9 @@ onMounted(async () => {
     savedApiKey = String((s && s.api_key) || "");
     apiKeyConfigured.value = !!savedApiKey;
     apiKeyDraft.value = "";
+    savedImageApiKey = String((s && s.image_api_key) || "");
+    imageApiKeyConfigured.value = !!savedImageApiKey;
+    imageApiKeyDraft.value = "";
     form.value = {
       analysis_model: "",
       analysis_temperature: 0.3,
@@ -78,8 +102,13 @@ onMounted(async () => {
       deepseek_pricing_tier: "auto",
       writing_cache_friendly_prompt: true,
       writing_target_chars: 1800,
+      image_provider: "openai_compat",
+      image_base_url: "",
+      image_model: "",
+      image_size: "1024x1024",
       ...s,
       api_key: "",
+      image_api_key: "",
     };
     // 旧配置无规定字数：用 max_tokens 当作规定字数
     if (!form.value.writing_target_chars || form.value.writing_target_chars < 200) {
@@ -124,8 +153,22 @@ onMounted(async () => {
     if (!form.value.deepseek_pricing_tier) {
       form.value.deepseek_pricing_tier = "auto";
     }
+    if (!form.value.image_provider) {
+      form.value.image_provider = "openai_compat";
+    }
+    if (!form.value.image_size) {
+      form.value.image_size = "1024x1024";
+    }
     form.value.base_url = normalizeBaseUrl(form.value.base_url);
     applyEditorTypography(form.value);
+    try {
+      const about = await getAppAbout();
+      appVersion.value = about.version;
+      githubUrl.value = about.githubUrl || GITHUB_REPO_URL;
+    } catch {
+      appVersion.value = "";
+      githubUrl.value = GITHUB_REPO_URL;
+    }
     await onHealth();
   } catch (e) {
     error.value = String(e.message || e);
@@ -157,6 +200,11 @@ watch(
 );
 
 watch(apiKeyDraft, () => {
+  if (hydrating || suppressing) return;
+  scheduleSave();
+});
+
+watch(imageApiKeyDraft, () => {
   if (hydrating || suppressing) return;
   scheduleSave();
 });
@@ -202,9 +250,11 @@ async function persistSettings(opts = {}) {
     suppressing = true;
     syncMaxFromTarget();
     const nextKey = apiKeyDraft.value.trim();
+    const nextImageKey = imageApiKeyDraft.value.trim();
     const payload = {
       ...form.value,
       api_key: nextKey || savedApiKey,
+      image_api_key: nextImageKey || savedImageApiKey,
     };
     await saveSettings(payload);
     if (seq !== saveSeq) return;
@@ -214,7 +264,13 @@ async function persistSettings(opts = {}) {
       apiKeyConfigured.value = true;
       apiKeyDraft.value = "";
     }
+    if (nextImageKey) {
+      savedImageApiKey = nextImageKey;
+      imageApiKeyConfigured.value = true;
+      imageApiKeyDraft.value = "";
+    }
     form.value.api_key = "";
+    form.value.image_api_key = "";
     if (!silent) message.value = "已自动保存";
   } catch (e) {
     if (seq !== saveSeq) return;
@@ -300,6 +356,98 @@ function refreshDeepseekPrices() {
 
 const deepseekHintPeak = computed(() => resolveDeepseekPeak());
 
+const updatePct = computed(() => {
+  const t = Number(updateProgress.value.total) || 0;
+  const r = Number(updateProgress.value.received) || 0;
+  if (t <= 0) return 0;
+  return Math.min(100, Math.round((r / t) * 100));
+});
+
+function formatMb(bytes) {
+  const n = Number(bytes) || 0;
+  return (n / (1024 * 1024)).toFixed(2);
+}
+
+const updateReceivedMb = computed(() => formatMb(updateProgress.value.received));
+const updateTotalMb = computed(() => {
+  const t = Number(updateProgress.value.total) || 0;
+  return t > 0 ? formatMb(t) : "?";
+});
+const updateSpeedMbs = computed(() =>
+  formatUpdateSpeedMbs(updateProgress.value.received, updateStartedAt.value),
+);
+
+async function onCheckUpdate() {
+  error.value = "";
+  message.value = "";
+  downloadedPath.value = "";
+  updateChecking.value = true;
+  try {
+    const r = await checkAppUpdate();
+    updateInfo.value = r;
+    if (r && r.current) appVersion.value = String(r.current);
+    if (r && r.has_update) {
+      message.value = `发现新版本 ${r.latest}`;
+    } else {
+      message.value = "已是最新版本";
+    }
+  } catch (e) {
+    error.value = String(e.message || e);
+  } finally {
+    updateChecking.value = false;
+  }
+}
+
+async function onDownloadUpdate() {
+  const info = updateInfo.value;
+  if (!info || !info.download_url) {
+    error.value = "没有可下载的 Windows 安装包";
+    return;
+  }
+  error.value = "";
+  message.value = "正在下载更新…";
+  updateDownloading.value = true;
+  updateProgress.value = { received: 0, total: 0 };
+  updateStartedAt.value = 0;
+  try {
+    const r = await downloadAppUpdate(info, (p) => {
+      updateProgress.value = {
+        received: Number(p.received) || 0,
+        total: Number(p.total) || 0,
+      };
+      if (!updateStartedAt.value && Number(p.received) > 0) {
+        updateStartedAt.value = Date.now();
+      }
+    });
+    downloadedPath.value = String((r && r.path) || "");
+    if (!downloadedPath.value) {
+      message.value = "下载完成";
+      return;
+    }
+    message.value = "正在启动新版本…";
+    await launchDownloadedUpdate(downloadedPath.value);
+  } catch (e) {
+    error.value = String(e.message || e);
+  } finally {
+    updateDownloading.value = false;
+  }
+}
+
+async function onRevealUpdate() {
+  if (!downloadedPath.value) return;
+  try {
+    await revealDownloadedUpdate(downloadedPath.value);
+  } catch (e) {
+    error.value = String(e.message || e);
+  }
+}
+
+function onOpenGithub(e) {
+  if (mobileUx.value) return;
+  e.preventDefault();
+  void openExternalUrl(githubUrl.value);
+}
+
 async function onRebuildRag() {
   error.value = "";
   message.value = "";
@@ -329,6 +477,52 @@ async function onRebuildRag() {
         对接 LM Studio Local Server（默认 http://127.0.0.1:1234/v1）。写作 / 分析 / Embedding 分槽。
       </template>
       参数修改后会自动保存。
+    </p>
+
+    <h2 class="panel-sub">关于</h2>
+    <p>Kk Novel Ai {{ appVersion || "未知" }}</p>
+    <p class="muted about-github">
+      GitHub：
+      <a :href="githubUrl" target="_blank" rel="noopener" @click="onOpenGithub">{{ githubUrl }}</a>
+    </p>
+    <p class="muted">确认更新后会下载到临时目录并自动启动新程序。</p>
+    <div class="actions version-actions">
+      <button type="button" class="app-btn" :disabled="updateChecking || updateDownloading" @click="onCheckUpdate">
+        {{ updateChecking ? "检查中…" : "检查更新" }}
+      </button>
+      <button
+        v-if="updateInfo && updateInfo.has_update && updateInfo.download_url && !mobileUx"
+        type="button"
+        class="app-btn app-btn-primary"
+        :disabled="updateDownloading"
+        @click="onDownloadUpdate"
+      >
+        {{ updateDownloading ? `下载中 ${updatePct}%` : `下载并启动 ${updateInfo.latest}` }}
+      </button>
+      <button
+        v-if="downloadedPath"
+        type="button"
+        class="app-btn"
+        @click="onRevealUpdate"
+      >
+        打开所在文件夹
+      </button>
+      <a
+        v-if="updateInfo && updateInfo.has_update && updateInfo.html_url"
+        class="app-btn"
+        :href="updateInfo.html_url"
+        target="_blank"
+        rel="noopener"
+      >打开 GitHub Release</a>
+    </div>
+    <p v-if="updateInfo && updateInfo.has_update && updateInfo.download_url && !mobileUx" class="muted">
+      应用内下载若连不上 GitHub，可用浏览器打开上面的 Release 页面，或直接打开：{{ updateInfo.download_url }}
+    </p>
+    <p v-if="updateDownloading" class="muted">
+      已下载 {{ updateReceivedMb }} / {{ updateTotalMb }} MB（{{ updatePct }}%），平均 {{ updateSpeedMbs }} MB/s
+    </p>
+    <p v-if="updateInfo && updateInfo.has_update && updateInfo.notes" class="muted version-notes">
+      {{ String(updateInfo.notes).slice(0, 400) }}
     </p>
 
     <h2 class="panel-sub">API 接入预设</h2>
@@ -457,6 +651,43 @@ async function onRebuildRag() {
         placeholder="如 text-embedding-nomic-embed-text-v1.5"
         @focus="pickTarget = 'embedding_model'"
       />
+    </div>
+
+    <h2 class="panel-sub">图像生成</h2>
+    <p class="muted">与写作 API 分开。OpenAI 兼容口：POST {base}/images/generations。本机 Comfy 以后再接。</p>
+    <div class="field">
+      <label class="field-label">图像供应商</label>
+      <select v-model="form.image_provider">
+        <option value="openai_compat">OpenAI 兼容（文生图）</option>
+      </select>
+    </div>
+    <div class="field">
+      <label class="field-label">图像 Base URL</label>
+      <input
+        v-model="form.image_base_url"
+        type="text"
+        placeholder="https://api.openai.com/v1 或兼容网关 …/v1"
+      />
+    </div>
+    <div class="field">
+      <label class="field-label">图像 API Key</label>
+      <input
+        v-model="imageApiKeyDraft"
+        type="password"
+        autocomplete="new-password"
+        spellcheck="false"
+        :placeholder="imageApiKeyConfigured ? '已保存，重新输入以覆盖（不可查看）' : '输入图像 API Key'"
+      />
+    </div>
+    <div class="grid2">
+      <div class="field">
+        <label class="field-label">图像模型</label>
+        <input v-model="form.image_model" type="text" placeholder="如 dall-e-3 / flux" />
+      </div>
+      <div class="field">
+        <label class="field-label">尺寸</label>
+        <input v-model="form.image_size" type="text" placeholder="1024x1024" />
+      </div>
     </div>
     <div class="grid2">
       <div class="field">
@@ -664,6 +895,18 @@ async function onRebuildRag() {
   gap: 8px;
   margin-top: 12px;
   flex-wrap: wrap;
+}
+.version-actions {
+  margin-top: 8px;
+}
+.about-github a {
+  word-break: break-all;
+}
+.version-notes {
+  white-space: pre-wrap;
+  font-size: 12px;
+  max-height: 120px;
+  overflow: auto;
 }
 .model-list {
   display: flex;

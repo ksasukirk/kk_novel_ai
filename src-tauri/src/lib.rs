@@ -12,6 +12,7 @@ mod export;
 mod genlog;
 mod import;
 mod gui_writing;
+mod image;
 mod ipc;
 mod kb;
 mod llm;
@@ -21,6 +22,7 @@ mod project_genlog;
 mod rag;
 mod settings;
 mod story;
+mod update;
 mod usage;
 mod writing;
 
@@ -108,6 +110,8 @@ pub fn run() {
             commands::story_canon_save,
             commands::story_apply_patch,
             commands::story_dashboard,
+            commands::story_storyboard_get,
+            commands::story_storyboard_save,
             commands::export_txt,
             commands::export_epub,
             commands::export_pdf,
@@ -136,6 +140,14 @@ pub fn run() {
             commands::project_import_backup_base64,
             commands::export_file_read_base64,
             commands::platform_info,
+            commands::app_version,
+            commands::update_check,
+            commands::update_download,
+            commands::update_reveal,
+            commands::update_launch_and_quit,
+            commands::open_external_url,
+            commands::image_generate,
+            commands::image_read_data_url,
         ])
         .build(tauri::generate_context!())
         .expect("构建 Tauri 应用失败")

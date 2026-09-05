@@ -95,6 +95,9 @@ export async function runCastExtract(opts) {
   const blockKey = (opts && opts.blockKey) || `cast-${Date.now()}`;
   const text = ((opts && opts.text) || "").trim();
   if (!text || !appState.projectRoot || !appState.chapterId) return null;
+  if (opts && (opts.blockType === "illustration" || opts.blockType === "illus")) {
+    return null;
+  }
   if (!autoCastEnabled()) return null;
   if (inFlightKeys.has(blockKey)) return null;
 

@@ -3,8 +3,11 @@
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { appState } from "./stores/appState.js";
 import { loadSettings, refreshHealth } from "./services/llmClient.js";
+import { scheduleStartupUpdateCheck } from "./services/updateFlow.js";
 import { startGuiBridge, resolveExternalConflict } from "./services/guiBridge.js";
 import ConfirmDialog from "./components/ConfirmDialog.vue";
+import UpdateDialog from "./components/UpdateDialog.vue";
+import IllustrationPromptDialog from "./components/IllustrationPromptDialog.vue";
 import ToastHost from "./components/ToastHost.vue";
 import AppSidebar from "./components/shell/AppSidebar.vue";
 import PageHeader from "./components/shell/PageHeader.vue";
@@ -221,6 +224,7 @@ onMounted(async () => {
   } catch {
     /* 设置页可再试 */
   }
+  scheduleStartupUpdateCheck();
 });
 
 onUnmounted(() => {
@@ -345,6 +349,8 @@ onUnmounted(() => {
     </div>
 
     <ConfirmDialog />
+    <UpdateDialog />
+    <IllustrationPromptDialog />
     <ToastHost />
   </div>
 </template>

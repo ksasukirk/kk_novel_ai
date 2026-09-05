@@ -38,6 +38,10 @@ pub enum WritingTask {
     OutlineToChapters,
     /** 把全书大纲 / 已有卷章纲整理成思维导图 JSON */
     OutlineToMindmap,
+    /** 节拍 → 分镜表 JSON */
+    BeatsToStoryboard,
+    /** 正文/分镜 → 绘图提示词 JSON */
+    ContentToImagePrompt,
 }
 
 impl WritingTask {
@@ -56,6 +60,8 @@ impl WritingTask {
             "outline_to_beats" | "split_beats" => Ok(Self::OutlineToBeats),
             "outline_to_chapters" | "split_chapters" => Ok(Self::OutlineToChapters),
             "outline_to_mindmap" | "mindmap_outline" => Ok(Self::OutlineToMindmap),
+            "beats_to_storyboard" | "storyboard_from_beats" => Ok(Self::BeatsToStoryboard),
+            "content_to_image_prompt" | "image_prompt" => Ok(Self::ContentToImagePrompt),
             _ => Err(AppError::msg(format!("未知写作任务: {s}"))),
         }
     }
@@ -75,6 +81,8 @@ impl WritingTask {
             Self::OutlineToBeats => include_str!("../../prompts/outline_to_beats.md"),
             Self::OutlineToChapters => include_str!("../../prompts/outline_to_chapters.md"),
             Self::OutlineToMindmap => include_str!("../../prompts/outline_to_mindmap.md"),
+            Self::BeatsToStoryboard => include_str!("../../prompts/beats_to_storyboard.md"),
+            Self::ContentToImagePrompt => include_str!("../../prompts/content_to_image_prompt.md"),
         }
     }
 
@@ -93,6 +101,8 @@ impl WritingTask {
             Self::OutlineToBeats => "outline_to_beats",
             Self::OutlineToChapters => "outline_to_chapters",
             Self::OutlineToMindmap => "outline_to_mindmap",
+            Self::BeatsToStoryboard => "beats_to_storyboard",
+            Self::ContentToImagePrompt => "content_to_image_prompt",
         }
     }
 
@@ -108,6 +118,8 @@ impl WritingTask {
                 | Self::OutlineToBeats
                 | Self::OutlineToChapters
                 | Self::OutlineToMindmap
+                | Self::BeatsToStoryboard
+                | Self::ContentToImagePrompt
         )
     }
 }
@@ -704,6 +716,57 @@ pub fn assemble_messages_with_scores(
         });
     }
 
+    if matches!(
+        task,
+        WritingTask::BeatsToStoryboard | WritingTask::ContentToImagePrompt
+    ) {
+        let recent = if !req.selection.trim().is_empty() {
+            req.selection.clone()
+        } else {
+            take_tail(&content, 4000)
+        };
+        let instruction = if req.instruction.is_empty() {
+            "（无）"
+        } else {
+            req.instruction.as_str()
+        };
+        let outline = if chapter.summary.is_empty() {
+            chapter.title.clone()
+        } else {
+            format!("{}\n{}", chapter.title, chapter.summary)
+        };
+        let beats = if chapter.beats.is_empty() {
+            "（无）".into()
+        } else {
+            serde_json::to_string_pretty(&chapter.beats).unwrap_or_else(|_| "（无）".into())
+        };
+        let lore_text = visual_sheets_for_prompt(root);
+        let user = render_template(
+            task.template(),
+            &[
+                ("outline", &outline),
+                ("beats", &beats),
+                ("recent_text", &recent),
+                ("instruction", instruction),
+                ("lore", &lore_text),
+            ],
+        );
+        let messages = vec![
+            ChatMessage {
+                role: "system".into(),
+                content: "你是小说分镜与插图助理，只输出规定 JSON，不要解释。".into(),
+            },
+            ChatMessage {
+                role: "user".into(),
+                content: user,
+            },
+        ];
+        return Ok(AssembledWriting {
+            messages,
+            context_sources: WritingContextSources::default(),
+        });
+    }
+
     let mut all_lore = project::list_lore(root)?;
     // 本篇优先：先放入本篇条目，再挂接库（unique 合并时先到者胜）
     let mut ranked: Vec<LoreEntry> = all_lore.drain(..).collect();
@@ -816,7 +879,10 @@ pub fn assemble_messages_with_scores(
             recent
         }
         WritingTask::OutlineToChapters | WritingTask::OutlineToMindmap => String::new(),
-        WritingTask::BlockDigest | WritingTask::CastExtract => req.selection.clone(),
+        WritingTask::BlockDigest
+        | WritingTask::CastExtract
+        | WritingTask::BeatsToStoryboard
+        | WritingTask::ContentToImagePrompt => req.selection.clone(),
     };
     let style = if opened.project.style.is_empty() {
         format!("书名：{}", opened.project.title)
@@ -1219,7 +1285,9 @@ pub fn assemble_messages_with_scores(
                     | WritingTask::OutlineToMindmap
                     | WritingTask::SectionPlan
                     | WritingTask::CastExtract
-                    | WritingTask::StorySync => {
+                    | WritingTask::StorySync
+                    | WritingTask::BeatsToStoryboard
+                    | WritingTask::ContentToImagePrompt => {
                         "你是小说结构助理，只输出规定 JSON，不要解释。".into()
                     }
                     WritingTask::BlockDigest | WritingTask::ChapterSummary => {
@@ -1238,6 +1306,39 @@ pub fn assemble_messages_with_scores(
         ],
         context_sources,
     })
+}
+
+fn visual_sheets_for_prompt(root: &Path) -> String {
+    let lore = project::list_lore(root).unwrap_or_default();
+    let keys = ["外貌", "发型", "瞳色", "体态", "常服", "画风锚"];
+    let mut lines: Vec<String> = Vec::new();
+    for e in &lore {
+        if e.kind != "character" {
+            continue;
+        }
+        let mut bits: Vec<String> = vec![e.title.clone()];
+        for k in keys {
+            if let Some(v) = e.attrs.get(k) {
+                let t = v.trim();
+                if !t.is_empty() {
+                    bits.push(format!("{k}：{t}"));
+                }
+            }
+        }
+        let brief = take_chars_brief(&e.content, 80);
+        if bits.len() == 1 && brief.is_empty() {
+            continue;
+        }
+        if !brief.is_empty() {
+            bits.push(brief);
+        }
+        lines.push(bits.join("；"));
+    }
+    if lines.is_empty() {
+        "（无锁定形象卡）".into()
+    } else {
+        lines.join("\n")
+    }
 }
 
 /// 收集本篇 + 挂接库中的角色名/别称，供 cast_extract 去重
@@ -1313,7 +1414,7 @@ pub async fn run_writing(
     let task = WritingTask::from_str_loose(&req.task)?;
     let scores = if matches!(
         task,
-        WritingTask::BlockDigest | WritingTask::CastExtract | WritingTask::SectionPlan | WritingTask::OutlineToBeats | WritingTask::OutlineToChapters | WritingTask::OutlineToMindmap
+        WritingTask::BlockDigest | WritingTask::CastExtract | WritingTask::SectionPlan | WritingTask::OutlineToBeats | WritingTask::OutlineToChapters | WritingTask::OutlineToMindmap | WritingTask::BeatsToStoryboard | WritingTask::ContentToImagePrompt
     ) {
         None
     } else {
