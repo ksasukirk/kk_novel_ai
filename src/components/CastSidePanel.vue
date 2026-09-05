@@ -143,17 +143,16 @@ function onSelect(item) {
   <aside class="cast-panel">
     <div class="cast-head">
       <h2 class="cast-title">角色</h2>
-      <p class="muted cast-hint">本篇可用人物；可新增到本篇或全局仓。</p>
     </div>
 
     <div class="cast-add">
       <input
         v-model="newName"
         type="text"
-        placeholder="角色名，如：乐乐"
+        placeholder="角色名"
         @keydown.enter.prevent="addCharacter"
       />
-      <CapsuleSwitch v-model="writeGlobal" label="写入全局仓" />
+      <CapsuleSwitch v-model="writeGlobal" label="全局仓" />
       <button
         type="button"
         class="app-btn app-btn-primary"
@@ -205,32 +204,35 @@ function onSelect(item) {
   background: var(--surface-solid);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
-  padding: 12px;
+  padding: 8px;
   overflow: hidden;
 }
 .cast-head {
   flex-shrink: 0;
 }
 .cast-title {
-  margin: 0;
-  font-size: 15px;
+  margin: 0 0 6px;
+  font-size: 14px;
   font-weight: 700;
-}
-.cast-hint {
-  margin: 4px 0 10px;
-  font-size: 12px;
 }
 .cast-add {
   flex-shrink: 0;
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-bottom: 10px;
-  padding-bottom: 10px;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
   border-bottom: 1px solid var(--accent-soft, rgba(0, 0, 0, 0.06));
 }
 .cast-add input {
-  width: 100%;
+  flex: 1;
+  min-width: 72px;
+}
+.cast-add .app-btn {
+  padding: 4px 12px;
+  font-size: 12px;
 }
 .cast-list {
   flex: 1;

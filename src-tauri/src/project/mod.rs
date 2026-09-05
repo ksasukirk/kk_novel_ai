@@ -845,6 +845,17 @@ pub fn save_memory(root: &Path, memory: &MemoryStore) -> AppResult<()> {
 
 /// 本章块笔记在滚动摘要中的软上限（字符）
 const BLOCK_NOTES_BUDGET: usize = 1200;
+/// 单条它章快照写入滚动摘要的上限，防止正文复读撑爆上下文
+const CROSS_CHAPTER_SNIPPET_MAX: usize = 400;
+
+fn clip_snapshot_for_rolling(s: &str) -> String {
+    let t = s.trim();
+    let n = t.chars().count();
+    if n <= CROSS_CHAPTER_SNIPPET_MAX {
+        return t.to_string();
+    }
+    format!("{}…", t.chars().take(280).collect::<String>())
+}
 
 /// 重建 rolling_summary：其它章用 chapter_snapshots（无快照则回退该章最新块笔记）；指定章用块笔记优先
 pub fn rebuild_rolling_summary(memory: &mut MemoryStore, focus_chapter_id: Option<&str>) {
@@ -872,7 +883,7 @@ pub fn rebuild_rolling_summary(memory: &mut MemoryStore, focus_chapter_id: Optio
                 .find(|s| &s.chapter_id == cid)
             {
                 if !snap.summary.trim().is_empty() {
-                    cross.push(format!("【它章】{}", snap.summary.trim()));
+                    cross.push(format!("【它章】{}", clip_snapshot_for_rolling(&snap.summary)));
                     continue;
                 }
             }
@@ -883,7 +894,7 @@ pub fn rebuild_rolling_summary(memory: &mut MemoryStore, focus_chapter_id: Optio
                 .max_by(|a, b| a.updated_at.cmp(&b.updated_at))
             {
                 if !note.summary.trim().is_empty() {
-                    cross.push(format!("【它章】{}", note.summary.trim()));
+                    cross.push(format!("【它章】{}", clip_snapshot_for_rolling(&note.summary)));
                 }
             }
         }
@@ -899,7 +910,7 @@ pub fn rebuild_rolling_summary(memory: &mut MemoryStore, focus_chapter_id: Optio
             .iter()
             .rev()
             .take(6)
-            .map(|s| s.summary.clone())
+            .map(|s| clip_snapshot_for_rolling(&s.summary))
             .collect::<Vec<_>>()
             .into_iter()
             .rev()

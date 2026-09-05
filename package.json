@@ -1,7 +1,7 @@
 {
   "name": "kk_novel_ai",
   "private": true,
-  "version": "0.2.7",
+  "version": "0.2.10",
   "author": "kk",
   "type": "module",
   "scripts": {
@@ -25,5 +25,8 @@
     "@vitejs/plugin-vue": "^5",
     "vite": "^5",
     "vue": "^3"
+  },
+  "dependencies": {
+    "d3-force": "^3.0.0"
   }
 }

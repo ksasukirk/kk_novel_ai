@@ -227,6 +227,33 @@ function settleFrames() {
   return nextTick().then(() => doubleRaf());
 }
 
+function scheduleCastThenStorySync(writtenKey, text, instruction) {
+  const body = String(text || "").trim();
+  if (!writtenKey || !body) return;
+  void (async () => {
+    try {
+      const cast = await import("./castExtract.js");
+      await cast.runCastExtract({
+        blockKey: writtenKey,
+        text: body,
+        instruction,
+      });
+    } catch {
+      /* 抽角色失败仍尝试总谱 */
+    }
+    try {
+      const sync = await import("./storySync.js");
+      await sync.runStorySync({
+        blockKey: writtenKey,
+        text: body,
+        instruction,
+      });
+    } catch {
+      /* runStorySync 内部已提示 */
+    }
+  })();
+}
+
 /** 写入直前快照 scrollTop（勿在 pushAiUndo 等 await 之前拍，会过期） */
 function captureEditorScroll() {
   const scroller = editorScroller();
@@ -493,6 +520,7 @@ async function acceptDraftInner(jobOrNull) {
           });
         }
       });
+      scheduleCastThenStorySync(polishedKey, polishedText, instruction);
     }
     return { ok: true };
   }
@@ -533,9 +561,7 @@ async function acceptDraftInner(jobOrNull) {
       void import("./blockDigest.js").then((m) =>
         m.runBlockDigest({ blockKey: writtenKey, text: body, instruction })
       );
-      void import("./castExtract.js").then((m) =>
-        m.runCastExtract({ blockKey: writtenKey, text: body, instruction })
-      );
+      scheduleCastThenStorySync(writtenKey, body, instruction);
     }
     return { ok: true };
   }
@@ -561,9 +587,7 @@ async function acceptDraftInner(jobOrNull) {
       void import("./blockDigest.js").then((m) =>
         m.runBlockDigest({ blockKey: writtenKey, text: body, instruction })
       );
-      void import("./castExtract.js").then((m) =>
-        m.runCastExtract({ blockKey: writtenKey, text: body, instruction })
-      );
+      scheduleCastThenStorySync(writtenKey, body, instruction);
     }
     return { ok: true };
   }
@@ -594,13 +618,7 @@ async function acceptDraftInner(jobOrNull) {
           instruction,
         });
       });
-      void import("./castExtract.js").then((m) =>
-        m.runCastExtract({
-          blockKey: writtenKey,
-          text: body,
-          instruction,
-        })
-      );
+      scheduleCastThenStorySync(writtenKey, body, instruction);
       return { ok: true };
     }
     const blocks = ensureBlockList();
@@ -630,13 +648,7 @@ async function acceptDraftInner(jobOrNull) {
           instruction,
         });
       });
-      void import("./castExtract.js").then((m) =>
-        m.runCastExtract({
-          blockKey: writtenKey,
-          text: body,
-          instruction,
-        })
-      );
+      scheduleCastThenStorySync(writtenKey, body, instruction);
       return { ok: true };
     }
   }
@@ -663,13 +675,7 @@ async function acceptDraftInner(jobOrNull) {
       instruction,
     })
   );
-  void import("./castExtract.js").then((m) =>
-    m.runCastExtract({
-      blockKey: gen.key,
-      text: body,
-      instruction,
-    })
-  );
+  scheduleCastThenStorySync(gen.key, body, instruction);
   return { ok: true, blockKey: writtenKey };
 }
 

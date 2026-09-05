@@ -64,6 +64,7 @@ onMounted(async () => {
       writing_route_pro_on_continue: true,
       writing_auto_digest: true,
       writing_auto_cast: true,
+      writing_auto_story_sync: true,
       writing_strip_rhetoric: true,
       skip_delete_confirm: true,
       disable_thinking: null,
@@ -105,6 +106,9 @@ onMounted(async () => {
     }
     if (form.value.writing_auto_cast == null) {
       form.value.writing_auto_cast = true;
+    }
+    if (form.value.writing_auto_story_sync == null) {
+      form.value.writing_auto_story_sync = true;
     }
     if (form.value.writing_strip_rhetoric == null) {
       form.value.writing_strip_rhetoric = true;
@@ -546,6 +550,12 @@ async function onRebuildRag() {
         <CapsuleSwitch
           v-model="form.writing_auto_cast"
           label="writing_auto_cast（生成写入后自动把新人物加入本篇角色，默认开）"
+        />
+      </div>
+      <div class="field capsule-switch-row">
+        <CapsuleSwitch
+          v-model="form.writing_auto_story_sync"
+          label="writing_auto_story_sync（生成写入后自动同步故事线/时间线/关系/Canon，默认开；旧稿可在总谱页一键按正文重建）"
         />
       </div>
       <div class="field capsule-switch-row">

@@ -3,6 +3,7 @@
 
 pub mod advance;
 pub mod beat_engine;
+pub mod continuity;
 pub mod dedupe;
 pub mod retrieve;
 pub mod rhetoric;
@@ -324,11 +325,7 @@ fn shrink_marked_section(text: &str, start_marker: &str, end_marker: &str, ratio
 }
 
 fn take_tail(text: &str, max_chars: usize) -> String {
-    let chars: Vec<char> = text.chars().collect();
-    if chars.len() <= max_chars {
-        return text.to_string();
-    }
-    chars[chars.len() - max_chars..].iter().collect()
+    continuity::take_tail_at_boundary(text, max_chars)
 }
 
 /// 作品内章节顺序（卷内顺序优先，其余按 chapters 列表）
@@ -750,8 +747,13 @@ pub fn assemble_messages_with_scores(
     let neighbor_ids = crate::story::neighbor_lore_ids(&relations, &seed_ids);
 
     let query = format!(
-        "{} {} {} {} {}",
-        chapter.title, chapter.summary, chapter.must_do, req.instruction, req.selection
+        "{} {} {} {} {} {}",
+        opened.project.book_outline,
+        chapter.title,
+        chapter.summary,
+        chapter.must_do,
+        req.instruction,
+        req.selection
     );
     let mut lore = retrieve::retrieve_lore_hybrid(&all_lore, &query, 8, semantic_scores);
     // 强制纳入邻居设定
@@ -763,8 +765,9 @@ pub fn assemble_messages_with_scores(
             lore.push(e);
         }
     }
-    if lore.len() > 10 {
-        lore.truncate(10);
+    continuity::force_include_named_lore(&mut lore, &all_lore, &query, 12);
+    if lore.len() > 12 {
+        lore.truncate(12);
     }
 
     let recent = match task {
@@ -773,8 +776,17 @@ pub fn assemble_messages_with_scores(
             // 不注入章节前文；上节总结如有则已在 selection / instruction
             String::new()
         }
-        WritingTask::Consistency | WritingTask::StorySync => {
+        WritingTask::Consistency => {
             take_tail(&content, settings.recent_window_chars.saturating_mul(2))
+        }
+        WritingTask::StorySync => {
+            // 一键重建会把激活路径全文放进 branch_context / selection；窗口加长以免只看见章末
+            let src = if !req.selection.trim().is_empty() {
+                req.selection.as_str()
+            } else {
+                content.as_str()
+            };
+            take_tail(src, settings.recent_window_chars.saturating_mul(4))
         }
         WritingTask::ChapterSummary => {
             take_tail(&content, settings.recent_window_chars.saturating_mul(3))
@@ -941,7 +953,13 @@ pub fn assemble_messages_with_scores(
             | WritingTask::Polish
             | WritingTask::SectionPlan
     ) {
-        character_gender_lock(&opened.project, &lore)
+        let gender = character_gender_lock(&opened.project, &lore);
+        continuity::append_continuity_locks(
+            &gender,
+            opened.project.book_outline.as_str(),
+            &lore,
+            &prev_chapter_bridge,
+        )
     } else {
         "（无）".into()
     };
@@ -1628,7 +1646,28 @@ pub async fn run_writing(
     }
 
     if task == WritingTask::ChapterSummary {
-        project::upsert_chapter_snapshot(Path::new(&req.project_root), &req.chapter_id, &text)?;
+        let root = Path::new(&req.project_root);
+        let source = project::read_chapter(root, &req.chapter_id)
+            .map(|(_, c)| c)
+            .unwrap_or_default();
+        let memory = project::load_memory(root).unwrap_or_default();
+        let note = memory
+            .block_notes
+            .iter()
+            .filter(|n| n.chapter_id == req.chapter_id)
+            .max_by(|a, b| a.updated_at.cmp(&b.updated_at))
+            .map(|n| n.summary.as_str())
+            .unwrap_or("");
+        if continuity::chapter_summary_is_dump(&text, &source) {
+            eprintln!(
+                "[writing] chapter_summary dump/overlong ({} chars); fallback to block_note",
+                text.chars().count()
+            );
+            let rescued = continuity::fallback_chapter_summary(&text, &source, note);
+            text = rescued.clone();
+            raw_text = rescued;
+        }
+        project::upsert_chapter_snapshot(root, &req.chapter_id, &text)?;
     }
 
     if task == WritingTask::BlockDigest {

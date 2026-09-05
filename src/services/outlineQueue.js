@@ -23,6 +23,7 @@ import {
 import { createPlainBlock } from "../utils/genBlock.js";
 import { migrateBlocksToBranchDoc } from "../utils/branchModel.js";
 import { isChapterBodyEmpty } from "../utils/chapterStatus.js";
+import { CONTINUITY_WRITE_HINT } from "../utils/outlineContinuity.js";
 
 export const outlineQueueState = reactive({
   running: false,
@@ -154,6 +155,7 @@ function wrapChapterInstruction(chapter, userInstr) {
   const parts = [
     `【按纲生成 · 整章一次写完】章节「${title}」。本章正文只生成一整段完整内容，不要拆小节、不要分段标拍、不要写「第一节/第一拍」之类标题。`,
     "须达到或超出规定字数后再停；覆盖章纲中的冲突、推进与结尾钩子；承接上章收束（若有），人称性别与设定一致。",
+    CONTINUITY_WRITE_HINT,
   ];
   if (summary) {
     parts.push(`本章纲：\n${summary}`);
@@ -176,7 +178,11 @@ async function chapterHasWrittenSnapshot(chapterId) {
     const memory = await getMemory();
     const snaps = (memory && memory.chapter_snapshots) || [];
     const hit = snaps.find((s) => s && s.chapter_id === chapterId);
-    return !!(hit && String(hit.summary || "").trim().length >= 40);
+    const t = String((hit && hit.summary) || "").trim();
+    if (!t) return false;
+    const n = [...t].length;
+    if (n < 40 || n > 400) return false;
+    return true;
   } catch {
     return false;
   }
@@ -222,6 +228,11 @@ async function runChapterWrittenSummary(chapter) {
     if (text.length < 40) {
       throw new Error(
         `章节「${chapter.title || "本章"}」总结过短或为空，已停队列。请补总结后再继续。`
+      );
+    }
+    if ([...text].length > 400) {
+      throw new Error(
+        `章节「${chapter.title || "本章"}」总结疑似复读正文（过长），已停队列。请重跑章摘要。`
       );
     }
     return text;

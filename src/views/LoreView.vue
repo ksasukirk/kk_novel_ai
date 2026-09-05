@@ -10,6 +10,10 @@ import CapsuleSwitch from "../components/CapsuleSwitch.vue";
 import { appConfirmDelete } from "../services/confirmDialog.js";
 import { useToastError } from "../services/toast.js";
 
+defineProps({
+  embedded: { type: Boolean, default: false },
+});
+
 const items = ref([]);
 const error = useToastError();
 const status = ref("");
@@ -236,9 +240,9 @@ async function remove(item) {
 </script>
 
 <template>
-  <section class="panel">
-    <h1 class="panel-heading">设定</h1>
-    <p class="muted">
+  <section class="panel" :class="{ 'lore-embed': embedded }">
+    <h1 v-if="!embedded" class="panel-heading">设定</h1>
+    <p v-if="!embedded" class="muted">
       <template v-if="globalOnly">
         本页可维护全局与本篇挂接设定。日常建角色请优先用侧栏<strong>角色定义</strong>。全局仓：
       </template>
@@ -377,6 +381,17 @@ async function remove(item) {
 <style scoped>
 .panel {
   min-height: calc(100% - 8px);
+}
+.lore-embed {
+  min-height: 0;
+  height: 100%;
+  padding: 0;
+  box-shadow: none;
+  background: transparent;
+  overflow: auto;
+}
+.lore-embed .tabs {
+  margin-top: 0;
 }
 .tabs {
   display: flex;

@@ -24,6 +24,7 @@ import {
   finishJobError,
   finishJobOk,
   genJobState,
+  hasUserFacingStorySyncJob,
   refreshLegacyFromJobs,
   syncGeneratingFromJobs,
 } from "../stores/genJobs.js";
@@ -81,7 +82,11 @@ function finishGenProgress() {
   }, 900);
 }
 
-import { isBackgroundAnalysisTask } from "../utils/writingTasks.js";
+import { isBackgroundAnalysisTask, shouldMuteLlmUi } from "../utils/writingTasks.js";
+
+function muteLlmStream(task) {
+  return shouldMuteLlmUi(task, hasUserFacingStorySyncJob());
+}
 
 function resolveJob(requestId) {
   if (!requestId) return null;
@@ -121,6 +126,8 @@ export async function startGuiBridge() {
               ? "正在整理思维导图…"
               : task === "chapter_summary" || task === "summarize"
                 ? "正在生成章节总结…"
+              : task === "story_sync" || task === "sync_story"
+                ? "正在同步总谱…"
             : "后台处理中…";
     } else {
       resetGenProgress("CLI 生成中…");
@@ -172,10 +179,12 @@ export async function startGuiBridge() {
 
   await listen("llm-start", (event) => {
     const p = event.payload || {};
-    if (isBackgroundAnalysisTask(p.task)) return;
+    if (p.request_id) {
+      activeRequestId = p.request_id;
+      appState.lastRequestId = p.request_id;
+    }
+    if (muteLlmStream(p.task)) return;
     if (!p.request_id) return;
-    activeRequestId = p.request_id;
-    appState.lastRequestId = p.request_id;
     const notice = p.deepseek_peak_notice || "";
     if (notice) {
       appState.deepseekPeakNow = true;
@@ -186,14 +195,14 @@ export async function startGuiBridge() {
     if (job && job.status === "pending") job.status = "streaming";
     syncGeneratingFromJobs();
     const peakSuffix = deepseekGeneratingStatusSuffix(appState.settings || {});
-    if (peakSuffix && !isBackgroundAnalysisTask(p.task)) {
+    if (peakSuffix && !muteLlmStream(p.task)) {
       appState.statusMessage = `生成中${peakSuffix}…`;
     }
   });
 
   await listen("llm-chunk", (event) => {
     const p = event.payload || {};
-    if (isBackgroundAnalysisTask(p.task)) return;
+    if (muteLlmStream(p.task)) return;
     const rid = p.request_id || "";
     if (rid) {
       activeRequestId = rid;
@@ -222,7 +231,7 @@ export async function startGuiBridge() {
 
   await listen("llm-done", (event) => {
     const p = event.payload || {};
-    if (isBackgroundAnalysisTask(p.task)) {
+    if (muteLlmStream(p.task)) {
       void loadGenLogs(50).catch(() => {});
       const rid = p.request_id || "";
       const bgJob = rid ? findJobByRequestId(rid) : null;
@@ -311,7 +320,7 @@ export async function startGuiBridge() {
 
   await listen("llm-error", (event) => {
     const p = event.payload || {};
-    if (isBackgroundAnalysisTask(p.task)) {
+    if (muteLlmStream(p.task)) {
       return;
     }
     const rid = p.request_id || "";

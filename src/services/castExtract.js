@@ -23,6 +23,16 @@ function normalizeName(s) {
     .toLowerCase();
 }
 
+function isKnownName(known, title, aliases) {
+  const names = [title, ...(aliases || [])].map(normalizeName).filter(Boolean);
+  for (const n of names) {
+    if (known.has(n)) return true;
+    const stripped = n.replace(/(哥|姐|弟|妹)$/u, "");
+    if (stripped && stripped !== n && known.has(stripped)) return true;
+  }
+  return false;
+}
+
 function collectKnownKeys() {
   const keys = new Set();
   const add = (s) => {
@@ -112,8 +122,7 @@ export async function runCastExtract(opts) {
     const candidates = parseCharacters(raw);
     const added = [];
     for (const c of candidates.slice(0, 5)) {
-      if (known.has(normalizeName(c.title))) continue;
-      if (c.aliases.some((a) => known.has(normalizeName(a)))) continue;
+      if (isKnownName(known, c.title, c.aliases)) continue;
       const keywords = [c.title, ...c.aliases.map((a) => `alias:${a}`)];
       const content =
         c.content || `${c.title}（生成块自动添加，待补设定）`;

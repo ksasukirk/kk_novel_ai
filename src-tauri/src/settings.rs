@@ -55,6 +55,7 @@ fn default_true_for_deepseek_cache() -> bool {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RecentProject {
+    #[serde(default)]
     pub path: String,
     #[serde(default)]
     pub title: String,
@@ -113,6 +114,9 @@ pub struct AppSettings {
     /// 生成写入后自动抽取新人物到本篇角色
     #[serde(default = "default_true")]
     pub writing_auto_cast: bool,
+    /// 生成写入后自动增量同步总谱（故事线/时间线/关系/Canon）
+    #[serde(default = "default_true")]
+    pub writing_auto_story_sync: bool,
     /// 定稿时清洗「不是A是B」等否定对照口癖（默认开）
     #[serde(default = "default_true")]
     pub writing_strip_rhetoric: bool,
@@ -185,6 +189,7 @@ impl Default for AppSettings {
             writing_auto_digest: true,
             writing_outline_run_sync_digest: true,
             writing_auto_cast: true,
+            writing_auto_story_sync: true,
             writing_strip_rhetoric: true,
             skip_delete_confirm: true,
             editor_font_family: default_editor_font_family(),

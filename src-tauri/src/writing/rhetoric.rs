@@ -24,6 +24,15 @@ fn re_not_kind() -> &'static Regex {
     })
 }
 
+fn re_not_kind_bare() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| {
+        // 「不是妹妹对哥哥那种喜欢」；`[^是]` 避免误伤「是不是那种」
+        Regex::new(r"(^|[^是])不是([^，。；！？\n]{0,20})那种([^，。；！？\n]{1,16})")
+            .expect("rhetoric kind-bare regex")
+    })
+}
+
 fn re_not_period_is() -> &'static Regex {
     static RE: OnceLock<Regex> = OnceLock::new();
     // 「不是X。是Y」跨句定义
@@ -59,6 +68,15 @@ pub fn sanitize_rhetoric(text: &str) -> String {
                 caps.get(0).map(|m| m.as_str()).unwrap_or("").to_string()
             } else {
                 format!("{b}。")
+            }
+        });
+        let next = re_not_kind_bare().replace_all(&next, |caps: &regex::Captures| {
+            let prefix = caps.get(1).map(|m| m.as_str()).unwrap_or("");
+            let tail = caps.get(3).map(|m| m.as_str().trim()).unwrap_or("");
+            if tail.is_empty() {
+                caps.get(0).map(|m| m.as_str()).unwrap_or("").to_string()
+            } else {
+                format!("{prefix}{tail}")
             }
         });
         let next = tidy(&next);
@@ -106,5 +124,14 @@ mod tests {
         let out = sanitize_rhetoric(raw);
         assert!(out.contains("公平"));
         assert!(!out.contains("并非"));
+    }
+
+    #[test]
+    fn strips_not_that_kind() {
+        let raw = "我想当你的。不是妹妹对哥哥那种喜欢。";
+        let out = sanitize_rhetoric(raw);
+        assert!(!out.contains("不是妹妹"), "{out}");
+        assert!(out.contains("喜欢"), "{out}");
+        assert!(sanitize_rhetoric("旁边是不是那种人？").contains("是不是那种"));
     }
 }

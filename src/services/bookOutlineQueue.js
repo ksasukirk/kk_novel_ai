@@ -22,6 +22,11 @@ import {
   runOutlineQueue,
 } from "./outlineQueue.js";
 import {
+  composeMustNot,
+  isPlaceholderBookTitle,
+  seedTitleFromOutline,
+} from "../utils/outlineContinuity.js";
+import {
   createGenJob,
   discardJob,
   visibleGenJobs,
@@ -55,6 +60,7 @@ export function parseOutlineToChapters(text) {
       title: String(item.title || "").trim(),
       summary: String(item.summary || "").trim(),
       must_do: String(item.must_do || item.mustDo || "").trim(),
+      must_not: String(item.must_not || item.mustNot || "").trim(),
       selected: true,
     });
   }
@@ -73,9 +79,16 @@ export async function saveBookOutline(text) {
   }
   const outline = String(text != null ? text : aiPanelForm.bookOutline || "").trim();
   const next = { ...appState.project, book_outline: outline };
+  if (isPlaceholderBookTitle(next.title) && outline) {
+    const seeded = seedTitleFromOutline(outline);
+    if (seeded) next.title = seeded;
+  }
   await saveProjectMeta(next);
   noteBookOutlineSaved(outline);
-  appState.statusMessage = "全书大纲已保存";
+  appState.statusMessage =
+    next.title && next.title !== appState.project.title
+      ? `全书大纲已保存，书名暂用「${next.title}」`
+      : "全书大纲已保存";
   return outline;
 }
 
@@ -311,7 +324,10 @@ export async function applyChapterPlan(plan, opts = {}) {
         title: row.title || ch.title,
         summary: row.summary || "",
         status: "pending",
-        patch: { must_do: row.must_do || "" },
+        patch: {
+          must_do: row.must_do || "",
+          must_not: composeMustNot(row, appState.project.book_outline),
+        },
       });
       updatedIds.push(ch.id);
     }
@@ -327,7 +343,10 @@ export async function applyChapterPlan(plan, opts = {}) {
       createdIds.push(id);
       await updateChapterMeta(id, {
         status: "pending",
-        ...(row.must_do ? { patch: { must_do: row.must_do } } : {}),
+        patch: {
+          ...(row.must_do ? { must_do: row.must_do } : {}),
+          must_not: composeMustNot(row, appState.project.book_outline),
+        },
       });
     }
   }

@@ -35,7 +35,7 @@ MyNovel/
 |---|---|---|
 | 作品 | 新建/打开写作作品、叙事仪表盘、码字热力、导出 EPUB；导入请用「知识库」 | `src/views/ProjectHome.vue` |
 | **知识库** | **页内**子导航（库列表/实体/关系总谱/语料）；一书一库 + 通用库；不替换全局侧栏 | `src/views/KnowledgeHome.vue` |
-| 总谱 | **思维导图**（大纲+角色+故事线+时间线+Canon+关系）+ **右侧角色栏**添加/删除 + 表单编辑 | `src/views/StoryView.vue`, `CastSidePanel.vue`, `MindMapBoard.vue` |
+| 总谱 | **思维导图**（大纲+角色+故事线+时间线+Canon+关系）+ **右侧角色栏** + **AI 按正文重建总谱** + 表单编辑 | `src/views/StoryView.vue`, `src/services/storySync.js`, `CastSidePanel.vue`, `MindMapBoard.vue` |
 | 大纲 | 结构导图 / 整理成导图 + 卷弧/章纲 + 已写总结 + **右侧角色栏** | `src/views/OutlineView.vue`, `CastSidePanel.vue`, `MindMapBoard.vue` |
 | 写作 | 章节树 + 编辑器 + Ctrl+K 行内 + AI 面板 | `src/views/EditorView.vue`, `AiPanel.vue` |
 | 设定 | 角色/世界观 + links/attrs | `src/views/LoreView.vue` |
@@ -59,7 +59,10 @@ AI 续写会注入总谱块（plot/timeline/relations/canon/focus/beats/volume_a
   - **章纲** = 单章 `summary`（冲突/推进/钩子）；AI 任务「章纲」预览默认 **写入本章纲**
   - **全书大纲 / 创作提示** = 整书种子；勿把单场章纲误写成 `book_outline`
 - **拆章**（`outline_to_chapters`，`split_mode=full`）：拆出 JSON → 确认「开始写」后写入目录为 `status=pending` 并立刻按这些章开写正文；空首章可更新，其余追加
-- **章标题**：须为「第N章 + 具体事件」；禁止「隐秘的延续 / 暗流 / 诱惑」等气氛套话；一句纲只按句内动作拆章，禁止为凑三幕编「隐秘循环」段（见 `outline_to_chapters.md`）
+- **章标题**：须为「第N章 + 具体事件」；禁止「隐秘的延续 / 暗流 / 诱惑」等气氛套话；一句纲只按句内动作拆**开局弧**，末章须留未兑现钩子，禁止为凑三幕编「隐秘循环」段（见 `outline_to_chapters.md`）
+- **连续锁**：每章写入时自动带 `must_not`（禁止回拨用餐/改亲属）；一句话大纲会额外要求末章不要假装全书写完。占位书名「未命名小说」在保存大纲时会用大纲首句暂代书名
+- **续写硬规则**：上章已用餐或已吃西瓜，本章禁止写成还没开饭；谁是谁家的孩子以角色卡为准；乐乐出场时厌接受、对白含蓄（见 `continue_chapter.md` / `writing/continuity.rs`）
+- **章摘要**：须 120～250 字；超 400 字或复读正文会丢弃，改用块笔记兜底，禁止把整章写入 `memory.json`。上章正文末段按句号/换行切割，禁止半句开头
 - **续拆后续**（`split_mode=append`）：根据已有章标题+摘要衔接，**只追加**新待写章；目录头与面板均有「续拆后续」
 - **单章生成**：目录行「写」→ `runOutlineQueue({ stopAfterOneChapter: true })`
 - **整队生成**：目录「全部按纲写」或面板「开始按纲生成」→ 跨章队列
@@ -81,7 +84,10 @@ AI 续写会注入总谱块（plot/timeline/relations/canon/focus/beats/volume_a
   - [`src-tauri/prompts/outline_to_chapters.md`](../src-tauri/prompts/outline_to_chapters.md)
   - [`src-tauri/prompts/outline_to_mindmap.md`](../src-tauri/prompts/outline_to_mindmap.md)
   - [`src-tauri/prompts/chapter_summary.md`](../src-tauri/prompts/chapter_summary.md)
-  - [`src-tauri/src/writing/mod.rs`](../src-tauri/src/writing/mod.rs)
+  - [`src/utils/outlineContinuity.js`](../src/utils/outlineContinuity.js)（拆章 must_not / 占位书名）
+  - [`src-tauri/src/writing/continuity.rs`](../src-tauri/src/writing/continuity.rs)（章摘要拒复读、上章末段切句、时间/亲属/乐乐锁）
+  - [`src-tauri/prompts/continue_chapter.md`](../src-tauri/prompts/continue_chapter.md)
+  - [`src-tauri/prompts/continue_chapter_cache.md`](../src-tauri/prompts/continue_chapter_cache.md)
   - [`src/views/StoryView.vue`](../src/views/StoryView.vue)
   - [`src/views/OutlineView.vue`](../src/views/OutlineView.vue)
 
@@ -182,6 +188,10 @@ kk_novel_cli writing run D:/novels/demo <chapter_id> continue --offline --apply 
 kk_novel_cli writing run <root> <chapter_id> cast_extract --offline \
   --selection "……正文……"
 ```
+
+**生成后自动同步总谱**：写入后若 `writing_auto_story_sync`（默认开），在抽角色之后后台跑 `task=story_sync`，洗净边（人名对 lore id、丢掉对不上的边、不覆盖锁定 Canon）再 `story_apply_patch`。失败不挡正文。设置可关。AI 面板「同步总谱」仍可手跑并确认 patch。代码：`src/services/storySync.js`。
+
+**一键按正文重建总谱**（旧稿 / 导入作品）：总谱页按钮「AI 按正文重建总谱」（`src/views/StoryView.vue`）。确认后清空未锁定的 `story/plot.json`、`timeline.json`（保留日历注记）、`relations.json`、未锁定 Canon，再按章节目录顺序对有正文的章调用 `story_sync`（`src/services/storySync.js` 的 `rebuildStoryFromExistingWork`）。不改章节正文；本章焦点与节拍不重跑。已锁定 Canon 保留。进行中可取消。知识库「关系总谱」嵌入同一组件，按钮同样可用。
 
 块记忆 CLI 示例：
 

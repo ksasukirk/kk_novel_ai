@@ -49,6 +49,7 @@ const currentChapterTitle = computed(() => {
   return ch ? ch.title : "未选章";
 });
 const wordCount = computed(() => (appState.chapterContent || "").replace(/\s/g, "").length);
+const isHomeTab = computed(() => subNav.value === "home");
 
 const recentKb = computed(() => {
   const list = (appState.settings && appState.settings.recent_knowledge_bases) || [];
@@ -244,8 +245,8 @@ watch(
 </script>
 
 <template>
-  <section class="panel kb-shell">
-    <div class="page-head">
+  <section class="panel kb-shell" :class="{ 'kb-work': !isHomeTab }">
+    <div v-if="isHomeTab" class="page-head">
       <div>
         <h1 class="panel-heading">知识库</h1>
         <p class="muted">
@@ -253,10 +254,11 @@ watch(
         </p>
       </div>
       <div class="head-actions">
-        <button type="button" class="app-btn" @click="showImport = true">导入进知识库</button>
+        <button type="button" class="app-btn" title="导入 TXT 为知识库" @click="showImport = true">导入进知识库</button>
         <button
           type="button"
           class="app-btn"
+          title="对单书知识库蒸馏前 20 章"
           :disabled="!kb.kbIsSingleBook() || distillBusy"
           @click="onDistill"
         >
@@ -265,12 +267,13 @@ watch(
         <button
           type="button"
           class="app-btn"
+          title="把当前单书库同步到通用库"
           :disabled="syncBusy || !kb.kbIsSingleBook()"
           @click="onSyncCurrent"
         >
           同步当前到通用库
         </button>
-        <button type="button" class="app-btn" :disabled="syncBusy" @click="onSyncAll">全部同步</button>
+        <button type="button" class="app-btn" title="全部知识库同步到通用库" :disabled="syncBusy" @click="onSyncAll">全部同步</button>
       </div>
     </div>
 
@@ -288,6 +291,28 @@ watch(
       <span v-if="kbOpen" class="kb-current muted">
         当前：{{ isUniversal ? "通用知识库" : appState.project.title }}
       </span>
+      <div v-if="!isHomeTab" class="head-actions kb-subnav-actions">
+        <button type="button" class="app-btn" title="导入 TXT 为知识库" @click="showImport = true">导入</button>
+        <button
+          type="button"
+          class="app-btn"
+          title="对单书知识库蒸馏前 20 章"
+          :disabled="!kb.kbIsSingleBook() || distillBusy"
+          @click="onDistill"
+        >
+          {{ distillBusy ? "蒸馏中…" : "蒸馏" }}
+        </button>
+        <button
+          type="button"
+          class="app-btn"
+          title="把当前单书库同步到通用库"
+          :disabled="syncBusy || !kb.kbIsSingleBook()"
+          @click="onSyncCurrent"
+        >
+          同步当前
+        </button>
+        <button type="button" class="app-btn" title="全部知识库同步到通用库" :disabled="syncBusy" @click="onSyncAll">全部同步</button>
+      </div>
     </nav>
 
     <!-- 库列表 -->
@@ -335,10 +360,10 @@ watch(
 
     <!-- 实体 / 总谱：复用现有视图，仍读当前 projectRoot（此时应为 KB） -->
     <div v-else-if="subNav === 'entities'" class="kb-pane kb-embed">
-      <LoreView />
+      <LoreView embedded />
     </div>
     <div v-else-if="subNav === 'story'" class="kb-pane kb-embed">
-      <StoryView />
+      <StoryView embedded />
     </div>
 
     <!-- 语料只读 -->
@@ -425,21 +450,26 @@ watch(
   flex-wrap: wrap;
   gap: 8px;
 }
+.kb-work {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
 .kb-subnav {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  margin-bottom: 14px;
-  padding-bottom: 10px;
+  gap: 6px 8px;
+  margin-bottom: 6px;
+  padding-bottom: 6px;
   border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
 }
 .kb-subtab {
   border: 1px solid var(--border);
   background: var(--panel);
   color: inherit;
   border-radius: 999px;
-  padding: 6px 14px;
+  padding: 4px 12px;
   cursor: pointer;
   font-size: 13px;
 }
@@ -453,12 +483,23 @@ watch(
   margin-left: auto;
   font-size: 12px;
 }
+.kb-subnav-actions {
+  margin-left: 0;
+}
 .kb-pane {
   flex: 1;
   min-height: 0;
+  overflow: auto;
 }
 .kb-embed {
-  overflow: auto;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.kb-embed > * {
+  flex: 1;
+  min-height: 0;
 }
 .work-grid {
   display: grid;
@@ -531,8 +572,8 @@ watch(
 .corpus-layout {
   display: flex;
   gap: 10px;
-  min-height: 420px;
-  height: calc(100vh - 260px);
+  min-height: 0;
+  height: 100%;
 }
 .chapter-tree {
   width: 200px;

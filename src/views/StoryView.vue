@@ -8,11 +8,23 @@ import { appState } from "../stores/appState.js";
 import * as story from "../services/storyClient.js";
 import * as project from "../services/projectClient.js";
 import MindMapBoard from "../components/MindMapBoard.vue";
+import RelationForceGraph from "../components/RelationForceGraph.vue";
 import CapsuleSwitch from "../components/CapsuleSwitch.vue";
 import CastSidePanel from "../components/CastSidePanel.vue";
 import { buildNovelMindTree } from "../utils/mindmapLayout.js";
-import { appConfirmDelete } from "../services/confirmDialog.js";
+import { appConfirm, appConfirmDelete } from "../services/confirmDialog.js";
 import { useToastError } from "../services/toast.js";
+import { outlineQueueState } from "../services/outlineQueue.js";
+import { sectionQueueState } from "../services/sectionQueue.js";
+import {
+  cancelStoryRebuild,
+  rebuildStoryFromExistingWork,
+  storyRebuildState,
+} from "../services/storySync.js";
+
+defineProps({
+  embedded: { type: Boolean, default: false },
+});
 
 const tab = ref("map");
 const error = useToastError();
@@ -116,41 +128,6 @@ function beatStatusLabel(st) {
   return "待写";
 }
 
-const graphNodes = computed(() => {
-  const ids = new Set();
-  for (const e of relations.value.edges || []) {
-    ids.add(e.from_id);
-    ids.add(e.to_id);
-  }
-  const list = [...ids];
-  const n = Math.max(list.length, 1);
-  const cx = 160;
-  const cy = 140;
-  const r = 110;
-  return list.map((id, i) => {
-    const ang = (Math.PI * 2 * i) / n - Math.PI / 2;
-    const lore = loreItems.value.find((x) => x.id === id);
-    return {
-      id,
-      label: (lore && lore.title) || id.slice(0, 8),
-      x: cx + r * Math.cos(ang),
-      y: cy + r * Math.sin(ang),
-    };
-  });
-});
-
-const graphEdges = computed(() => {
-  const byId = Object.fromEntries(graphNodes.value.map((n) => [n.id, n]));
-  return (relations.value.edges || [])
-    .map((e) => {
-      const a = byId[e.from_id];
-      const b = byId[e.to_id];
-      if (!a || !b) return null;
-      return { ...e, x1: a.x, y1: a.y, x2: b.x, y2: b.y };
-    })
-    .filter(Boolean);
-});
-
 function flattenScopedLore(scoped) {
   const local = (scoped.local || []).map((row) => row.entry);
   const global = (scoped.global || []).map((row) => row.entry);
@@ -215,6 +192,17 @@ function onCastSelect(item) {
   }
 }
 
+function onGraphSelect(n) {
+  if (!n || !n.id) {
+    return;
+  }
+  selectedNode.value = {
+    id: `char:${n.id}`,
+    label: n.label,
+    meta: "角色",
+  };
+}
+
 function syncFocusDraft() {
   const ch = currentChapter.value;
   if (!ch) return;
@@ -235,6 +223,9 @@ function syncFocusDraft() {
 }
 
 watch(() => appState.projectRoot, refreshAll);
+watch(() => appState.storyRevision, () => {
+  if (appState.projectRoot) void refreshAll();
+});
 watch(() => appState.chapterId, () => {
   syncFocusDraft();
   void loadBeatProgress();
@@ -403,6 +394,49 @@ async function removeAt(arr, idx) {
   arr.splice(idx, 1);
 }
 
+const rebuildBusy = computed(() => !!storyRebuildState.running);
+const rebuildBlocked = computed(
+  () =>
+    !appState.projectRoot ||
+    !!appState.generating ||
+    !!outlineQueueState.running ||
+    !!sectionQueueState.running
+);
+
+async function onRebuildStory() {
+  if (rebuildBusy.value || rebuildBlocked.value) return;
+  error.value = "";
+  message.value = "";
+  const ok = await appConfirm(
+    "将按现有章节正文重新生成故事线、时间线、关系和未锁定 Canon。已锁定的 Canon 会保留。章节正文、本章焦点和节拍不会改写。此操作会先清空未锁定总谱再逐章调用 AI，可能较久且消耗额度。",
+    {
+      title: "按正文重建总谱",
+      confirmText: "开始重建",
+      cancelText: "取消",
+      danger: true,
+    }
+  );
+  if (!ok) return;
+  try {
+    if (appState.dirty) await project.saveChapter();
+    const r = await rebuildStoryFromExistingWork();
+    await refreshAll();
+    if (r && r.cancelled) {
+      message.value = `已取消。成功 ${r.ok} 章` + (r.failed && r.failed.length ? `，失败 ${r.failed.length} 章` : "");
+    } else if (r && r.failed && r.failed.length) {
+      message.value = `已重建 ${r.ok} 章，失败：${r.failed.join("、")}`;
+    } else {
+      message.value = `已按正文重建总谱（${(r && r.ok) || 0} 章）`;
+    }
+  } catch (e) {
+    error.value = String((e && e.message) || e);
+  }
+}
+
+function onCancelRebuild() {
+  cancelStoryRebuild();
+}
+
 function onMapSelect(n) {
   selectedNode.value = n;
   if (n.id.startsWith("ch:")) {
@@ -416,38 +450,84 @@ function onMapSelect(n) {
 </script>
 
 <template>
-  <section class="panel story-panel">
-    <h1 class="panel-heading">总谱</h1>
+  <section class="panel story-panel" :class="{ 'story-panel-embed': embedded }">
+    <div v-if="!embedded" class="story-head">
+      <h1 class="panel-heading">总谱</h1>
+      <div v-if="appState.projectRoot" class="story-head-actions">
+        <button
+          v-if="rebuildBusy"
+          type="button"
+          class="app-btn"
+          @click="onCancelRebuild"
+        >
+          取消重建
+        </button>
+        <button
+          type="button"
+          class="app-btn app-btn-primary"
+          :disabled="rebuildBusy || rebuildBlocked"
+          title="按已有章节正文重新提取故事线、时间线、关系、未锁定 Canon；不改正文"
+          @click="onRebuildStory"
+        >
+          {{ rebuildBusy ? "正在重建…" : "AI 按正文重建总谱" }}
+        </button>
+      </div>
+    </div>
+    <p v-if="rebuildBusy" class="muted rebuild-progress">
+      正在按正文重建总谱 {{ storyRebuildState.index }}/{{ storyRebuildState.total }}
+      <span v-if="storyRebuildState.chapterTitle"> · {{ storyRebuildState.chapterTitle }}</span>
+    </p>
     <p v-if="!appState.projectRoot" class="muted">请先打开作品。</p>
     <template v-else>
       <div class="story-layout">
         <div class="story-main">
           <div class="subtabs">
-            <button
-              v-for="t in [
-                { id: 'map', label: '思维导图' },
-                { id: 'plot', label: '故事线' },
-                { id: 'focus', label: '本章焦点' },
-                { id: 'timeline', label: '时间线' },
-                { id: 'canon', label: 'Canon' },
-                { id: 'relations', label: '关系' },
-                { id: 'beats', label: '节拍' },
-              ]"
-              :key="t.id"
-              type="button"
-              class="chip"
-              :class="tab === t.id ? 'chip-active' : ''"
-              @click="tab = t.id"
-            >
-              {{ t.label }}
-            </button>
+            <div class="subtabs-chips">
+              <button
+                v-for="t in [
+                  { id: 'map', label: '思维导图' },
+                  { id: 'plot', label: '故事线' },
+                  { id: 'focus', label: '本章焦点' },
+                  { id: 'timeline', label: '时间线' },
+                  { id: 'canon', label: 'Canon' },
+                  { id: 'relations', label: '关系' },
+                  { id: 'beats', label: '节拍' },
+                ]"
+                :key="t.id"
+                type="button"
+                class="chip"
+                :class="tab === t.id ? 'chip-active' : ''"
+                @click="tab = t.id"
+              >
+                {{ t.label }}
+              </button>
+            </div>
+            <div v-if="embedded && appState.projectRoot" class="subtabs-actions">
+              <button
+                v-if="rebuildBusy"
+                type="button"
+                class="app-btn"
+                @click="onCancelRebuild"
+              >
+                取消重建
+              </button>
+              <button
+                type="button"
+                class="app-btn app-btn-primary"
+                :disabled="rebuildBusy || rebuildBlocked"
+                title="按已有章节正文重新提取故事线、时间线、关系、未锁定 Canon；不改正文"
+                @click="onRebuildStory"
+              >
+                {{ rebuildBusy ? "正在重建…" : "重建总谱" }}
+              </button>
+            </div>
           </div>
           <p v-if="message" class="muted">{{ message }}</p>
 
-          <div class="story-scroll">
+          <div class="story-scroll" :class="{ 'story-scroll-fill': tab === 'relations' }">
             <div v-if="tab === 'map'" class="block">
               <p class="muted map-hint">
-                导图含：大纲、角色、故事线、时间线、Canon、关系。右侧可添加/删除角色；下方表单 Tab 可编辑。
+                导图含：大纲、角色、故事线、时间线、Canon、关系。旧稿可点上方「AI 按正文重建总谱」。右侧可添加/删除角色；下方表单 Tab 可编辑。
               </p>
               <MindMapBoard :tree="mindTree" :height="480" @select="onMapSelect" />
               <p v-if="selectedNode" class="muted select-hint">
@@ -592,41 +672,37 @@ function onMapSelect(n) {
               </div>
             </div>
 
-            <div v-if="tab === 'relations'" class="block">
-              <div class="row-actions">
-                <button type="button" class="app-btn" @click="addEdge">加边</button>
-                <button type="button" class="app-btn app-btn-primary" @click="onSaveRelations">保存关系</button>
-              </div>
-              <svg class="graph" viewBox="0 0 320 280" xmlns="http://www.w3.org/2000/svg">
-                <line
-                  v-for="e in graphEdges"
-                  :key="e.id"
-                  :x1="e.x1"
-                  :y1="e.y1"
-                  :x2="e.x2"
-                  :y2="e.y2"
-                  class="g-edge"
-                />
-                <g v-for="n in graphNodes" :key="n.id">
-                  <circle :cx="n.x" :cy="n.y" r="22" class="g-node" />
-                  <text :x="n.x" :y="n.y + 4" text-anchor="middle" class="g-label">{{ n.label.slice(0, 5) }}</text>
-                  <title>{{ n.label }}</title>
-                </g>
-              </svg>
-              <p class="muted">完整含大纲的导图见「思维导图」Tab；此处为关系网圆形布局。</p>
-              <div v-for="(e, i) in relations.edges" :key="e.id" class="card">
-                <div class="grid2">
-                  <select v-model="e.from_id">
-                    <option v-for="l in loreItems" :key="'f' + l.id" :value="l.id">{{ l.title }}</option>
-                  </select>
-                  <select v-model="e.to_id">
-                    <option v-for="l in loreItems" :key="'t' + l.id" :value="l.id">{{ l.title }}</option>
-                  </select>
-                  <input v-model="e.kind" placeholder="kind" />
-                  <input v-model="e.label" placeholder="label" />
-                  <input v-model.number="e.strength" type="number" min="1" max="5" />
+            <div v-if="tab === 'relations'" class="block relations-block">
+              <RelationForceGraph
+                fill
+                :edges="relations.edges"
+                :lore-items="loreItems"
+                @select="onGraphSelect"
+              >
+                <template #toolbar>
+                  <button type="button" class="app-btn" @click="addEdge">加边</button>
+                  <button type="button" class="app-btn app-btn-primary" @click="onSaveRelations">保存关系</button>
+                </template>
+              </RelationForceGraph>
+              <p v-if="selectedNode" class="muted select-hint">
+                选中：{{ selectedNode.label }}
+                <span v-if="selectedNode.meta"> — {{ selectedNode.meta }}</span>
+              </p>
+              <div class="edge-list">
+                <div v-for="(e, i) in relations.edges" :key="e.id" class="card">
+                  <div class="grid2">
+                    <select v-model="e.from_id">
+                      <option v-for="l in loreItems" :key="'f' + l.id" :value="l.id">{{ l.title }}</option>
+                    </select>
+                    <select v-model="e.to_id">
+                      <option v-for="l in loreItems" :key="'t' + l.id" :value="l.id">{{ l.title }}</option>
+                    </select>
+                    <input v-model="e.kind" placeholder="kind" />
+                    <input v-model="e.label" placeholder="label" />
+                    <input v-model.number="e.strength" type="number" min="1" max="5" />
+                  </div>
+                  <button type="button" class="app-btn" @click="removeAt(relations.edges, i)">删除</button>
                 </div>
-                <button type="button" class="app-btn" @click="removeAt(relations.edges, i)">删除</button>
               </div>
             </div>
 
@@ -646,6 +722,29 @@ function onMapSelect(n) {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+.story-panel-embed {
+  padding: 0;
+  box-shadow: none;
+  background: transparent;
+  border-radius: 0;
+}
+.story-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+}
+.story-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.rebuild-progress {
+  flex-shrink: 0;
+  margin: 0 0 4px;
 }
 .story-layout {
   flex: 1;
@@ -669,15 +768,48 @@ function onMapSelect(n) {
   overflow-x: hidden;
   padding-right: 4px;
 }
+.story-scroll-fill {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.story-scroll-fill .relations-block {
+  flex: 1;
+}
+.relations-block {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  gap: 6px;
+}
+.edge-list {
+  flex-shrink: 0;
+  max-height: 140px;
+  overflow-y: auto;
+}
 .story-cast {
   min-height: 0;
 }
 .subtabs {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin: 10px 0 14px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 8px;
+  margin: 0 0 8px;
   flex-shrink: 0;
+}
+.subtabs-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.subtabs-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-left: auto;
 }
 .chip {
   border: none;
@@ -731,27 +863,6 @@ function onMapSelect(n) {
   align-items: center;
   gap: 6px;
   font-size: 13px;
-}
-.graph {
-  width: 100%;
-  max-width: 360px;
-  height: 280px;
-  background: var(--surface-solid);
-  border-radius: var(--radius-md);
-  margin-bottom: 12px;
-}
-.g-edge {
-  stroke: var(--muted);
-  stroke-width: 1.5;
-  opacity: 0.7;
-}
-.g-node {
-  fill: var(--accent-soft);
-  stroke: var(--accent-hover);
-}
-.g-label {
-  font-size: 9px;
-  fill: var(--text);
 }
 .error {
   color: var(--error);

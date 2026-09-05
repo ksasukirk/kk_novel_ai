@@ -177,6 +177,9 @@ async function loadStoryLite() {
 }
 
 watch(() => appState.projectRoot, loadStoryLite);
+watch(() => appState.storyRevision, () => {
+  if (appState.projectRoot) void loadStoryLite();
+});
 onMounted(loadStoryLite);
 
 async function saveOne(id) {

@@ -290,7 +290,8 @@ onUnmounted(() => {
             'main-scroll-lock':
               appState.activeNav === 'characters' ||
               appState.activeNav === 'story' ||
-              appState.activeNav === 'outline',
+              appState.activeNav === 'outline' ||
+              appState.activeNav === 'knowledge',
           }"
         >
           <ProjectHome v-if="appState.activeNav === 'project'" />

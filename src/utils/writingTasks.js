@@ -19,8 +19,25 @@ export function isBackgroundAnalysisTask(task) {
     t === "mindmap_outline" ||
     t === "chapter_summary" ||
     t === "summarize" ||
-    t === "consistency_check"
+    t === "consistency_check" ||
+    t === "story_sync" ||
+    t === "sync_story"
   );
+}
+
+export function isStorySyncTask(task) {
+  const t = String(task || "");
+  return t === "story_sync" || t === "sync_story";
+}
+
+/**
+ * 后台分析任务默认不进章节预览。
+ * AI 面板手动点的「同步总谱」仍走预览 + 确认（userFacingStorySync=true）。
+ */
+export function shouldMuteLlmUi(task, userFacingStorySync = false) {
+  if (!isBackgroundAnalysisTask(task)) return false;
+  if (isStorySyncTask(task) && userFacingStorySync) return false;
+  return true;
 }
 
 export function isProseWritingTask(task) {

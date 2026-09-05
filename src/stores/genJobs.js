@@ -81,6 +81,15 @@ export function findJobByRequestId(rid) {
   return genJobState.jobs.find((j) => j.requestId === rid) || null;
 }
 
+/** AI 面板正在跑的「同步总谱」，不要当静默后台吞掉 */
+export function hasUserFacingStorySyncJob() {
+  return genJobState.jobs.some((j) => {
+    const t = j.draftTask || "";
+    if (t !== "story_sync" && t !== "sync_story") return false;
+    return j.status === "pending" || j.status === "streaming";
+  });
+}
+
 export function jobsForAnchor(blockKey) {
   if (!blockKey) return [];
   return visibleGenJobs.value.filter((j) => j.draftAnchorBlockKey === blockKey);
