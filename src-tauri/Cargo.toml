@@ -1,6 +1,6 @@
 [package]
 name = "kk_novel_ai"
-version = "0.2.12"
+version = "0.2.13"
 edition = "2021"
 authors = ["kk"]
 
@@ -21,7 +21,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri = { version = "=2.11.4", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls-native-roots"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "fs", "io-util"] }
 futures-util = "0.3"
 thiserror = "1"
