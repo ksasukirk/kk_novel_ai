@@ -6,7 +6,7 @@
 
 | 项 | 值 |
 |---|---|
-| 当前版本 | `0.2.20`（`package.json` / `src-tauri/Cargo.toml` / `src-tauri/tauri.conf.json` 同步） |
+| 当前版本 | `0.2.21`（`package.json` / `src-tauri/Cargo.toml` / `src-tauri/tauri.conf.json` 同步） |
 | 标识符 | `com.kk.kk-novel-ai` |
 | 仓库 | [https://github.com/ksasukirk/kk_novel_ai](https://github.com/ksasukirk/kk_novel_ai) |
 | 作者 | kk |
@@ -35,20 +35,21 @@
 | R8 | 写明持续吸取建议并优化软件 | 完成 | 本文开篇；[`docs/todo.md`](docs/todo.md) |
 | R9 | 写明推荐使用 DeepSeek | 完成 | 本文开篇；[`src-tauri/src/settings.rs`](src-tauri/src/settings.rs)、[`src/views/SettingsView.vue`](src/views/SettingsView.vue) |
 | R10 | 用量分析 / 作品履历 / 余额 | 完成 | [`UsageAnalyticsView.vue`](src/views/UsageAnalyticsView.vue)、[`project_genlog.rs`](src-tauri/src/project_genlog.rs)、[`llm/balance.rs`](src-tauri/src/llm/balance.rs) |
-| R11 | v0.2.20 插图 / 分镜 / 应用内更新 / 发版流水线 | 完成 | 本文第 1 节；[`illustration.js`](src/services/illustration.js)、[`image.rs`](src-tauri/src/image.rs)、[`update.rs`](src-tauri/src/update.rs)、[`build.py`](build.py) |
+| R11 | v0.2.20 插图 / 分镜 / 应用内更新 / 发版流水线 | 完成 | [`illustration.js`](src/services/illustration.js)、[`image.rs`](src-tauri/src/image.rs)、[`update.rs`](src-tauri/src/update.rs)、[`build.py`](build.py) |
+| R12 | v0.2.21 分镜 JSON 容错与提示词约束 | 完成 | 本文第 1 节；[`llmJson.js`](src/utils/llmJson.js)、[`illustration.js`](src/services/illustration.js)、[`beats_to_storyboard.md`](src-tauri/prompts/beats_to_storyboard.md) |
 
 ---
 
-## 1. 本版（0.2.20）做了什么
+## 1. 本版（0.2.21）做了什么
 
-相对往期，本版把「写完再配图」和「装完还能自己更新」接到同一套本地作品流里，并让 release 打包能一键把说明与安装包推到 GitHub。
+相对 `0.2.20`，本版主要解决「按拍生成分镜」时模型偶尔吐出漏逗号 / 拖尾逗号的近似 JSON，导致整表解析失败、分镜页白跑一趟的问题。
 
-- **章内插图块**：写作编辑器可插入 / 重生成 / 删除插图块，配图落在作品目录相对路径，正文块与插图块并列（见 [`ChapterBlockEditor.vue`](src/components/ChapterBlockEditor.vue)、[`genBlock.js`](src/utils/genBlock.js)、[`illustration.js`](src/services/illustration.js)）。
-- **总谱「分镜」页**：可按当前章节拍生成分镜表、编辑风格前缀与负面词、从镜头出提示词并生成插图，再落回章节块；分镜存盘独立于「按正文重建总谱」（见 [`StoryView.vue`](src/views/StoryView.vue)、[`story/mod.rs`](src-tauri/src/story/mod.rs)、[`beats_to_storyboard.md`](src-tauri/prompts/beats_to_storyboard.md)）。
-- **文生图设置**：设置页可配 OpenAI 兼容图像端点、模型、尺寸与 API Key；提示词对话框可结合 lore 视觉描述起草（见 [`SettingsView.vue`](src/views/SettingsView.vue)、[`image.rs`](src-tauri/src/image.rs)、[`IllustrationPromptDialog.vue`](src/components/IllustrationPromptDialog.vue)、[`loreVisual.js`](src/utils/loreVisual.js)）。
-- **导出带图**：TXT / EPUB / PDF 导出会识别插图块；TXT 写占位说明，EPUB / PDF 嵌入图片（见 [`export/mod.rs`](src-tauri/src/export/mod.rs)）。
-- **应用内检查更新**：设置页可查 GitHub Release、下载桌面安装包并启动新版本（连不上时可打开 Release 页）（见 [`appUpdate.js`](src/services/appUpdate.js)、[`updateFlow.js`](src/services/updateFlow.js)、[`UpdateDialog.vue`](src/components/UpdateDialog.vue)、[`update.rs`](src-tauri/src/update.rs)）。
-- **发版流水线**：`python build.py` 在 release 成功后默认用 Cursor 按上次 tag 的 diff 重写本 README，再提交工作区、push，并把 exe/apk 上传到 GitHub Release（见第 9 节与 [`build.py`](build.py)）。
+- **分镜 / 插图 JSON 更耐脏**：统一用 [`llmJson.js`](src/utils/llmJson.js) 解析模型输出，可剥 Markdown 围栏、补数组元素间漏掉的英文逗号、去掉拖尾逗号，并尽量从截断对象里救出可用片段；插图与分镜入口 [`illustration.js`](src/services/illustration.js) 的 `parseJsonValue` 已切到该解析器。
+- **提示词硬约束**：[`beats_to_storyboard.md`](src-tauri/prompts/beats_to_storyboard.md) 明确要求数组元素之间必须有英文逗号、最后一个元素后不要逗号，从源头减少坏 JSON。
+- **回归脚本**：[`scripts/check-llm-json.mjs`](scripts/check-llm-json.mjs) 覆盖漏逗号、拖尾逗号、围栏与大批镜头场景，便于本地快速验收。
+- **版本对齐**：`package.json` / `src-tauri/Cargo.toml` / `src-tauri/tauri.conf.json` 同步为 `0.2.21`。
+
+往期（0.2.20）已具备：章内插图块、总谱「分镜」页、文生图设置、导出带图、应用内检查更新、以及 `python build.py` 默认发版流水线（见第 9 节）。
 
 ---
 
@@ -60,7 +61,7 @@
 - Windows 桌面为主，Android APK 由 `build_android.py` 引导工具链后打包（见 [`docs/android-setup.md`](docs/android-setup.md)）。
 - **持续迭代**：会吸取更多建议来优化本软件；写作模型**最好使用 DeepSeek**（设置页配置端点与模型槽）。
 - **用量可追溯**：续写 / 润色 / 书名建议 / 导入蒸馏等业务 AI 调用记 token 与花费；侧栏「分析」可看余额、KPI 与趋势。
-- **插图可选**：分镜与章内插图依赖你配置的文生图端点；不配也能正常写作与导出纯文本。
+- **插图可选**：分镜与章内插图依赖你配置的文生图端点；不配也能正常写作与导出纯文本。分镜表 JSON 解析已对常见模型瑕疵做容错。
 
 ---
 
@@ -77,6 +78,7 @@
 | RAG | rusqlite + 关键词回退 | [`src-tauri/src/rag/mod.rs`](src-tauri/src/rag/mod.rs) |
 | 导出 | TXT / EPUB / PDF（zip、krilla，可嵌插图） | [`src-tauri/src/export/mod.rs`](src-tauri/src/export/mod.rs) |
 | 应用更新 | GitHub Release 检查 / 下载 | [`src-tauri/src/update.rs`](src-tauri/src/update.rs) |
+| LLM JSON 容错 | 前端近似 JSON 修复 | [`src/utils/llmJson.js`](src/utils/llmJson.js) |
 
 窗口无系统边框（`decorations: false`），自定义标题栏在 [`src/App.vue`](src/App.vue)；主题 Token 在 [`src/style.css`](src/style.css)。
 
@@ -120,13 +122,13 @@ kk_novel_ai/
 │   ├── components/           # AiPanel、编辑块、插图对话框、更新对话框、壳、思维导图等
 │   ├── services/             # Tauri / LLM / 作品 / 插图 / 更新 / GUI 桥 / 按纲队列
 │   ├── stores/               # appState 等
-│   └── utils/                # 用量 / DeepSeek 单价 / lore 视觉 / 生成块
+│   └── utils/                # 用量 / DeepSeek 单价 / lore 视觉 / LLM JSON / 生成块
 ├── src-tauri/                # Tauri + Rust
 │   ├── src/                  # 后端模块（含 image.rs / update.rs）
 │   ├── prompts/              # 写作 / 分镜 / 插图 Prompt 模板
 │   ├── tauri.conf.json
 │   └── tauri.android.conf.json
-├── scripts/                  # android-setup、发版 README 提示词、导入验收等
+├── scripts/                  # android-setup、发版 README 提示词、LLM JSON 验收、导入验收等
 ├── docs/                     # 分析、TODO、LM Studio、Android、移动 QA
 └── test_files/               # 导入语料（如《问道红尘》）
 ```
@@ -153,7 +155,8 @@ kk_novel_ai/
 | 设置 | [`src/views/SettingsView.vue`](src/views/SettingsView.vue) | 端点、DeepSeek 预设、文生图、检查更新、多模型槽 |
 | 插图 / 更新 UI | [`IllustrationPromptDialog.vue`](src/components/IllustrationPromptDialog.vue)、[`UpdateDialog.vue`](src/components/UpdateDialog.vue) | 提示词确认出图；更新说明与进度 |
 | 用量工具 | [`usageFormat.js`](src/utils/usageFormat.js)、[`usageSeries.js`](src/utils/usageSeries.js)、[`usageEstimate.js`](src/utils/usageEstimate.js)、[`deepseekPricing.js`](src/utils/deepseekPricing.js) | 格式化、按日聚合、无履历约算、官方单价 |
-| 插图 / lore 视觉 | [`illustration.js`](src/services/illustration.js)、[`loreVisual.js`](src/utils/loreVisual.js)、[`genBlock.js`](src/utils/genBlock.js) | 分镜生成、出图落盘、插图块模型 |
+| LLM JSON 容错 | [`llmJson.js`](src/utils/llmJson.js)、[`check-llm-json.mjs`](scripts/check-llm-json.mjs) | 近似 JSON 修复；本地回归脚本 |
+| 插图 / lore 视觉 | [`illustration.js`](src/services/illustration.js)、[`loreVisual.js`](src/utils/loreVisual.js)、[`genBlock.js`](src/utils/genBlock.js) | 分镜生成、出图落盘、插图块模型；解析走 `parseLlmJson` |
 | 应用更新 | [`appUpdate.js`](src/services/appUpdate.js)、[`updateFlow.js`](src/services/updateFlow.js) | 检查 / 下载 / 启动流程 |
 | 全局状态 | [`src/stores/appState.js`](src/stores/appState.js) | 当前作品与导航 |
 | 客户端 | [`src/services/tauri.js`](src/services/tauri.js)、[`llmClient.js`](src/services/llmClient.js)、[`projectClient.js`](src/services/projectClient.js)、[`storyClient.js`](src/services/storyClient.js)、[`guiBridge.js`](src/services/guiBridge.js) | invoke / 事件桥 / 分镜读写 |
@@ -241,6 +244,7 @@ npx tauri dev
 | 前端静态产物 | `npm run frontend:build` | [`build-frontend.mjs`](build-frontend.mjs) |
 | Android 工具链 | `npm run android:bootstrap` | [`build_android.py`](build_android.py) `--bootstrap-only` |
 | 只补传 Release | `python build.py --publish-only` | [`build.py`](build.py)（用已有 `dist/` 产物） |
+| LLM JSON 回归 | `node scripts/check-llm-json.mjs` | [`scripts/check-llm-json.mjs`](scripts/check-llm-json.mjs)、[`src/utils/llmJson.js`](src/utils/llmJson.js) |
 
 **发版行为（默认）**：`python build.py` 在 **release 成功后默认** 会调用 Cursor（`--model auto`）按上次 tag 相对当前工作区的 diff 重写 [`README.md`](README.md)，并 `git add -A` 提交全部工作区改动、push、上传 GitHub Release（exe/apk）。相关提示词模板：[`scripts/release-readme-prompt.md`](scripts/release-readme-prompt.md)。
 
@@ -290,5 +294,6 @@ CLI 调试优先用 `kk_novel_cli`（构建后在 `src-tauri/target/...`）。�
 | N12 | 分析页跨日账本持久化图表 | 现按已加载履历（约 500 条）聚合近 14 天 | [`UsageAnalyticsView.vue`](src/views/UsageAnalyticsView.vue)、[`usage.rs`](src-tauri/src/usage.rs) |
 | N13 | 插图批量按卷出图 / 队列 | 现为单镜头 / 单块出图 | [`illustration.js`](src/services/illustration.js)、[`image.rs`](src-tauri/src/image.rs) |
 | N14 | 移动端应用内更新体验 | 桌面可下载启动；移动端引导打开 Release 页 | [`update.rs`](src-tauri/src/update.rs)、[`SettingsView.vue`](src/views/SettingsView.vue) |
+| N15 | 写作链路共用 LLM JSON 容错 | 当前主要服务分镜 / 插图解析 | [`llmJson.js`](src/utils/llmJson.js)、[`writing/`](src-tauri/src/writing/) |
 
 已知约束：Debug GUI 依赖 Vite `5173`；Release 读 `frontend-dist/`；蒸馏依赖可用的分析模型（推荐 DeepSeek）+ `analysis_model`，长书请用 `--from` / `--to` 分段。DeepSeek 官方仅提供余额 API，无 Bearer 可查的「今日已用 token」；今日/累计消耗以本应用履历与账本为准。插图需自行配置兼容文生图端点；未配置时仍可写正文，不可出图。

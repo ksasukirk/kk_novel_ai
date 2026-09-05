@@ -17,6 +17,7 @@ import {
   removeInlineByKey,
 } from "../utils/branchModel.js";
 import { formatSheetsForPrompt } from "../utils/loreVisual.js";
+import { parseLlmJson } from "../utils/llmJson.js";
 import * as story from "./storyClient.js";
 
 export const imageGenState = reactive({
@@ -46,21 +47,7 @@ export function parseJsonObject(text) {
 }
 
 export function parseJsonValue(text) {
-  let s = String(text || "").trim();
-  const fence = s.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  if (fence) s = fence[1].trim();
-  const objStart = s.indexOf("{");
-  const arrStart = s.indexOf("[");
-  const useArr =
-    arrStart >= 0 && (objStart < 0 || arrStart < objStart);
-  if (useArr) {
-    const end = s.lastIndexOf("]");
-    if (end > arrStart) s = s.slice(arrStart, end + 1);
-  } else if (objStart >= 0) {
-    const end = s.lastIndexOf("}");
-    if (end > objStart) s = s.slice(objStart, end + 1);
-  }
-  return JSON.parse(s);
+  return parseLlmJson(text);
 }
 
 export async function hashSourceText(s) {
