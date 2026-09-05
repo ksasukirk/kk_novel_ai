@@ -22,6 +22,7 @@ import SettingsView from "./views/SettingsView.vue";
 import GenLogView from "./views/GenLogView.vue";
 import UsageAnalyticsView from "./views/UsageAnalyticsView.vue";
 import StoryView from "./views/StoryView.vue";
+import ChatView from "./views/ChatView.vue";
 import { isKbProject, restoreWritingSnapshot } from "./stores/appState.js";
 import { isMobileUx, isTauriMobile, watchMobileViewport } from "./utils/platform.js";
 import {
@@ -48,6 +49,7 @@ const sidebarTabs = [
   { id: "story", label: "总谱" },
   { id: "outline", label: "大纲" },
   { id: "editor", label: "写作" },
+  { id: "chat", label: "对话" },
   { id: "lore", label: "设定" },
   { id: "analytics", label: "分析" },
   { id: "log", label: "日志" },
@@ -57,11 +59,28 @@ const sidebarTabs = [
 const bottomPrimary = [
   { id: "project", label: "作品" },
   { id: "editor", label: "写作" },
+  { id: "chat", label: "对话" },
   { id: "outline", label: "大纲" },
   { id: "story", label: "总谱" },
 ];
 
 const moreTabIds = new Set(["knowledge", "characters", "lore", "analytics", "log", "settings"]);
+
+const navViews = {
+  project: ProjectHome,
+  knowledge: KnowledgeHome,
+  story: StoryView,
+  outline: OutlineView,
+  editor: EditorView,
+  chat: ChatView,
+  characters: CharacterRosterView,
+  lore: LoreView,
+  analytics: UsageAnalyticsView,
+  log: GenLogView,
+  settings: SettingsView,
+};
+
+const navComponent = computed(() => navViews[appState.activeNav] || ProjectHome);
 
 const titleSuffix = computed(() => {
   if (appState.activeNav === "knowledge" && appState.project && isKbProject(appState.project)) {
@@ -93,7 +112,7 @@ const sidebarMenuTitle = computed(() => sidebarToggleTitle(effectiveSidebarMode.
 
 function setActiveNav(tab) {
   // 角色定义 / 设定：全局仓，不强制先开写作工程
-  if (tab.id === "lore" || tab.id === "characters") {
+  if (tab.id === "lore" || tab.id === "characters" || tab.id === "chat") {
     appState.activeNav = tab.id;
     if (mobileUx.value) sidebarDrawerOpen.value = false;
     return;
@@ -295,19 +314,13 @@ onUnmounted(() => {
               appState.activeNav === 'characters' ||
               appState.activeNav === 'story' ||
               appState.activeNav === 'outline' ||
-              appState.activeNav === 'knowledge',
+              appState.activeNav === 'knowledge' ||
+              appState.activeNav === 'chat',
           }"
         >
-          <ProjectHome v-if="appState.activeNav === 'project'" />
-          <KnowledgeHome v-else-if="appState.activeNav === 'knowledge'" />
-          <StoryView v-else-if="appState.activeNav === 'story'" />
-          <OutlineView v-else-if="appState.activeNav === 'outline'" />
-          <EditorView v-else-if="appState.activeNav === 'editor'" />
-          <CharacterRosterView v-else-if="appState.activeNav === 'characters'" />
-          <LoreView v-else-if="appState.activeNav === 'lore'" />
-          <UsageAnalyticsView v-else-if="appState.activeNav === 'analytics'" />
-          <GenLogView v-else-if="appState.activeNav === 'log'" />
-          <SettingsView v-else-if="appState.activeNav === 'settings'" />
+          <KeepAlive :max="12">
+            <component :is="navComponent" :key="appState.activeNav" />
+          </KeepAlive>
         </div>
       </main>
     </div>

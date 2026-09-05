@@ -16,6 +16,15 @@ export function createInstructionStep(text = "") {
 export const aiPanelForm = reactive({
   task: "outline_run",
   instruction: "",
+  /** 按任务分槽，切任务不互相覆盖 */
+  instructionByTask: {
+    continue: "",
+    polish: "",
+    outline: "",
+    consistency: "",
+    chapter_summary: "",
+    story_sync: "",
+  },
   selection: "",
   showDiff: true,
   /** @deprecated 已取消自动分节；保留字段避免旧会话报错，恒为 false */
@@ -88,5 +97,28 @@ watch(
     if (!v) return;
     toastErrorLines(v);
     aiPanelForm.error = "";
+  }
+);
+
+watch(
+  () => aiPanelForm.task,
+  (id, prev) => {
+    if (prev && prev !== "outline_run") {
+      aiPanelForm.instructionByTask[prev] = String(aiPanelForm.instruction || "");
+    }
+    if (id === "outline_run") return;
+    if (!(id in aiPanelForm.instructionByTask)) {
+      aiPanelForm.instructionByTask[id] = "";
+    }
+    aiPanelForm.instruction = String(aiPanelForm.instructionByTask[id] || "");
+  }
+);
+
+watch(
+  () => aiPanelForm.instruction,
+  (v) => {
+    const t = aiPanelForm.task;
+    if (t === "outline_run") return;
+    aiPanelForm.instructionByTask[t] = String(v || "");
   }
 );

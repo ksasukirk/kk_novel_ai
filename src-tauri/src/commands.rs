@@ -61,13 +61,20 @@ pub async fn llm_chat_stream(
         stream: true,
         ..Default::default()
     });
+    let _ = app.emit(
+        "llm-start",
+        json!({
+            "request_id": request_id,
+            "task": "llm_chat",
+        }),
+    );
     let app2 = app.clone();
     let rid = request_id.clone();
     let result = client
         .chat_stream(&settings, &messages, &opts, cancel, move |delta| {
             let _ = app2.emit(
                 "llm-chunk",
-                json!({ "request_id": rid, "delta": delta }),
+                json!({ "request_id": rid, "delta": delta, "task": "llm_chat" }),
             );
         })
         .await;
@@ -100,6 +107,7 @@ pub async fn llm_chat_stream(
                 "llm-done",
                 json!({
                     "request_id": request_id,
+                    "task": "llm_chat",
                     "text": r.text,
                     "usage": r.usage,
                     "log_id": log_id,
@@ -118,7 +126,11 @@ pub async fn llm_chat_stream(
         Err(e) => {
             let _ = app.emit(
                 "llm-error",
-                json!({ "request_id": request_id, "error": e.to_string() }),
+                json!({
+                    "request_id": request_id,
+                    "task": "llm_chat",
+                    "error": e.to_string()
+                }),
             );
             Err(e.to_string())
         }
@@ -348,6 +360,20 @@ pub fn story_apply_patch(root: String, patch: Value) -> Result<Value, String> {
 #[tauri::command]
 pub fn story_dashboard(root: String) -> Result<Value, String> {
     api::story_dashboard(&root).map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn chat_session_get(mode: String, root: Option<String>) -> Result<Value, String> {
+    api::chat_session_get(&mode, root.as_deref()).map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn chat_session_save(
+    mode: String,
+    root: Option<String>,
+    session: crate::chat::ChatSession,
+) -> Result<Value, String> {
+    api::chat_session_save(&mode, root.as_deref(), session).map_err(Into::into)
 }
 
 #[tauri::command]

@@ -39,6 +39,8 @@ export function isStorySyncTask(task) {
  * AI 面板手动点的「同步总谱」仍走预览 + 确认（userFacingStorySync=true）。
  */
 export function shouldMuteLlmUi(task, userFacingStorySync = false) {
+  const t = String(task || "");
+  if (t === "llm_chat") return true;
   if (!isBackgroundAnalysisTask(task)) return false;
   if (isStorySyncTask(task) && userFacingStorySync) return false;
   return true;

@@ -268,7 +268,7 @@ async function remove(item) {
           type="button"
           class="chip"
           :class="tab === 'global' ? 'chip-active' : ''"
-          @click="tab = 'global'; resetForm()"
+          @click="tab = 'global'"
         >
           全局
         </button>
@@ -276,7 +276,7 @@ async function remove(item) {
           type="button"
           class="chip"
           :class="tab === 'local' ? 'chip-active' : ''"
-          @click="tab = 'local'; resetForm()"
+          @click="tab = 'local'"
         >
           本篇补充
         </button>

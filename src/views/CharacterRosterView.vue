@@ -190,7 +190,7 @@ onMounted(refresh);
           type="button"
           class="chip"
           :class="kindFilter === 'character' ? 'chip-active' : ''"
-          @click="kindFilter = 'character'; resetForm()"
+          @click="kindFilter = 'character'"
         >
           角色
         </button>
@@ -198,7 +198,7 @@ onMounted(refresh);
           type="button"
           class="chip"
           :class="kindFilter === 'world' ? 'chip-active' : ''"
-          @click="kindFilter = 'world'; resetForm()"
+          @click="kindFilter = 'world'"
         >
           背景 / 世界观
         </button>

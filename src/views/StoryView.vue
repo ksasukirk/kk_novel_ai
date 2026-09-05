@@ -90,6 +90,50 @@ const storyboard = ref({ style_prefix: "", negative: "", chapters: [] });
 const shotThumbs = ref({});
 const boardBusy = ref(false);
 
+function jsonSnap(v) {
+  try {
+    return JSON.stringify(v);
+  } catch {
+    return "";
+  }
+}
+
+const loadedSnap = {
+  plot: "",
+  timeline: "",
+  canon: "",
+  relations: "",
+  storyboard: "",
+  focus: "",
+  focusChapterId: "",
+};
+
+function isBlockDirty(key, current) {
+  const base = loadedSnap[key];
+  if (!base) return false;
+  return jsonSnap(current) !== base;
+}
+
+function takeIfClean(key, currentRef, incoming) {
+  if (isBlockDirty(key, currentRef.value)) return;
+  currentRef.value = incoming;
+  loadedSnap[key] = jsonSnap(incoming);
+}
+
+function noteBlockSaved(key, current) {
+  loadedSnap[key] = jsonSnap(current);
+}
+
+function resetLoadedSnaps() {
+  loadedSnap.plot = "";
+  loadedSnap.timeline = "";
+  loadedSnap.canon = "";
+  loadedSnap.relations = "";
+  loadedSnap.storyboard = "";
+  loadedSnap.focus = "";
+  loadedSnap.focusChapterId = "";
+}
+
 const beatProgressRows = computed(() => {
   const ch = currentChapter.value;
   if (!ch || !(ch.beats || []).length) return [];
@@ -236,6 +280,7 @@ watch(chapterShots, () => {
 async function onSaveStoryboard() {
   try {
     await story.saveStoryboard(storyboard.value);
+    noteBlockSaved("storyboard", storyboard.value);
     message.value = "分镜表已保存";
   } catch (e) {
     error.value = String(e.message || e);
@@ -278,6 +323,7 @@ async function onGenerateStoryboard() {
       };
     });
     await story.saveStoryboard(storyboard.value);
+    noteBlockSaved("storyboard", storyboard.value);
     message.value = `已生成 ${ch.shots.length} 镜`;
   } catch (e) {
     error.value = String(e.message || e);
@@ -315,6 +361,7 @@ async function onGenerateShotImage(shot) {
       source_hash: await hashSourceText(shot.visual || ""),
     };
     await story.saveStoryboard(storyboard.value);
+    noteBlockSaved("storyboard", storyboard.value);
     shotThumbs.value = { ...shotThumbs.value, [shot.image.rel]: "" };
     await refreshShotThumbs();
     message.value = "本镜图像已生成";
@@ -382,16 +429,20 @@ async function refreshAll() {
       story.getRelations(),
       project.listLoreScoped(),
     ]);
-    plot.value = p.plot || { arcs: [], promises: [] };
-    timeline.value = t.timeline || { calendar_note: "", events: [] };
-    canon.value = c.canon || { facts: [] };
-    relations.value = r.relations || { edges: [] };
+    takeIfClean("plot", plot, p.plot || { arcs: [], promises: [] });
+    takeIfClean("timeline", timeline, t.timeline || { calendar_note: "", events: [] });
+    takeIfClean("canon", canon, c.canon || { facts: [] });
+    takeIfClean("relations", relations, r.relations || { edges: [] });
     loreItems.value = flattenScopedLore(lore);
     try {
       const sb = await story.getStoryboard();
-      storyboard.value = sb.storyboard || { style_prefix: "", negative: "", chapters: [] };
+      takeIfClean(
+        "storyboard",
+        storyboard,
+        sb.storyboard || { style_prefix: "", negative: "", chapters: [] }
+      );
     } catch {
-      storyboard.value = { style_prefix: "", negative: "", chapters: [] };
+      takeIfClean("storyboard", storyboard, { style_prefix: "", negative: "", chapters: [] });
     }
     try {
       const memory = await project.getMemory();
@@ -405,7 +456,7 @@ async function refreshAll() {
     } catch {
       snapshots.value = {};
     }
-    syncFocusDraft();
+    syncFocusDraft(false);
   } catch (e) {
     error.value = String(e.message || e);
   }
@@ -436,9 +487,28 @@ function onGraphSelect(n) {
   };
 }
 
-function syncFocusDraft() {
+function syncFocusDraft(force) {
   const ch = currentChapter.value;
-  if (!ch) return;
+  const cid = appState.chapterId || "";
+  if (!force && loadedSnap.focusChapterId === cid && isBlockDirty("focus", focusDraft.value)) {
+    return;
+  }
+  if (!ch) {
+    if (force) {
+      focusDraft.value = {
+        pov_lore_id: "",
+        focus_arc_ids: "",
+        must_do: "",
+        must_not: "",
+        reader_knows: "",
+        character_knows: "",
+        beatsText: "",
+      };
+      loadedSnap.focus = jsonSnap(focusDraft.value);
+      loadedSnap.focusChapterId = cid;
+    }
+    return;
+  }
   focusDraft.value = {
     pov_lore_id: ch.pov_lore_id || "",
     focus_arc_ids: (ch.focus_arc_ids || []).join(", "),
@@ -453,20 +523,27 @@ function syncFocusDraft() {
       )
       .join("\n"),
   };
+  loadedSnap.focus = jsonSnap(focusDraft.value);
+  loadedSnap.focusChapterId = cid;
 }
 
-watch(() => appState.projectRoot, refreshAll);
+watch(
+  () => appState.projectRoot,
+  () => {
+    resetLoadedSnaps();
+    void refreshAll();
+  }
+);
 watch(() => appState.storyRevision, () => {
   if (appState.projectRoot) void refreshAll();
 });
 watch(() => appState.chapterId, () => {
-  syncFocusDraft();
+  syncFocusDraft(true);
   void loadBeatProgress();
 });
 watch(
   () => appState.project && appState.project.chapters,
   () => {
-    syncFocusDraft();
     void loadBeatProgress();
   },
   { deep: true }
@@ -501,6 +578,7 @@ function addPromise() {
 async function onSavePlot() {
   try {
     await story.savePlot(plot.value);
+    noteBlockSaved("plot", plot.value);
     message.value = "故事线已保存";
   } catch (e) {
     error.value = String(e.message || e);
@@ -522,6 +600,7 @@ function addEvent() {
 async function onSaveTimeline() {
   try {
     await story.saveTimeline(timeline.value);
+    noteBlockSaved("timeline", timeline.value);
     message.value = "时间线已保存";
   } catch (e) {
     error.value = String(e.message || e);
@@ -542,6 +621,7 @@ function addFact() {
 async function onSaveCanon() {
   try {
     await story.saveCanon(canon.value);
+    noteBlockSaved("canon", canon.value);
     message.value = "Canon 已保存";
   } catch (e) {
     error.value = String(e.message || e);
@@ -565,6 +645,7 @@ function addEdge() {
 async function onSaveRelations() {
   try {
     await story.saveRelations(relations.value);
+    noteBlockSaved("relations", relations.value);
     message.value = "关系已保存（已同步 lore.links）";
     await refreshAll();
   } catch (e) {
@@ -610,6 +691,8 @@ async function onSaveFocus() {
         beats: parseBeats(focusDraft.value.beatsText),
       },
     });
+    noteBlockSaved("focus", focusDraft.value);
+    loadedSnap.focusChapterId = appState.chapterId;
     message.value = "本章焦点/节拍已保存";
   } catch (e) {
     error.value = String(e.message || e);

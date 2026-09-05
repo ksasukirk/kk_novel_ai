@@ -6,6 +6,7 @@
 pub mod cli;
 
 mod api;
+mod chat;
 mod commands;
 mod error;
 mod export;
@@ -66,6 +67,8 @@ pub fn run() {
             commands::llm_chat,
             commands::llm_chat_stream,
             commands::llm_cancel,
+            commands::chat_session_get,
+            commands::chat_session_save,
             commands::writing_run,
             commands::ipc_prepare_ack,
             commands::project_create,

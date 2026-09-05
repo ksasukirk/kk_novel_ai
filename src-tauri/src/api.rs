@@ -995,6 +995,18 @@ pub fn story_storyboard_save(
     Ok(json!({ "ok": true, "storyboard": storyboard }))
 }
 
+pub fn chat_session_get(mode: &str, project_root: Option<&str>) -> AppResult<Value> {
+    crate::chat::chat_session_get(mode, project_root)
+}
+
+pub fn chat_session_save(
+    mode: &str,
+    project_root: Option<&str>,
+    session: crate::chat::ChatSession,
+) -> AppResult<Value> {
+    crate::chat::chat_session_save(mode, project_root, session)
+}
+
 pub fn story_apply_patch(root: &str, patch: Value) -> AppResult<Value> {
     crate::story::apply_story_patch(Path::new(root), &patch)
 }
@@ -1437,6 +1449,21 @@ pub async fn dispatch_rpc(req: Value) -> AppResult<Value> {
                     .ok_or_else(|| AppError::msg("缺少 storyboard"))?,
             )?;
             story_storyboard_save(req_str(&req, "root")?, storyboard)
+        }
+        "chat_session_get" => {
+            let mode = req_str(&req, "mode")?;
+            let root = req.get("root").and_then(|v| v.as_str());
+            chat_session_get(mode, root)
+        }
+        "chat_session_save" => {
+            let mode = req_str(&req, "mode")?;
+            let root = req.get("root").and_then(|v| v.as_str());
+            let session = serde_json::from_value(
+                req.get("session")
+                    .cloned()
+                    .ok_or_else(|| AppError::msg("缺少 session"))?,
+            )?;
+            chat_session_save(mode, root, session)
         }
         "lore_list" => lore_list(req_str(&req, "root")?),
         "lore_list_scoped" => lore_list_scoped(req_str(&req, "root")?),

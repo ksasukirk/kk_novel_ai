@@ -3,7 +3,7 @@
   代码路径: kk_novel_ai/src/views/EditorView.vue
 -->
 <script setup>
-import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from "vue";
+import { computed, nextTick, onActivated, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { appState } from "../stores/appState.js";
 import * as project from "../services/projectClient.js";
 import { runWriting, cancelGeneration, saveSettings } from "../services/llmClient.js";
@@ -1358,6 +1358,13 @@ watch(
     }
   }
 );
+
+onActivated(() => {
+  if (appState.activeNav !== "editor") return;
+  void refreshCharacterNameIndex().catch(() => {});
+  syncCurrentToc();
+  nextTick(() => syncActiveBlockFromScroll());
+});
 
 watch(
   () => appState.chapterId,

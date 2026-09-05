@@ -23,6 +23,10 @@ const volumeDrafts = ref({});
 const bookOutlineDraft = ref("");
 /** 与磁盘对齐的基线；不同则视为大纲页未保存草稿 */
 let bookOutlineDraftSynced = "";
+/** @type {Record<string, string>} */
+const chapterDraftSynced = {};
+/** @type {Record<string, string>} */
+const volumeDraftSynced = {};
 const snapshots = ref({});
 const mapPrefer = ref("auto");
 const mapBusy = ref(false);
@@ -99,13 +103,27 @@ watch(
   chapters,
   (list) => {
     const next = {};
+    const seen = new Set();
     for (const ch of list) {
-      next[ch.id] = {
+      if (!ch || !ch.id) continue;
+      seen.add(ch.id);
+      const incoming = {
         title: ch.title,
         summary: ch.summary || "",
         must_do: ch.must_do || "",
         must_not: ch.must_not || "",
       };
+      const cur = drafts.value[ch.id];
+      const synced = chapterDraftSynced[ch.id];
+      if (cur && synced && JSON.stringify(cur) !== synced) {
+        next[ch.id] = cur;
+      } else {
+        next[ch.id] = incoming;
+        chapterDraftSynced[ch.id] = JSON.stringify(incoming);
+      }
+    }
+    for (const id of Object.keys(chapterDraftSynced)) {
+      if (!seen.has(id)) delete chapterDraftSynced[id];
     }
     drafts.value = next;
   },
@@ -116,12 +134,26 @@ watch(
   volumes,
   (list) => {
     const next = {};
+    const seen = new Set();
     for (const v of list) {
-      next[v.id] = {
+      if (!v || !v.id) continue;
+      seen.add(v.id);
+      const incoming = {
         title: v.title,
         arc_goal: v.arc_goal || "",
         arc_summary: v.arc_summary || "",
       };
+      const cur = volumeDrafts.value[v.id];
+      const synced = volumeDraftSynced[v.id];
+      if (cur && synced && JSON.stringify(cur) !== synced) {
+        next[v.id] = cur;
+      } else {
+        next[v.id] = incoming;
+        volumeDraftSynced[v.id] = JSON.stringify(incoming);
+      }
+    }
+    for (const id of Object.keys(volumeDraftSynced)) {
+      if (!seen.has(id)) delete volumeDraftSynced[id];
     }
     volumeDrafts.value = next;
   },
@@ -176,7 +208,11 @@ async function loadStoryLite() {
   }
 }
 
-watch(() => appState.projectRoot, loadStoryLite);
+watch(() => appState.projectRoot, () => {
+  for (const k of Object.keys(chapterDraftSynced)) delete chapterDraftSynced[k];
+  for (const k of Object.keys(volumeDraftSynced)) delete volumeDraftSynced[k];
+  void loadStoryLite();
+});
 watch(() => appState.storyRevision, () => {
   if (appState.projectRoot) void loadStoryLite();
 });
@@ -192,6 +228,7 @@ async function saveOne(id) {
       summary: d.summary,
       patch: { must_do: d.must_do, must_not: d.must_not },
     });
+    chapterDraftSynced[id] = JSON.stringify(d);
   } catch (e) {
     error.value = String(e.message || e);
   }
@@ -231,6 +268,7 @@ async function saveVolume(id) {
       return { ...v, title: d.title, arc_goal: d.arc_goal, arc_summary: d.arc_summary };
     });
     await project.saveProjectMeta({ ...appState.project, volumes: vols });
+    volumeDraftSynced[id] = JSON.stringify(d);
   } catch (e) {
     error.value = String(e.message || e);
   }

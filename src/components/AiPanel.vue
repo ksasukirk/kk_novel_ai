@@ -233,7 +233,13 @@ function onInstructionQueueToggle(on) {
       instructionSteps.value[0].text = instruction.value;
     }
     activeStepId.value = instructionSteps.value[0]?.id || "";
+    return;
   }
+  const joined = instructionSteps.value
+    .map((s) => String(s.text || "").trim())
+    .filter(Boolean)
+    .join("\n");
+  if (joined) instruction.value = joined;
 }
 
 watch(instructionQueue, (on) => {
@@ -879,7 +885,7 @@ function onToggleLayout() {
           </select>
         </div>
         <textarea
-          v-if="!(task === 'continue' && instructionQueue)"
+          v-show="!(task === 'continue' && instructionQueue)"
           ref="instructionEl"
           v-model="floatPrompt"
           class="ai-float-input"
@@ -896,7 +902,7 @@ function onToggleLayout() {
           @keydown="onFloatKeydown"
         />
         <div
-          v-else
+          v-show="task === 'continue' && instructionQueue"
           class="ai-float-input queue-hint muted"
         >
           已开指令队列 · 上方编辑各步 · {{ filledStepCount }} 条待跑
@@ -1090,7 +1096,7 @@ function onToggleLayout() {
             </svg>
           </button>
         </div>
-        <template v-if="task === 'continue' && instructionQueue">
+        <div v-show="task === 'continue' && instructionQueue" class="instr-step-wrap">
           <div class="instr-step-list">
             <div
               v-for="(step, si) in instructionSteps"
@@ -1160,9 +1166,9 @@ function onToggleLayout() {
               加一步（{{ instructionSteps.length }}/{{ MAX_INSTRUCTION_STEPS }}）
             </button>
           </div>
-        </template>
+        </div>
         <textarea
-          v-else
+          v-show="!(task === 'continue' && instructionQueue)"
           ref="instructionEl"
           v-model="instruction"
           rows="3"
