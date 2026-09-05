@@ -6,7 +6,7 @@
 
 | 项 | 值 |
 |---|---|
-| 当前版本 | `0.2.23`（`package.json` / `src-tauri/Cargo.toml` / `src-tauri/tauri.conf.json` 同步） |
+| 当前版本 | `0.2.24`（`package.json` / `src-tauri/Cargo.toml` / `src-tauri/tauri.conf.json` 同步） |
 | 标识符 | `com.kk.kk-novel-ai` |
 | 仓库 | [https://github.com/ksasukirk/kk_novel_ai](https://github.com/ksasukirk/kk_novel_ai) |
 | 作者 | kk |
@@ -39,17 +39,19 @@
 | R12 | v0.2.21 分镜 JSON 容错与提示词约束 | 完成 | [`llmJson.js`](src/utils/llmJson.js)、[`illustration.js`](src/services/illustration.js)、[`beats_to_storyboard.md`](src-tauri/prompts/beats_to_storyboard.md) |
 | R13 | v0.2.22 独立对话页 / 切页保草稿 / KeepAlive | 完成 | 本文第 1 节；[`ChatView.vue`](src/views/ChatView.vue)、[`chat.rs`](src-tauri/src/chat.rs)、[`App.vue`](src/App.vue)、[`StoryView.vue`](src/views/StoryView.vue)、[`OutlineView.vue`](src/views/OutlineView.vue) |
 | R14 | v0.2.23 版本对齐与发版落盘 | 完成 | [`package.json`](package.json)、[`src-tauri/Cargo.toml`](src-tauri/Cargo.toml)、[`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json)、本文 |
+| R15 | v0.2.24 角色/设定落盘后跨页刷新同步 | 完成 | [`appState.js`](src/stores/appState.js)、[`CastSidePanel.vue`](src/components/CastSidePanel.vue)、[`LoreView.vue`](src/views/LoreView.vue)、[`CharacterRosterView.vue`](src/views/CharacterRosterView.vue)、[`OutlineView.vue`](src/views/OutlineView.vue)、[`StoryView.vue`](src/views/StoryView.vue)、[`castExtract.js`](src/services/castExtract.js) |
 
 ---
 
-## 1. 本版（0.2.23）做了什么
+## 1. 本版（0.2.24）做了什么
 
-相对 `0.2.22`，本版是一次**版本号对齐与发版落盘**：把前端、Tauri 壳与 Rust 包版本同步到 `0.2.23`，便于构建产物、应用内更新检查与 GitHub Release 标签一致。相对往期无新增功能 diff，写作体验承接上一版。
+相对 `0.2.23`，本版修的是 **KeepAlive 切页后角色与设定不同步**：你在角色仓 / 设定里保存或删除，或写作时自动抽到新角色后，再回到大纲侧栏、总谱导图时，能立刻看到最新人物与设定，不必关作品重开。
 
-- **三处版本同步**：[`package.json`](package.json)、[`src-tauri/Cargo.toml`](src-tauri/Cargo.toml)（及 [`Cargo.lock`](src-tauri/Cargo.lock)）、[`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json) 均为 `0.2.23`。
-- **发版文档刷新**：本 README 按 `python build.py` 默认发版流水线重写，版本与仓库入口对齐。
+- **统一的 `castRevision` 通知**：[`appState.js`](src/stores/appState.js) 提供 `bumpCastRevision()`；角色仓 / 设定保存与删除、自动抽角色落盘后都会 bump，大纲与总谱可 watch 刷新。
+- **侧栏与页面激活时重载**：[`CastSidePanel.vue`](src/components/CastSidePanel.vue)、[`OutlineView.vue`](src/views/OutlineView.vue)、[`StoryView.vue`](src/views/StoryView.vue)、[`LoreView.vue`](src/views/LoreView.vue)、[`CharacterRosterView.vue`](src/views/CharacterRosterView.vue) 在 `onActivated`（或 watch `castRevision`）时刷新列表 / lore，避免缓存页仍显示旧数据。
+- **版本对齐**：[`package.json`](package.json)、[`src-tauri/Cargo.toml`](src-tauri/Cargo.toml)（及 [`Cargo.lock`](src-tauri/Cargo.lock)）、[`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json) 均为 `0.2.24`。
 
-**上一版（0.2.22）已交付、本版继续可用的体验**：
+**上一版（0.2.23）及更早已交付、本版继续可用的体验**：
 
 - **侧栏「对话」页**：本作上下文聊（作品 `chat/novel.json`）或自由聊（应用数据目录 `chat/free.json`）；会话可持久化、可新建；不写入章节正文。见 [`ChatView.vue`](src/views/ChatView.vue)、[`chat.rs`](src-tauri/src/chat.rs)。
 - **切页保草稿**：主导航 `KeepAlive`（[`App.vue`](src/App.vue)）；总谱 / 大纲脏草稿不被磁盘刷新覆盖；角色仓 / 设定筛选不误清空表单。
@@ -68,6 +70,7 @@
 - **持续迭代**：会吸取更多建议来优化本软件；写作模型**最好使用 DeepSeek**（设置页配置端点与模型槽）。
 - **用量可追溯**：续写 / 润色 / 书名建议 / 导入蒸馏等业务 AI 调用记 token 与花费；侧栏「分析」可看余额、KPI 与趋势。
 - **插图可选**：分镜与章内插图依赖你配置的文生图端点；不配也能正常写作与导出纯文本。分镜表 JSON 解析已对常见模型瑕疵做容错。
+- **角色 / 设定跨页一致**：落盘或自动抽角后，大纲侧栏与总谱 lore 会随 `castRevision` 与页面激活刷新（见第 1 节）。
 
 ---
 
@@ -111,6 +114,8 @@ CLI (cli.rs)  --默认 IPC-->  运行中 GUI（ipc/mod.rs + guiBridge.js）
 
 GUI 装配：[`src-tauri/src/lib.rs`](src-tauri/src/lib.rs)（注册命令、`CancelRegistry` / `PrepareRegistry`，桌面端启动 IPC；含 `chat_session_*`）。
 
+前端跨页同步（角色 / 设定）：写入方调用 [`bumpCastRevision()`](src/stores/appState.js)；大纲侧栏、总谱、设定页在 watch / `onActivated` 时重载。
+
 ---
 
 ## 5. 仓库目录
@@ -127,9 +132,9 @@ kk_novel_ai/
 ├── src/                      # Vue 3
 │   ├── App.vue               # 侧栏 / KeepAlive 导航
 │   ├── views/                # 作品 / 知识库 / 写作 / 对话 / 大纲 / 总谱 / 设定 / 分析 / 日志 / 设置
-│   ├── components/           # AiPanel、编辑块、插图对话框、更新对话框、壳、思维导图等
-│   ├── services/             # Tauri / LLM / 作品 / 对话 / 插图 / 更新 / GUI 桥 / 按纲队列
-│   ├── stores/               # appState / aiPanelState / chatState 等
+│   ├── components/           # AiPanel、编辑块、插图对话框、更新对话框、壳、思维导图、CastSidePanel 等
+│   ├── services/             # Tauri / LLM / 作品 / 对话 / 插图 / 更新 / GUI 桥 / 抽角色 / 按纲队列
+│   ├── stores/               # appState（含 castRevision）/ aiPanelState / chatState 等
 │   └── utils/                # 用量 / DeepSeek 单价 / lore 视觉 / LLM JSON / 生成块
 ├── src-tauri/                # Tauri + Rust
 │   ├── src/                  # 后端模块（含 chat.rs / image.rs / update.rs）
@@ -156,9 +161,9 @@ kk_novel_ai/
 | 知识库 | [`src/views/KnowledgeHome.vue`](src/views/KnowledgeHome.vue) | 一书一库、通用库；导入走此页 |
 | 写作 | [`src/views/EditorView.vue`](src/views/EditorView.vue)、[`src/components/AiPanel.vue`](src/components/AiPanel.vue)、[`ChapterBlockEditor.vue`](src/components/ChapterBlockEditor.vue) | 章树、块编辑（含插图块）、按纲队列、流式预览；指令按任务分槽 |
 | 对话 | [`src/views/ChatView.vue`](src/views/ChatView.vue)、[`chatClient.js`](src/services/chatClient.js)、[`chatState.js`](src/stores/chatState.js) | 本作 / 自由聊；会话落盘；不写章节 |
-| 大纲 | [`src/views/OutlineView.vue`](src/views/OutlineView.vue) | 全书大纲、卷弧、章纲；脏草稿不被刷新覆盖 |
-| 总谱 | [`src/views/StoryView.vue`](src/views/StoryView.vue)、[`MindMapBoard.vue`](src/components/MindMapBoard.vue) | 故事线 / 时间线 / 关系 / Canon / **分镜**；分块脏检测 |
-| 设定 / 角色仓 | [`src/views/LoreView.vue`](src/views/LoreView.vue)、[`CharacterRosterView.vue`](src/views/CharacterRosterView.vue) | lore 与全局角色；筛选不误清空表单 |
+| 大纲 | [`src/views/OutlineView.vue`](src/views/OutlineView.vue)、[`CastSidePanel.vue`](src/components/CastSidePanel.vue) | 全书大纲、卷弧、章纲；脏草稿不被刷新覆盖；侧栏角色随 `castRevision` / 激活刷新 |
+| 总谱 | [`src/views/StoryView.vue`](src/views/StoryView.vue)、[`MindMapBoard.vue`](src/components/MindMapBoard.vue) | 故事线 / 时间线 / 关系 / Canon / **分镜**；分块脏检测；lore 随 `castRevision` 重载 |
+| 设定 / 角色仓 | [`src/views/LoreView.vue`](src/views/LoreView.vue)、[`CharacterRosterView.vue`](src/views/CharacterRosterView.vue) | lore 与全局角色；保存/删除后 `bumpCastRevision`；筛选不误清空表单 |
 | 分析 | [`src/views/UsageAnalyticsView.vue`](src/views/UsageAnalyticsView.vue)、[`src/components/analytics/`](src/components/analytics/) | 余额、KPI、折线/柱状、履历详情；无数据时配置约算 |
 | 日志 | [`src/views/GenLogView.vue`](src/views/GenLogView.vue) | 轻量历史与导出 |
 | 设置 | [`src/views/SettingsView.vue`](src/views/SettingsView.vue) | 端点、DeepSeek 预设、文生图、检查更新、多模型槽 |
@@ -166,8 +171,9 @@ kk_novel_ai/
 | 用量工具 | [`usageFormat.js`](src/utils/usageFormat.js)、[`usageSeries.js`](src/utils/usageSeries.js)、[`usageEstimate.js`](src/utils/usageEstimate.js)、[`deepseekPricing.js`](src/utils/deepseekPricing.js) | 格式化、按日聚合、无履历约算、官方单价 |
 | LLM JSON 容错 | [`llmJson.js`](src/utils/llmJson.js)、[`check-llm-json.mjs`](scripts/check-llm-json.mjs) | 近似 JSON 修复；本地回归脚本 |
 | 插图 / lore 视觉 | [`illustration.js`](src/services/illustration.js)、[`loreVisual.js`](src/utils/loreVisual.js)、[`genBlock.js`](src/utils/genBlock.js) | 分镜生成、出图落盘、插图块模型；解析走 `parseLlmJson` |
+| 抽角色 | [`castExtract.js`](src/services/castExtract.js) | 自动抽角落盘后 `bumpCastRevision` |
 | 应用更新 | [`appUpdate.js`](src/services/appUpdate.js)、[`updateFlow.js`](src/services/updateFlow.js) | 检查 / 下载 / 启动流程 |
-| 全局状态 | [`src/stores/appState.js`](src/stores/appState.js)、[`aiPanelState.js`](src/stores/aiPanelState.js) | 当前作品与导航；AI 面板按任务指令槽 |
+| 全局状态 | [`src/stores/appState.js`](src/stores/appState.js)、[`aiPanelState.js`](src/stores/aiPanelState.js) | 当前作品与导航；`castRevision` / `storyRevision`；AI 面板按任务指令槽 |
 | 客户端 | [`src/services/tauri.js`](src/services/tauri.js)、[`llmClient.js`](src/services/llmClient.js)、[`projectClient.js`](src/services/projectClient.js)、[`storyClient.js`](src/services/storyClient.js)、[`guiBridge.js`](src/services/guiBridge.js) | invoke / 事件桥 / 分镜读写 |
 
 按纲生成队列：[`src/services/bookOutlineQueue.js`](src/services/bookOutlineQueue.js)、[`src/services/outlineQueue.js`](src/services/outlineQueue.js)。

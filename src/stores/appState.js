@@ -88,7 +88,7 @@ export const appState = reactive({
   characterNameTerms: [],
   /** id -> entry */
   characterById: {},
-  /** 自动抽角色等变更时 +1，侧栏可 watch 刷新 */
+  /** 角色仓/设定写入后 +1，大纲侧栏与导图可 watch 刷新 */
   castRevision: 0,
   /** 自动同步总谱后 +1，总谱页 / 大纲导图可 watch 刷新 */
   storyRevision: 0,
@@ -113,6 +113,11 @@ export const appState = reactive({
    */
   writingSnapshot: null,
 });
+
+/** 角色/设定落盘后通知大纲侧栏、导图、姓名索引消费者 */
+export function bumpCastRevision() {
+  appState.castRevision = (Number(appState.castRevision) || 0) + 1;
+}
 
 export function isKbProject(project) {
   if (!project) return false;

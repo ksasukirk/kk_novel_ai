@@ -3,7 +3,7 @@
  * 代码路径: kk_novel_ai/src/services/castExtract.js
  */
 import { invoke } from "./tauri.js";
-import { appState } from "../stores/appState.js";
+import { appState, bumpCastRevision } from "../stores/appState.js";
 import { upsertLoreAt } from "./projectClient.js";
 import { refreshCharacterNameIndex } from "./characterIndex.js";
 
@@ -155,7 +155,7 @@ export async function runCastExtract(opts) {
       } catch {
         /* ignore */
       }
-      appState.castRevision = (Number(appState.castRevision) || 0) + 1;
+      bumpCastRevision();
       appState.statusMessage = `已自动添加本篇角色：${added.join("、")}`;
     } else {
       appState.statusMessage = prevStatus || "无新人物需添加";

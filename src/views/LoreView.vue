@@ -3,8 +3,8 @@
   代码路径: kk_novel_ai/src/views/LoreView.vue
 -->
 <script setup>
-import { computed, onMounted, ref, watch } from "vue";
-import { appState, isKbProject } from "../stores/appState.js";
+import { computed, onActivated, onMounted, ref, watch } from "vue";
+import { appState, bumpCastRevision, isKbProject } from "../stores/appState.js";
 import * as project from "../services/projectClient.js";
 import CapsuleSwitch from "../components/CapsuleSwitch.vue";
 import { appConfirmDelete } from "../services/confirmDialog.js";
@@ -110,6 +110,7 @@ async function refresh() {
 watch(() => appState.projectRoot, refresh);
 watch(() => appState.project && appState.project.kind, refresh);
 onMounted(refresh);
+onActivated(refresh);
 
 function linksToText(links) {
   return (links || [])
@@ -228,6 +229,7 @@ async function save() {
     }
     resetForm();
     await refresh();
+    bumpCastRevision();
   } catch (e) {
     error.value = String(e.message || e);
   }
@@ -245,6 +247,7 @@ async function remove(item) {
   }
   await project.deleteLoreAt(root, item.id);
   await refresh();
+  bumpCastRevision();
 }
 </script>
 

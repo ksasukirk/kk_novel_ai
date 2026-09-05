@@ -3,7 +3,8 @@
   代码路径: kk_novel_ai/src/views/CharacterRosterView.vue
 -->
 <script setup>
-import { computed, onMounted, ref } from "vue";
+import { computed, onActivated, onMounted, ref } from "vue";
+import { bumpCastRevision } from "../stores/appState.js";
 import * as project from "../services/projectClient.js";
 import CapsuleSwitch from "../components/CapsuleSwitch.vue";
 import { appConfirmDelete } from "../services/confirmDialog.js";
@@ -153,6 +154,7 @@ async function save() {
       form.value.kind === "world" ? "背景/世界观已保存到全局仓" : "角色已保存到全局仓";
     resetForm();
     await refresh();
+    bumpCastRevision();
   } catch (e) {
     error.value = String(e.message || e);
   }
@@ -170,9 +172,11 @@ async function remove(item) {
   await project.deleteLoreAt(rosterPath.value, item.id);
   if (form.value.id === item.id) resetForm();
   await refresh();
+  bumpCastRevision();
 }
 
 onMounted(refresh);
+onActivated(refresh);
 </script>
 
 <template>

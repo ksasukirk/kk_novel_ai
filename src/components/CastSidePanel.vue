@@ -3,7 +3,7 @@
   代码路径: kk_novel_ai/src/components/CastSidePanel.vue
 -->
 <script setup>
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onActivated, onMounted, ref, watch } from "vue";
 import { appState } from "../stores/appState.js";
 import * as project from "../services/projectClient.js";
 import CapsuleSwitch from "./CapsuleSwitch.vue";
@@ -67,6 +67,9 @@ watch(() => appState.castRevision, () => {
   if (appState.projectRoot) void refresh();
 });
 onMounted(refresh);
+onActivated(() => {
+  if (appState.projectRoot) void refresh();
+});
 
 defineExpose({ refresh });
 

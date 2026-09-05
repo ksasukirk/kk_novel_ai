@@ -3,7 +3,7 @@
   代码路径: kk_novel_ai/src/views/StoryView.vue
 -->
 <script setup>
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onActivated, onMounted, ref, watch } from "vue";
 import { appState } from "../stores/appState.js";
 import * as story from "../services/storyClient.js";
 import * as project from "../services/projectClient.js";
@@ -417,6 +417,17 @@ function flattenScopedLore(scoped) {
   return [...byTitle.values()];
 }
 
+async function reloadLore() {
+  if (!appState.projectRoot) return;
+  try {
+    await project.ensureCharactersLink();
+    const lore = await project.listLoreScoped();
+    loreItems.value = flattenScopedLore(lore);
+  } catch {
+    /* 无设定也可 */
+  }
+}
+
 async function refreshAll() {
   if (!appState.projectRoot) return;
   error.value = "";
@@ -537,6 +548,9 @@ watch(
 watch(() => appState.storyRevision, () => {
   if (appState.projectRoot) void refreshAll();
 });
+watch(() => appState.castRevision, () => {
+  if (appState.projectRoot) void reloadLore();
+});
 watch(() => appState.chapterId, () => {
   syncFocusDraft(true);
   void loadBeatProgress();
@@ -551,6 +565,9 @@ watch(
 onMounted(async () => {
   await refreshAll();
   await loadBeatProgress();
+});
+onActivated(() => {
+  if (appState.projectRoot) void reloadLore();
 });
 
 function addArc() {
