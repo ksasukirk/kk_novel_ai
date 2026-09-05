@@ -6,7 +6,7 @@
 
 | 项 | 值 |
 |---|---|
-| 当前版本 | `0.2.22`（`package.json` / `src-tauri/Cargo.toml` / `src-tauri/tauri.conf.json` 同步） |
+| 当前版本 | `0.2.23`（`package.json` / `src-tauri/Cargo.toml` / `src-tauri/tauri.conf.json` 同步） |
 | 标识符 | `com.kk.kk-novel-ai` |
 | 仓库 | [https://github.com/ksasukirk/kk_novel_ai](https://github.com/ksasukirk/kk_novel_ai) |
 | 作者 | kk |
@@ -38,19 +38,24 @@
 | R11 | v0.2.20 插图 / 分镜 / 应用内更新 / 发版流水线 | 完成 | [`illustration.js`](src/services/illustration.js)、[`image.rs`](src-tauri/src/image.rs)、[`update.rs`](src-tauri/src/update.rs)、[`build.py`](build.py) |
 | R12 | v0.2.21 分镜 JSON 容错与提示词约束 | 完成 | [`llmJson.js`](src/utils/llmJson.js)、[`illustration.js`](src/services/illustration.js)、[`beats_to_storyboard.md`](src-tauri/prompts/beats_to_storyboard.md) |
 | R13 | v0.2.22 独立对话页 / 切页保草稿 / KeepAlive | 完成 | 本文第 1 节；[`ChatView.vue`](src/views/ChatView.vue)、[`chat.rs`](src-tauri/src/chat.rs)、[`App.vue`](src/App.vue)、[`StoryView.vue`](src/views/StoryView.vue)、[`OutlineView.vue`](src/views/OutlineView.vue) |
+| R14 | v0.2.23 版本对齐与发版落盘 | 完成 | [`package.json`](package.json)、[`src-tauri/Cargo.toml`](src-tauri/Cargo.toml)、[`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json)、本文 |
 
 ---
 
-## 1. 本版（0.2.22）做了什么
+## 1. 本版（0.2.23）做了什么
 
-相对 `0.2.21`，本版把「跟 AI 聊设定 / 剧情」从写作面板里拆成独立入口，并修掉切页、刷新时把未保存草稿冲掉的体验问题。
+相对 `0.2.22`，本版是一次**版本号对齐与发版落盘**：把前端、Tauri 壳与 Rust 包版本同步到 `0.2.23`，便于构建产物、应用内更新检查与 GitHub Release 标签一致。相对往期无新增功能 diff，写作体验承接上一版。
 
-- **侧栏「对话」页**：本作上下文聊（落在作品 `chat/novel.json`）或自由聊（应用数据目录 `chat/free.json`），会话可持久化、可新建；不写入章节正文。前端：[`ChatView.vue`](src/views/ChatView.vue)、[`chatClient.js`](src/services/chatClient.js)、[`chatState.js`](src/stores/chatState.js)；后端：[`chat.rs`](src-tauri/src/chat.rs)、[`api.rs`](src-tauri/src/api.rs) / [`commands.rs`](src-tauri/src/commands.rs) 的 `chat_session_get` / `chat_session_save`。流式事件带 `task: llm_chat`，写作浮层对其静音（[`writingTasks.js`](src/utils/writingTasks.js)）。
-- **切页不再丢现场**：主导航改为 `KeepAlive` 挂载视图（[`App.vue`](src/App.vue)）；总谱各块与分镜、大纲章/卷草稿在脏时不被磁盘刷新覆盖（[`StoryView.vue`](src/views/StoryView.vue)、[`OutlineView.vue`](src/views/OutlineView.vue)）；角色仓 / 设定筛选 chip 不再顺带清空表单（[`CharacterRosterView.vue`](src/views/CharacterRosterView.vue)、[`LoreView.vue`](src/views/LoreView.vue)）；写作页 `onActivated` 补同步目录与角色索引（[`EditorView.vue`](src/views/EditorView.vue)）。
-- **AI 面板指令按任务分槽**：续写 / 润色 / 大纲等切换时互不覆盖（[`aiPanelState.js`](src/stores/aiPanelState.js)）；关掉指令队列时把各步拼回主输入，队列 UI 用 `v-show` 避免误卸（[`AiPanel.vue`](src/components/AiPanel.vue)）。
-- **版本对齐**：`package.json` / `src-tauri/Cargo.toml` / `src-tauri/tauri.conf.json` 同步为 `0.2.22`。
+- **三处版本同步**：[`package.json`](package.json)、[`src-tauri/Cargo.toml`](src-tauri/Cargo.toml)（及 [`Cargo.lock`](src-tauri/Cargo.lock)）、[`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json) 均为 `0.2.23`。
+- **发版文档刷新**：本 README 按 `python build.py` 默认发版流水线重写，版本与仓库入口对齐。
 
-往期已具备：章内插图与分镜、LLM 近似 JSON 容错、文生图设置、导出带图、应用内检查更新，以及 `python build.py` 默认发版流水线（见第 9 节）。
+**上一版（0.2.22）已交付、本版继续可用的体验**：
+
+- **侧栏「对话」页**：本作上下文聊（作品 `chat/novel.json`）或自由聊（应用数据目录 `chat/free.json`）；会话可持久化、可新建；不写入章节正文。见 [`ChatView.vue`](src/views/ChatView.vue)、[`chat.rs`](src-tauri/src/chat.rs)。
+- **切页保草稿**：主导航 `KeepAlive`（[`App.vue`](src/App.vue)）；总谱 / 大纲脏草稿不被磁盘刷新覆盖；角色仓 / 设定筛选不误清空表单。
+- **AI 面板指令按任务分槽**：续写 / 润色 / 大纲等切换互不覆盖（[`aiPanelState.js`](src/stores/aiPanelState.js)、[`AiPanel.vue`](src/components/AiPanel.vue)）。
+
+更早已具备：章内插图与分镜、LLM 近似 JSON 容错、文生图设置、导出带图、应用内检查更新，以及 `python build.py` 默认发版流水线（见第 9 节）。
 
 ---
 

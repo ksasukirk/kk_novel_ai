@@ -377,19 +377,61 @@ def _assert_readme_ok(version: str, before_hash: str) -> None:
         print(f"[WARN] README.md 未出现本版版本号 {version}")
 
 
+def _commit_subject_prefix(version: str) -> str:
+    return f"Release v{version}"
+
+
+def _join_commit_message(subject: str, body: str) -> str:
+    subject = subject.strip()
+    body = body.strip()
+    if body:
+        return f"{subject}\n\n{body}\n"
+    return f"{subject}\n"
+
+
+def _normalize_release_subject(first: str, version: str) -> str:
+    """第一行必须是「Release vX: 摘要」，版本号与功能在同一行。"""
+    prefix = _commit_subject_prefix(version)
+    line = first.strip()
+    summary = ""
+    if line == prefix or line == f"{prefix}:":
+        summary = ""
+    elif line.startswith(f"{prefix}:"):
+        summary = line[len(prefix) + 1 :].strip()
+    elif line.startswith(prefix):
+        summary = line[len(prefix) :].strip().lstrip(":：").strip()
+    else:
+        summary = line
+    summary = re.sub(r"\s+", " ", summary).strip(" 。.;；")
+    if len(summary) > 72:
+        summary = summary[:72].rstrip()
+    if summary:
+        return f"{prefix}: {summary}"
+    return prefix
+
+
 def _load_commit_message(path: Path, version: str) -> str:
-    fallback = f"Release v{version}\n"
+    fallback = f"{_commit_subject_prefix(version)}\n"
     if not path.exists():
         print("[WARN] 未找到 Cursor 写的 commit message，回退 Release 标题")
         return fallback
     raw = path.read_text(encoding="utf-8").replace("\r\n", "\n").strip()
     if not raw:
         return fallback
-    first = raw.splitlines()[0].strip()
-    expect = f"Release v{version}"
-    if first != expect:
-        return f"{expect}\n\n{raw}\n"
-    return raw + "\n"
+    lines = raw.splitlines()
+    first = lines[0].strip()
+    rest_lines = lines[1:]
+    while rest_lines and not rest_lines[0].strip():
+        rest_lines = rest_lines[1:]
+    subject = _normalize_release_subject(first, version)
+    prefix = _commit_subject_prefix(version)
+    if subject == prefix and rest_lines:
+        lifted = rest_lines[0].strip()
+        candidate = _normalize_release_subject(f"{prefix}: {lifted}", version)
+        if candidate != prefix:
+            subject = candidate
+    body = "\n".join(rest_lines).strip()
+    return _join_commit_message(subject, body)
 
 
 def _release_notes(commit_msg: str, version: str) -> str:
@@ -397,6 +439,12 @@ def _release_notes(commit_msg: str, version: str) -> str:
     body = "\n".join(lines[1:]).strip()
     if body:
         return body
+    first = lines[0].strip() if lines else ""
+    prefix = _commit_subject_prefix(version)
+    if first.startswith(f"{prefix}:"):
+        summary = first[len(prefix) + 1 :].strip()
+        if summary:
+            return summary
     if README_PATH.exists():
         paras: list[str] = []
         for line in README_PATH.read_text(encoding="utf-8").splitlines():
