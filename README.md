@@ -6,7 +6,7 @@
 
 | 项 | 值 |
 |---|---|
-| 当前版本 | `0.2.24`（`package.json` / `src-tauri/Cargo.toml` / `src-tauri/tauri.conf.json` 同步） |
+| 当前版本 | `0.2.25`（`package.json` / `src-tauri/Cargo.toml` / `src-tauri/tauri.conf.json` 同步） |
 | 标识符 | `com.kk.kk-novel-ai` |
 | 仓库 | [https://github.com/ksasukirk/kk_novel_ai](https://github.com/ksasukirk/kk_novel_ai) |
 | 作者 | kk |
@@ -40,19 +40,20 @@
 | R13 | v0.2.22 独立对话页 / 切页保草稿 / KeepAlive | 完成 | 本文第 1 节；[`ChatView.vue`](src/views/ChatView.vue)、[`chat.rs`](src-tauri/src/chat.rs)、[`App.vue`](src/App.vue)、[`StoryView.vue`](src/views/StoryView.vue)、[`OutlineView.vue`](src/views/OutlineView.vue) |
 | R14 | v0.2.23 版本对齐与发版落盘 | 完成 | [`package.json`](package.json)、[`src-tauri/Cargo.toml`](src-tauri/Cargo.toml)、[`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json)、本文 |
 | R15 | v0.2.24 角色/设定落盘后跨页刷新同步 | 完成 | [`appState.js`](src/stores/appState.js)、[`CastSidePanel.vue`](src/components/CastSidePanel.vue)、[`LoreView.vue`](src/views/LoreView.vue)、[`CharacterRosterView.vue`](src/views/CharacterRosterView.vue)、[`OutlineView.vue`](src/views/OutlineView.vue)、[`StoryView.vue`](src/views/StoryView.vue)、[`castExtract.js`](src/services/castExtract.js) |
+| R16 | v0.2.25 版本对齐与发版落盘 | 完成 | [`package.json`](package.json)、[`src-tauri/Cargo.toml`](src-tauri/Cargo.toml)、[`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json)、本文 |
 
 ---
 
-## 1. 本版（0.2.24）做了什么
+## 1. 本版（0.2.25）做了什么
 
-相对 `0.2.23`，本版修的是 **KeepAlive 切页后角色与设定不同步**：你在角色仓 / 设定里保存或删除，或写作时自动抽到新角色后，再回到大纲侧栏、总谱导图时，能立刻看到最新人物与设定，不必关作品重开。
+相对 `0.2.24`，本版是一次 **发版版本对齐**：把前端、Rust 包与 Tauri 配置里的版本号统一提到 `0.2.25`，让安装包、应用内「关于 / 检查更新」与 GitHub Release 标签一致，方便你认准当前构建。本版相对往期 **没有新增功能改动**（对比 `origin/main` 仅版本号四文件同步）。
 
-- **统一的 `castRevision` 通知**：[`appState.js`](src/stores/appState.js) 提供 `bumpCastRevision()`；角色仓 / 设定保存与删除、自动抽角色落盘后都会 bump，大纲与总谱可 watch 刷新。
-- **侧栏与页面激活时重载**：[`CastSidePanel.vue`](src/components/CastSidePanel.vue)、[`OutlineView.vue`](src/views/OutlineView.vue)、[`StoryView.vue`](src/views/StoryView.vue)、[`LoreView.vue`](src/views/LoreView.vue)、[`CharacterRosterView.vue`](src/views/CharacterRosterView.vue) 在 `onActivated`（或 watch `castRevision`）时刷新列表 / lore，避免缓存页仍显示旧数据。
-- **版本对齐**：[`package.json`](package.json)、[`src-tauri/Cargo.toml`](src-tauri/Cargo.toml)（及 [`Cargo.lock`](src-tauri/Cargo.lock)）、[`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json) 均为 `0.2.24`。
+- **三处版本号同步**：[`package.json`](package.json)、[`src-tauri/Cargo.toml`](src-tauri/Cargo.toml)（及 [`Cargo.lock`](src-tauri/Cargo.lock)）、[`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json) 均为 `0.2.25`。
+- **能力延续**：写作、对话、插图、用量分析、跨页角色/设定同步等体验与 `0.2.24` 一致，可直接按上一版习惯使用。
 
-**上一版（0.2.23）及更早已交付、本版继续可用的体验**：
+**上一版（0.2.24）及更早已交付、本版继续可用的体验**：
 
+- **角色 / 设定跨页刷新**：[`appState.js`](src/stores/appState.js) 的 `castRevision`；角色仓 / 设定保存或自动抽角落盘后，大纲侧栏与总谱 lore 会刷新（[`CastSidePanel.vue`](src/components/CastSidePanel.vue)、[`OutlineView.vue`](src/views/OutlineView.vue)、[`StoryView.vue`](src/views/StoryView.vue) 等）。
 - **侧栏「对话」页**：本作上下文聊（作品 `chat/novel.json`）或自由聊（应用数据目录 `chat/free.json`）；会话可持久化、可新建；不写入章节正文。见 [`ChatView.vue`](src/views/ChatView.vue)、[`chat.rs`](src-tauri/src/chat.rs)。
 - **切页保草稿**：主导航 `KeepAlive`（[`App.vue`](src/App.vue)）；总谱 / 大纲脏草稿不被磁盘刷新覆盖；角色仓 / 设定筛选不误清空表单。
 - **AI 面板指令按任务分槽**：续写 / 润色 / 大纲等切换互不覆盖（[`aiPanelState.js`](src/stores/aiPanelState.js)、[`AiPanel.vue`](src/components/AiPanel.vue)）。
