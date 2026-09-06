@@ -22,6 +22,13 @@ pub struct ChatSession {
     pub mode: String,
     #[serde(default)]
     pub messages: Vec<ChatTurn>,
+    /// 气泡显示名；空则前端回退「助手」
+    #[serde(default)]
+    pub assistant_name: String,
+    #[serde(default)]
+    pub assistant_style: String,
+    #[serde(default)]
+    pub assistant_persona: String,
     #[serde(default)]
     pub updated_at: String,
 }

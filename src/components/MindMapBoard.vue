@@ -9,6 +9,8 @@ import { layoutMindMap } from "../utils/mindmapLayout.js";
 const props = defineProps({
   tree: { type: Object, required: true },
   height: { type: Number, default: 420 },
+  /** 撑满父级剩余高度（大纲导图子视图） */
+  fill: { type: Boolean, default: false },
   emptyText: { type: String, default: "暂无导图数据，请先填写大纲或总谱。" },
 });
 
@@ -91,7 +93,7 @@ function pathD(e) {
 </script>
 
 <template>
-  <div class="mm-wrap">
+  <div class="mm-wrap" :class="{ 'mm-fill': fill }">
     <div class="mm-toolbar">
       <button type="button" class="app-btn" @click="zoomOut">缩小</button>
       <button type="button" class="app-btn" @click="zoomIn">放大</button>
@@ -100,7 +102,7 @@ function pathD(e) {
     </div>
     <div
       class="mm-viewport"
-      :style="{ height: height + 'px' }"
+      :style="fill ? undefined : { height: height + 'px' }"
       @wheel="onWheel"
       @pointerdown="onPointerDown"
       @pointermove="onPointerMove"
@@ -152,6 +154,15 @@ function pathD(e) {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+.mm-fill {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+}
+.mm-fill .mm-viewport {
+  flex: 1;
+  min-height: 0;
 }
 .mm-toolbar {
   display: flex;

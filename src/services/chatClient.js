@@ -12,6 +12,8 @@ import { cancelGeneration } from "./llmClient.js";
 const MAX_TURNS = 40;
 const OUTLINE_CHARS = 2000;
 const BODY_CHARS = 4000;
+const STYLE_CHARS = 800;
+const PERSONA_CHARS = 4000;
 
 let listening = false;
 let unlistenChunk = null;
@@ -87,6 +89,9 @@ export async function loadChatSession(mode) {
         content: String(x.content || ""),
       }))
     : [];
+  chatState.assistantName = String(sess.assistant_name || "");
+  chatState.assistantStyle = String(sess.assistant_style || "");
+  chatState.assistantPersona = String(sess.assistant_persona || "");
   chatState.loadedKey = key;
   chatState.error = "";
 }
@@ -97,13 +102,40 @@ export async function saveChatSession() {
   await invoke("chat_session_save", {
     mode: m,
     root: m === "novel" ? root || null : null,
-    session: {
-      mode: m,
-      messages: chatState.messages.filter(
-        (x) => x && (x.role === "user" || x.role === "assistant") && String(x.content || "").trim()
-      ),
-    },
+    session: sessionPayload(m),
   });
+}
+
+function sessionPayload(mode) {
+  return {
+    mode,
+    messages: chatState.messages.filter(
+      (x) => x && (x.role === "user" || x.role === "assistant") && String(x.content || "").trim()
+    ),
+    assistant_name: String(chatState.assistantName || ""),
+    assistant_style: String(chatState.assistantStyle || ""),
+    assistant_persona: String(chatState.assistantPersona || ""),
+  };
+}
+
+/** 只落盘人设（可在尚无消息时调用） */
+export async function saveChatPersona() {
+  await saveChatSession();
+}
+
+export function assistantLabel() {
+  return String(chatState.assistantName || "").trim() || "助手";
+}
+
+function personaPromptLines() {
+  const lines = [];
+  const name = String(chatState.assistantName || "").trim();
+  const style = String(chatState.assistantStyle || "").trim();
+  const persona = String(chatState.assistantPersona || "").trim();
+  if (name) lines.push(`你叫「${name}」，按这个名字自称。`);
+  if (style) lines.push(`对话风格：${clip(style, STYLE_CHARS)}`);
+  if (persona) lines.push(`角色定义：${clip(persona, PERSONA_CHARS)}`);
+  return lines;
 }
 
 async function novelSystemPrompt() {
@@ -124,6 +156,7 @@ async function novelSystemPrompt() {
     }
   }
   const lines = [
+    ...personaPromptLines(),
     "你是小说创作助手，用中文对话。只讨论、建议、分析；不要输出要直接落盘的章节补丁，也不要假装已经改了正文。",
     `书名：${p.title || "未命名"}`,
     `全书大纲摘要：${clip(p.book_outline || "（空）", OUTLINE_CHARS)}`,
@@ -138,7 +171,11 @@ async function novelSystemPrompt() {
 }
 
 function freeSystemPrompt() {
-  return "你是通用助手，用中文对话。这不是写作引擎：不要改用户作品文件，不要输出落盘用的章节 JSON。";
+  const lines = [
+    ...personaPromptLines(),
+    "你是通用助手，用中文对话。这不是写作引擎：不要改用户作品文件，不要输出落盘用的章节 JSON。",
+  ];
+  return lines.join("\n");
 }
 
 export async function sendChat(text) {

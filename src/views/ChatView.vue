@@ -7,12 +7,14 @@ import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { appState } from "../stores/appState.js";
 import { chatState } from "../stores/chatState.js";
 import CapsuleSwitch from "../components/CapsuleSwitch.vue";
-import { useToastError } from "../services/toast.js";
+import { toastSuccess, useToastError } from "../services/toast.js";
 import {
+  assistantLabel,
   cancelChat,
   ensureChatListeners,
   loadChatSession,
   newChatSession,
+  saveChatPersona,
   sendChat,
   switchChatMode,
 } from "../services/chatClient.js";
@@ -21,7 +23,10 @@ defineOptions({ name: "ChatView" });
 
 const error = useToastError();
 const listEl = ref(null);
+const showPersona = ref(false);
+const personaBusy = ref(false);
 const hasProject = computed(() => !!(appState.projectRoot && appState.project));
+const nameLabel = computed(() => assistantLabel());
 const novelMode = computed({
   get() {
     return chatState.mode === "novel";
@@ -65,6 +70,23 @@ async function onNew() {
     await newChatSession();
   } catch (e) {
     error.value = String(e.message || e);
+  }
+}
+
+async function persistPersona(showToast) {
+  if (personaBusy.value) return;
+  if (!chatState.loadedKey) {
+    error.value = "会话还在加载，稍后再保存人设";
+    return;
+  }
+  personaBusy.value = true;
+  try {
+    await saveChatPersona();
+    if (showToast) toastSuccess("人设已保存");
+  } catch (e) {
+    error.value = String(e.message || e);
+  } finally {
+    personaBusy.value = false;
   }
 }
 
@@ -131,6 +153,53 @@ onMounted(async () => {
         <button type="button" class="app-btn" :disabled="chatState.busy" @click="onNew">
           新会话
         </button>
+        <button
+          type="button"
+          class="app-btn"
+          :class="showPersona ? 'chip-active' : ''"
+          @click="showPersona = !showPersona"
+        >
+          {{ showPersona ? "收起人设" : "助手人设" }}
+        </button>
+      </div>
+      <div v-show="showPersona" class="chat-persona">
+        <p class="muted">本作与自由聊各存一份；新会话只清消息，不清人设。</p>
+        <div class="field">
+          <label class="field-label">名称</label>
+          <input
+            v-model="chatState.assistantName"
+            type="text"
+            maxlength="40"
+            placeholder="空则显示「助手」"
+            @change="persistPersona(false)"
+          />
+        </div>
+        <div class="field">
+          <label class="field-label">对话风格</label>
+          <input
+            v-model="chatState.assistantStyle"
+            type="text"
+            placeholder="如：简洁、先给结论、少客套"
+            @change="persistPersona(false)"
+          />
+        </div>
+        <div class="field">
+          <label class="field-label">角色定义</label>
+          <textarea
+            v-model="chatState.assistantPersona"
+            rows="4"
+            placeholder="身份、口吻、禁忌、对用户怎么称呼"
+            @change="persistPersona(false)"
+          />
+        </div>
+        <button
+          type="button"
+          class="app-btn app-btn-primary"
+          :disabled="personaBusy"
+          @click="persistPersona(true)"
+        >
+          保存人设
+        </button>
       </div>
       <p v-if="!hasProject" class="muted">未打开作品时只能自由聊。</p>
     </div>
@@ -143,7 +212,7 @@ onMounted(async () => {
         class="chat-bubble"
         :class="m.role === 'user' ? 'is-user' : 'is-assistant'"
       >
-        <span class="chat-role">{{ m.role === "user" ? "你" : "助手" }}</span>
+        <span class="chat-role">{{ m.role === "user" ? "你" : nameLabel }}</span>
         <div class="chat-body">{{ m.content || (chatState.busy && i === chatState.messages.length - 1 ? "…" : "") }}</div>
       </div>
     </div>
@@ -190,6 +259,26 @@ onMounted(async () => {
   gap: 10px;
   align-items: center;
   margin-top: 10px;
+}
+.chat-persona {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--surface-solid);
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.chat-persona .field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.chat-persona textarea {
+  width: 100%;
+  resize: vertical;
+  min-height: 72px;
 }
 .chat-list {
   flex: 1;

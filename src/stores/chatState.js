@@ -11,6 +11,10 @@ export const chatState = reactive({
   draft: "",
   /** @type {Array<{role:string, content:string}>} */
   messages: [],
+  /** 气泡显示名；空则显示「助手」 */
+  assistantName: "",
+  assistantStyle: "",
+  assistantPersona: "",
   busy: false,
   requestId: "",
   error: "",

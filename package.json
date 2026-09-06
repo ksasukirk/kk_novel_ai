@@ -1,7 +1,7 @@
 {
   "name": "kk_novel_ai",
   "private": true,
-  "version": "0.2.27",
+  "version": "0.2.28",
   "author": "kk",
   "type": "module",
   "scripts": {

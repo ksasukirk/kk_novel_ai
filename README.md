@@ -6,7 +6,7 @@
 
 | 项 | 值 |
 |---|---|
-| 当前版本 | `0.2.27`（`package.json` / `src-tauri/Cargo.toml` / `src-tauri/tauri.conf.json` 同步） |
+| 当前版本 | `0.2.28`（`package.json` / `src-tauri/Cargo.toml` / `src-tauri/tauri.conf.json` 同步） |
 | 标识符 | `com.kk.kk-novel-ai` |
 | 仓库 | [https://github.com/ksasukirk/kk_novel_ai](https://github.com/ksasukirk/kk_novel_ai) |
 | 作者 | kk |
@@ -43,17 +43,19 @@
 | R16 | v0.2.25 版本对齐与发版落盘 | 完成 | [`package.json`](package.json)、[`src-tauri/Cargo.toml`](src-tauri/Cargo.toml)、[`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json)、本文 |
 | R17 | v0.2.26 版本对齐与发版落盘 | 完成 | [`package.json`](package.json)、[`src-tauri/Cargo.toml`](src-tauri/Cargo.toml)、[`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json)、本文 |
 | R18 | v0.2.27 版本对齐与发版落盘 | 完成 | [`package.json`](package.json)、[`src-tauri/Cargo.toml`](src-tauri/Cargo.toml)、[`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json)、本文 |
+| R19 | v0.2.28 对话助手人设 + 大纲导图/编辑分栏 | 完成 | [`ChatView.vue`](src/views/ChatView.vue)、[`chatClient.js`](src/services/chatClient.js)、[`chatState.js`](src/stores/chatState.js)、[`chat.rs`](src-tauri/src/chat.rs)、[`OutlineView.vue`](src/views/OutlineView.vue)、[`MindMapBoard.vue`](src/components/MindMapBoard.vue) |
 
 ---
 
-## 1. 本版（0.2.27）做了什么
+## 1. 本版（0.2.28）做了什么
 
-相对 `0.2.26`，本版是一次 **发版版本对齐**：把前端、Rust 包与 Tauri 配置里的版本号统一提到 `0.2.27`，让安装包、应用内「关于 / 检查更新」与 GitHub Release 标签一致，方便你认准当前构建。本版相对往期 **没有新增功能改动**（对比 `origin/main` 仅版本号四文件同步）。
+相对 `0.2.27`，本版让「对话」页能自定义助手人设，并把大纲页拆成「结构导图 / 大纲编辑」两个子视图，导图可撑满工作区。
 
-- **三处版本号同步**：[`package.json`](package.json)、[`src-tauri/Cargo.toml`](src-tauri/Cargo.toml)（及 [`Cargo.lock`](src-tauri/Cargo.lock)）、[`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json) 均为 `0.2.27`。
-- **能力延续**：写作、对话、插图、用量分析、跨页角色/设定同步等体验与 `0.2.26` 一致，可直接按上一版习惯使用。
+- **对话助手人设**：可配置名称、对话风格、角色定义；本作聊与自由聊各存一份；气泡显示自定义名称（空则「助手」）；人设写入系统提示，影响回复口吻。**新会话只清消息，不清人设**。见 [`ChatView.vue`](src/views/ChatView.vue)、[`chatClient.js`](src/services/chatClient.js)、[`chatState.js`](src/stores/chatState.js)、[`chat.rs`](src-tauri/src/chat.rs)。
+- **大纲子视图分栏**：「结构导图」与「大纲编辑」用顶部分栏切换，不再挤在同一滚动区；导图区用 `MindMapBoard` 的 `fill` 撑满剩余高度。见 [`OutlineView.vue`](src/views/OutlineView.vue)、[`MindMapBoard.vue`](src/components/MindMapBoard.vue)。
+- **版本号同步**：[`package.json`](package.json)、[`src-tauri/Cargo.toml`](src-tauri/Cargo.toml)（及 [`Cargo.lock`](src-tauri/Cargo.lock)）、[`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json) 均为 `0.2.28`。
 
-**上一版（0.2.26）及更早已交付、本版继续可用的体验**：
+**上一版（0.2.27）及更早已交付、本版继续可用的体验**：
 
 - **角色 / 设定跨页刷新**：[`appState.js`](src/stores/appState.js) 的 `castRevision`；角色仓 / 设定保存或自动抽角落盘后，大纲侧栏与总谱 lore 会刷新（[`CastSidePanel.vue`](src/components/CastSidePanel.vue)、[`OutlineView.vue`](src/views/OutlineView.vue)、[`StoryView.vue`](src/views/StoryView.vue) 等）。
 - **侧栏「对话」页**：本作上下文聊（作品 `chat/novel.json`）或自由聊（应用数据目录 `chat/free.json`）；会话可持久化、可新建；不写入章节正文。见 [`ChatView.vue`](src/views/ChatView.vue)、[`chat.rs`](src-tauri/src/chat.rs)。
@@ -68,12 +70,13 @@
 
 - 以**本地作品目录**为真相源：`project.json`、章节 Markdown、lore / memory / 总谱 / 分镜 JSON；对话会话另存（不混进章节）。
 - 续写、润色、拆章、按纲节拍、设定召回、知识库蒸馏，都走同一套 Rust 写作引擎。
-- 桌面 GUI（Tauri 2 + Vue 3）负责编辑与预览；独立「对话」页做本作 / 自由聊；CLI / NDJSON RPC 给脚本编排；GUI 在线时 CLI 默认可经本机 IPC 驱动同一套预览（见 [`src-tauri/src/ipc/mod.rs`](src-tauri/src/ipc/mod.rs)、[`src/services/guiBridge.js`](src/services/guiBridge.js)）。
+- 桌面 GUI（Tauri 2 + Vue 3）负责编辑与预览；独立「对话」页做本作 / 自由聊（可配助手人设）；CLI / NDJSON RPC 给脚本编排；GUI 在线时 CLI 默认可经本机 IPC 驱动同一套预览（见 [`src-tauri/src/ipc/mod.rs`](src-tauri/src/ipc/mod.rs)、[`src/services/guiBridge.js`](src/services/guiBridge.js)）。
 - Windows 桌面为主，Android APK 由 `build_android.py` 引导工具链后打包（见 [`docs/android-setup.md`](docs/android-setup.md)）。
 - **持续迭代**：会吸取更多建议来优化本软件；写作模型**最好使用 DeepSeek**（设置页配置端点与模型槽）。
 - **用量可追溯**：续写 / 润色 / 书名建议 / 导入蒸馏等业务 AI 调用记 token 与花费；侧栏「分析」可看余额、KPI 与趋势。
 - **插图可选**：分镜与章内插图依赖你配置的文生图端点；不配也能正常写作与导出纯文本。分镜表 JSON 解析已对常见模型瑕疵做容错。
 - **角色 / 设定跨页一致**：落盘或自动抽角后，大纲侧栏与总谱 lore 会随 `castRevision` 与页面激活刷新（见第 1 节）。
+- **大纲导图独立浏览**：大纲页可在结构导图与编辑之间切换，导图区可全高浏览（见第 1 节）。
 
 ---
 
@@ -91,7 +94,7 @@
 | 导出 | TXT / EPUB / PDF（zip、krilla，可嵌插图） | [`src-tauri/src/export/mod.rs`](src-tauri/src/export/mod.rs) |
 | 应用更新 | GitHub Release 检查 / 下载 | [`src-tauri/src/update.rs`](src-tauri/src/update.rs) |
 | LLM JSON 容错 | 前端近似 JSON 修复 | [`src/utils/llmJson.js`](src/utils/llmJson.js) |
-| 对话会话 | 本地 JSON 落盘 | [`src-tauri/src/chat.rs`](src-tauri/src/chat.rs) |
+| 对话会话 | 本地 JSON 落盘（含人设字段） | [`src-tauri/src/chat.rs`](src-tauri/src/chat.rs) |
 
 窗口无系统边框（`decorations: false`），自定义标题栏在 [`src/App.vue`](src/App.vue)；主题 Token 在 [`src/style.css`](src/style.css)。
 
@@ -137,7 +140,7 @@ kk_novel_ai/
 │   ├── views/                # 作品 / 知识库 / 写作 / 对话 / 大纲 / 总谱 / 设定 / 分析 / 日志 / 设置
 │   ├── components/           # AiPanel、编辑块、插图对话框、更新对话框、壳、思维导图、CastSidePanel 等
 │   ├── services/             # Tauri / LLM / 作品 / 对话 / 插图 / 更新 / GUI 桥 / 抽角色 / 按纲队列
-│   ├── stores/               # appState（含 castRevision）/ aiPanelState / chatState 等
+│   ├── stores/               # appState（含 castRevision）/ aiPanelState / chatState（含人设）等
 │   └── utils/                # 用量 / DeepSeek 单价 / lore 视觉 / LLM JSON / 生成块
 ├── src-tauri/                # Tauri + Rust
 │   ├── src/                  # 后端模块（含 chat.rs / image.rs / update.rs）
@@ -163,8 +166,8 @@ kk_novel_ai/
 | 作品 | [`src/views/ProjectHome.vue`](src/views/ProjectHome.vue) | 新建/打开/最近、仪表盘、书名建议 |
 | 知识库 | [`src/views/KnowledgeHome.vue`](src/views/KnowledgeHome.vue) | 一书一库、通用库；导入走此页 |
 | 写作 | [`src/views/EditorView.vue`](src/views/EditorView.vue)、[`src/components/AiPanel.vue`](src/components/AiPanel.vue)、[`ChapterBlockEditor.vue`](src/components/ChapterBlockEditor.vue) | 章树、块编辑（含插图块）、按纲队列、流式预览；指令按任务分槽 |
-| 对话 | [`src/views/ChatView.vue`](src/views/ChatView.vue)、[`chatClient.js`](src/services/chatClient.js)、[`chatState.js`](src/stores/chatState.js) | 本作 / 自由聊；会话落盘；不写章节 |
-| 大纲 | [`src/views/OutlineView.vue`](src/views/OutlineView.vue)、[`CastSidePanel.vue`](src/components/CastSidePanel.vue) | 全书大纲、卷弧、章纲；脏草稿不被刷新覆盖；侧栏角色随 `castRevision` / 激活刷新 |
+| 对话 | [`src/views/ChatView.vue`](src/views/ChatView.vue)、[`chatClient.js`](src/services/chatClient.js)、[`chatState.js`](src/stores/chatState.js) | 本作 / 自由聊；**助手人设**（名称/风格/角色定义）落盘；气泡显示名；不写章节 |
+| 大纲 | [`src/views/OutlineView.vue`](src/views/OutlineView.vue)、[`CastSidePanel.vue`](src/components/CastSidePanel.vue)、[`MindMapBoard.vue`](src/components/MindMapBoard.vue) | **结构导图 / 大纲编辑**分栏；导图 `fill` 全高；脏草稿不被刷新覆盖；侧栏角色随 `castRevision` / 激活刷新 |
 | 总谱 | [`src/views/StoryView.vue`](src/views/StoryView.vue)、[`MindMapBoard.vue`](src/components/MindMapBoard.vue) | 故事线 / 时间线 / 关系 / Canon / **分镜**；分块脏检测；lore 随 `castRevision` 重载 |
 | 设定 / 角色仓 | [`src/views/LoreView.vue`](src/views/LoreView.vue)、[`CharacterRosterView.vue`](src/views/CharacterRosterView.vue) | lore 与全局角色；保存/删除后 `bumpCastRevision`；筛选不误清空表单 |
 | 分析 | [`src/views/UsageAnalyticsView.vue`](src/views/UsageAnalyticsView.vue)、[`src/components/analytics/`](src/components/analytics/) | 余额、KPI、折线/柱状、履历详情；无数据时配置约算 |
@@ -189,7 +192,7 @@ kk_novel_ai/
 |---|---|---|
 | 共享 API | [`src-tauri/src/api.rs`](src-tauri/src/api.rs) | GUI / CLI / RPC 共用业务、`dispatch_rpc`；分镜、出图、对话会话入口 |
 | Tauri 命令 | [`src-tauri/src/commands.rs`](src-tauri/src/commands.rs) | `#[tauri::command]` 薄封装（含 update / image / storyboard / chat / llm_chat 流式） |
-| 对话会话 | [`src-tauri/src/chat.rs`](src-tauri/src/chat.rs) | 本作 `chat/novel.json`、自由聊 `%APPDATA%/kk_novel_ai/chat/free.json` |
+| 对话会话 | [`src-tauri/src/chat.rs`](src-tauri/src/chat.rs) | 本作 `chat/novel.json`、自由聊 `%APPDATA%/kk_novel_ai/chat/free.json`；含 `assistant_name` / `assistant_style` / `assistant_persona` |
 | GUI 流式 | [`src-tauri/src/gui_writing.rs`](src-tauri/src/gui_writing.rs) | emit `llm-chunk` / `done` / `error` |
 | 写作引擎 | [`src-tauri/src/writing/mod.rs`](src-tauri/src/writing/mod.rs) | 任务、上下文、`run_writing`；分镜相关写作任务 |
 | 节拍 | [`src-tauri/src/writing/beat_engine.rs`](src-tauri/src/writing/beat_engine.rs) | 按纲进度状态机 |
@@ -221,7 +224,7 @@ MyNovel/
   stats.json
   gen_activity.jsonl         # 作品级 AI / 保存履历索引（新生成后出现）
   embeddings.sqlite          # 配置 embedding_model 后
-  chat/novel.json            # 本作对话会话（不写章节）
+  chat/novel.json            # 本作对话会话（含人设字段；不写章节）
   story/plot.json | timeline.json | relations.json | canon.json
   story/storyboard.json      # 分镜表（风格前缀、负面词、按章镜头）
   chapters/*.md
@@ -233,7 +236,7 @@ MyNovel/
   lore/world/*.json
 ```
 
-应用数据（Windows 典型 `%APPDATA%\kk_novel_ai\`，[`paths.rs`](src-tauri/src/paths.rs)）：`settings.json`、`ipc.json`、`gen_log.jsonl`、用量账本、`chat/free.json`（自由聊会话）。旧作品无 `gen_activity` 时分析页回退全局日志或按配置约算。
+应用数据（Windows 典型 `%APPDATA%\kk_novel_ai\`，[`paths.rs`](src-tauri/src/paths.rs)）：`settings.json`、`ipc.json`、`gen_log.jsonl`、用量账本、`chat/free.json`（自由聊会话，含人设字段）。旧作品无 `gen_activity` 时分析页回退全局日志或按配置约算。
 
 相关命令：`gen_log_list`、`project_gen_log_list`、`usage_summary`、`provider_balance`、`story_storyboard_get` / `story_storyboard_save`、`image_generate`、`chat_session_get` / `chat_session_save`（见 [`cli.rs`](src-tauri/src/cli.rs)、[`api.rs`](src-tauri/src/api.rs)）。
 
@@ -315,6 +318,6 @@ CLI 调试优先用 `kk_novel_cli`（构建后在 `src-tauri/target/...`）。�
 | N13 | 插图批量按卷出图 / 队列 | 现为单镜头 / 单块出图 | [`illustration.js`](src/services/illustration.js)、[`image.rs`](src-tauri/src/image.rs) |
 | N14 | 移动端应用内更新体验 | 桌面可下载启动；移动端引导打开 Release 页 | [`update.rs`](src-tauri/src/update.rs)、[`SettingsView.vue`](src/views/SettingsView.vue) |
 | N15 | 写作链路共用 LLM JSON 容错 | 当前主要服务分镜 / 插图解析 | [`llmJson.js`](src/utils/llmJson.js)、[`writing/`](src-tauri/src/writing/) |
-| N16 | 对话页多会话 / 导出 | 现每模式单文件会话 | [`ChatView.vue`](src/views/ChatView.vue)、[`chat.rs`](src-tauri/src/chat.rs) |
+| N16 | 对话页多会话 / 导出 | 现每模式单文件会话；人设已可配置 | [`ChatView.vue`](src/views/ChatView.vue)、[`chat.rs`](src-tauri/src/chat.rs) |
 
 已知约束：Debug GUI 依赖 Vite `5173`；Release 读 `frontend-dist/`；蒸馏依赖可用的分析模型（推荐 DeepSeek）+ `analysis_model`，长书请用 `--from` / `--to` 分段。DeepSeek 官方仅提供余额 API，无 Bearer 可查的「今日已用 token」；今日/累计消耗以本应用履历与账本为准。插图需自行配置兼容文生图端点；未配置时仍可写正文，不可出图。本作对话需先打开作品；自由聊写在应用数据目录。

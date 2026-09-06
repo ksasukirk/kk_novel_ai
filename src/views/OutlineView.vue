@@ -30,7 +30,8 @@ const volumeDraftSynced = {};
 const snapshots = ref({});
 const mapPrefer = ref("auto");
 const mapBusy = ref(false);
-const showMap = ref(true);
+/** map | edit */
+const outlineTab = ref("map");
 
 watch(
   () => [appState.projectRoot, appState.project && appState.project.book_outline],
@@ -324,37 +325,46 @@ function useStructureTree() {
     <h1 class="panel-heading">大纲</h1>
     <p v-if="!appState.projectRoot" class="muted">请先打开作品。完整总谱导图见侧栏「总谱」。</p>
     <template v-else>
-      <div class="outline-layout">
+      <div class="outline-subtabs" role="radiogroup" aria-label="大纲子视图">
+        <label class="outline-subtab" :class="{ 'is-active': outlineTab === 'map' }">
+          <input v-model="outlineTab" type="radio" name="outline-subview" value="map" />
+          结构导图
+        </label>
+        <label class="outline-subtab" :class="{ 'is-active': outlineTab === 'edit' }">
+          <input v-model="outlineTab" type="radio" name="outline-subview" value="edit" />
+          大纲编辑
+        </label>
+      </div>
+
+      <div v-show="outlineTab === 'map'" class="outline-map-view">
+        <div class="map-head">
+          <h2 class="sub">结构导图</h2>
+          <button type="button" class="app-btn" :disabled="mapBusy" @click="organizeMindMap">
+            {{ mapBusy ? "整理中…" : "整理成导图" }}
+          </button>
+          <button
+            v-if="structuredReady"
+            type="button"
+            class="app-btn"
+            :disabled="mapBusy"
+            @click="useStructureTree"
+          >
+            用结构树
+          </button>
+          <button type="button" class="app-btn" @click="loadStoryLite">刷新</button>
+        </div>
+        <MindMapBoard
+          fill
+          :tree="outlineMindTree"
+          :empty-text="mapEmptyHint"
+          @select="onMapSelect"
+        />
+      </div>
+
+      <div v-show="outlineTab === 'edit'" class="outline-layout">
         <div class="outline-main">
           <div class="outline-scroll">
-            <div class="map-head">
-              <h2 class="sub">结构导图</h2>
-              <button type="button" class="app-btn" @click="showMap = !showMap">
-                {{ showMap ? "收起导图" : "展开导图" }}
-              </button>
-              <button type="button" class="app-btn" :disabled="mapBusy" @click="organizeMindMap">
-                {{ mapBusy ? "整理中…" : "整理成导图" }}
-              </button>
-              <button
-                v-if="structuredReady"
-                type="button"
-                class="app-btn"
-                :disabled="mapBusy"
-                @click="useStructureTree"
-              >
-                用结构树
-              </button>
-              <button type="button" class="app-btn" @click="loadStoryLite">刷新</button>
-            </div>
-            <MindMapBoard
-              v-if="showMap"
-              :tree="outlineMindTree"
-              :height="520"
-              :empty-text="mapEmptyHint"
-              @select="onMapSelect"
-            />
-
-            <div class="field" style="margin-top: 16px">
+            <div class="field">
               <label class="field-label">全书大纲</label>
               <textarea
                 v-model="bookOutlineDraft"
@@ -401,6 +411,59 @@ function useStructureTree() {
 <style scoped>
 .outline-panel {
   height: 100%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.outline-subtabs {
+  flex-shrink: 0;
+  display: flex;
+  gap: 0;
+  margin: 0 0 10px;
+  border-radius: var(--radius-pill);
+  background: var(--chip-bg);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+.outline-subtab {
+  flex: 1;
+  min-width: 0;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+  background: transparent;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+.outline-subtab input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+.outline-subtab:hover {
+  color: var(--text);
+  background: var(--accent-soft);
+}
+.outline-subtab.is-active {
+  color: var(--accent-hover);
+  background: var(--accent-soft);
+  box-shadow: var(--shadow-nav);
+}
+.outline-subtab:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.outline-map-view {
+  flex: 1;
   min-height: 0;
   display: flex;
   flex-direction: column;
