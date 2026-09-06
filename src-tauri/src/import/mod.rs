@@ -930,6 +930,7 @@ pub async fn distill_range(
             retry_on_loop: Some(false),
             branch_context_text: None,
             active_beat_id: None,
+            outline_run: None,
             split_mode: None,
         };
         let sync_patch = match writing::run_writing(&client, &settings, &sync_req, None, |_| {}).await

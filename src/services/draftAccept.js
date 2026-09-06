@@ -7,7 +7,7 @@ import { appState } from "../stores/appState.js";
 import { cancelAllGenerations, cancelJob, runWriting } from "./llmClient.js";
 import { pushAiUndo } from "./aiUndo.js";
 import { isBackgroundAnalysisTask } from "../utils/writingTasks.js";
-import { saveChapter, applyBranchDoc, syncBranchDocFromEditor } from "./projectClient.js";
+import { saveChapter, applyBranchDoc, syncBranchDocFromEditor, loadChapter } from "./projectClient.js";
 import {
   contentFromBlocks,
   createGenBlock,
@@ -451,6 +451,18 @@ async function acceptDraftInner(jobOrNull) {
     return { ok: false, error: t("draft.stillGenerating") };
   }
 
+  const targetId = String((job && job.targetChapterId) || "").trim();
+  if (targetId && targetId !== appState.chapterId) {
+    try {
+      await loadChapter(targetId);
+    } catch (e) {
+      return { ok: false, error: t("draft.chapterSwitchFailed", { msg: e.message || e }) };
+    }
+    if (appState.chapterId !== targetId) {
+      return { ok: false, error: t("draft.wrongChapter") };
+    }
+  }
+
   const body = draftBody(job);
   if (!body) return { ok: false, error: t("draft.noBody") };
 
@@ -729,6 +741,7 @@ export async function autoAcceptDraftIfNeeded() {
 /** 生成结束后按 job 自动写入 */
 export async function autoAcceptJobIfNeeded(job) {
   if (!job || job.accepted) return;
+  if (job.skipAutoAccept) return;
   if (job.draftPlacement !== "editor") return;
   if (isBackgroundAnalysisTask(job.draftTask)) return;
   if (job.status === "pending" || job.status === "streaming") return;

@@ -80,25 +80,131 @@ pub fn chapter_summary_is_dump(summary: &str, source: &str) -> bool {
     false
 }
 
-/// 摘要不合格时：优先用块笔记；再不行给短占位，禁止把正文写入 memory。
-pub fn fallback_chapter_summary(_rejected: &str, source: &str, block_note: &str) -> String {
+/// 旧版超长总结被丢弃后写入 memory 的占位；禁止再进入 rolling_summary。
+pub const DUMP_PLACEHOLDER: &str =
+    "（写后总结过长或复读正文，已丢弃。下一章以正文时间地点为准，勿回拨用餐或改亲属。）";
+
+pub fn is_dump_placeholder(s: &str) -> bool {
+    s.contains("写后总结过长或复读正文") || s.trim() == DUMP_PLACEHOLDER.trim()
+}
+
+fn is_terminal_punct(c: char) -> bool {
+    matches!(
+        c,
+        '。' | '！' | '？' | '…' | '」' | '』' | '"' | '”' | '）' | ')' | '.' | '!' | '?'
+    )
+}
+
+/// 正文是否停在半句（不以句末标点收束）。
+pub fn prose_incomplete(text: &str) -> bool {
+    let t = text.trim();
+    if t.is_empty() {
+        return false;
+    }
+    match t.chars().rev().find(|c| !c.is_whitespace()) {
+        Some(c) => !is_terminal_punct(c),
+        None => false,
+    }
+}
+
+fn last_sentence(s: &str) -> String {
+    let chars: Vec<char> = s.trim().chars().collect();
+    if chars.is_empty() {
+        return String::new();
+    }
+    let mut start = 0;
+    for (i, c) in chars.iter().enumerate() {
+        if matches!(c, '。' | '！' | '？' | '\n') && i + 1 < chars.len() {
+            start = i + 1;
+        }
+    }
+    chars[start..].iter().collect::<String>().trim().to_string()
+}
+
+fn compact_no_punct(s: &str) -> String {
+    s.chars()
+        .filter(|c| {
+            !c.is_whitespace()
+                && !matches!(
+                    c,
+                    '，' | '。' | '、' | '；' | '：' | ',' | '.' | '！' | '？' | '!' | '?' | '…'
+                )
+        })
+        .collect()
+}
+
+fn compact_tail_chars(s: &str, n: usize) -> String {
+    let compact = compact_no_punct(s);
+    let chars: Vec<char> = compact.chars().collect();
+    if chars.len() <= n {
+        return compact;
+    }
+    chars[chars.len() - n..].iter().collect()
+}
+
+/// 按纲收束是否尚未出现在正文后部。无法判断时返回 false（不要死循环补写）。
+pub fn outline_hook_missing(body: &str, outline: &str) -> bool {
+    let outline = outline.trim();
+    let body = body.trim();
+    if outline.is_empty() || body.is_empty() {
+        return false;
+    }
+    let last = last_sentence(outline);
+    let needle = compact_tail_chars(&last, 16);
+    if needle.chars().count() < 8 {
+        return false;
+    }
+    let body_tail: String = body
+        .chars()
+        .rev()
+        .take(1600)
+        .collect::<String>()
+        .chars()
+        .rev()
+        .collect();
+    let compact_body = compact_no_punct(&body_tail);
+    !compact_body.contains(&needle)
+}
+
+/// 按句切到 120～250 字，供超长/复读摘要回收。
+pub fn compress_chapter_summary(text: &str) -> String {
+    let t = text.trim();
+    if t.is_empty() {
+        return String::new();
+    }
+    let chars: Vec<char> = t.chars().collect();
+    let n = chars.len();
+    if n <= 250 {
+        return t.to_string();
+    }
+    let min = 120.min(n);
+    let max = 250.min(n);
+    let mut cut = max;
+    for i in (min..max).rev() {
+        if matches!(chars[i], '。' | '！' | '？' | '\n' | '.' | '!' | '?') {
+            cut = i + 1;
+            break;
+        }
+    }
+    chars[..cut].iter().collect()
+}
+
+/// 摘要不合格时：块笔记优先，否则把超长/复读稿压到 120～250 字；禁止再写占位句。
+pub fn fallback_chapter_summary(rejected: &str, source: &str, block_note: &str) -> String {
     let note = block_note.trim();
-    if !note.is_empty() && !chapter_summary_is_dump(note, source) {
-        if note.chars().count() > CHAPTER_SUMMARY_MAX_CHARS {
-            let mut s: String = note.chars().take(280).collect();
-            s.push('…');
-            return s;
-        }
-        return note.to_string();
+    if !note.is_empty() && !is_dump_placeholder(note) && !chapter_summary_is_dump(note, source) {
+        return compress_chapter_summary(note);
     }
-    if !note.is_empty() {
-        let mut s: String = note.chars().take(280).collect();
-        if note.chars().count() > 280 {
-            s.push('…');
-        }
-        return s;
+    if !note.is_empty() && !is_dump_placeholder(note) {
+        return compress_chapter_summary(note);
     }
-    "（写后总结过长或复读正文，已丢弃。下一章以正文时间地点为准，勿回拨用餐或改亲属。）".into()
+    if !rejected.trim().is_empty() && !is_dump_placeholder(rejected) {
+        return compress_chapter_summary(rejected);
+    }
+    if !source.trim().is_empty() {
+        return compress_chapter_summary(source);
+    }
+    String::new()
 }
 
 /// 上章已用餐/饭后时，禁止本章写成还没开饭。
@@ -279,6 +385,38 @@ mod tests {
         let note = "饭后院子独处，乐乐问对象，kk暧昧，约去堂屋。";
         let out = fallback_chapter_summary(src, src, note);
         assert_eq!(out, note);
+    }
+
+    #[test]
+    fn fallback_compresses_instead_of_placeholder() {
+        let src = "西瓜是表姐切好端出来的，红瓤沙甜，码在搪瓷盘里。乐乐接过一块。";
+        let long: String = "饭后院子吃西瓜。".to_string() + &"啊".repeat(400);
+        let out = fallback_chapter_summary(&long, src, "");
+        assert!(!is_dump_placeholder(&out));
+        let n = out.chars().count();
+        assert!(n >= 120 && n <= 250, "got {n}: {out}");
+    }
+
+    #[test]
+    fn prose_incomplete_detects_mid_sentence() {
+        assert!(prose_incomplete("妈妈的臀部被他撞得"));
+        assert!(!prose_incomplete("妈妈令其去洗澡。"));
+        assert!(!prose_incomplete(""));
+    }
+
+    #[test]
+    fn dump_placeholder_detected() {
+        assert!(is_dump_placeholder(DUMP_PLACEHOLDER));
+        assert!(!is_dump_placeholder("第三天早晨客厅鞋跟插入，结束后去洗澡。"));
+    }
+
+    #[test]
+    fn outline_hook_missing_uses_last_sentence() {
+        let outline = "早饭后弹击扇打。射精后妈妈令其洗澡，答明天再说。";
+        let early = "第四天早上kk醒来吃吐司，妈妈开始弹击。";
+        assert!(outline_hook_missing(early, outline));
+        let done = "抽插渐快。射精后妈妈令其洗澡，答明天再说。kk去浴室。";
+        assert!(!outline_hook_missing(done, outline));
     }
 
     #[test]

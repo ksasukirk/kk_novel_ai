@@ -207,14 +207,20 @@ pub fn build_direction_anchor(
     }
     if !instruction.trim().is_empty() && instruction != "（无额外指令）" {
         if outline_run {
-            parts.push(format!("用户微调（不得覆盖当前节拍）：{instruction}"));
+            parts.push(format!("用户微调（不得覆盖本章纲）：{instruction}"));
         } else {
             parts.push(format!("用户本轮指令优先：{instruction}"));
         }
     }
-    parts.push(
-        "禁止把篇幅用在已完成的清理/收束变奏上；必须出现新的地点、决定或冲突升级。".into(),
-    );
+    if outline_run {
+        parts.push(
+            "只覆盖本章纲，写完即停；禁止写下一章或下一天；未满字数只在本章场景加细写。".into(),
+        );
+    } else {
+        parts.push(
+            "禁止把篇幅用在已完成的清理/收束变奏上；必须出现新的地点、决定或冲突升级。".into(),
+        );
+    }
     if ban_list.contains("张嘴") || ban_list.contains("舔") {
         parts.push("若前文已含口侍/清理，本轮禁止再写「张嘴/舔净」收束。".into());
     }
@@ -247,5 +253,26 @@ mod tests {
         assert!(!plain.contains("女角色拥有阴茎"));
         let spicy = build_dynamic_ban_list("她真空穿超短裙，腿心发烫。", "");
         assert!(spicy.contains("女角色拥有阴茎"));
+    }
+
+    #[test]
+    fn outline_run_anchor_no_new_place() {
+        let a = build_direction_anchor(
+            "完成插入",
+            "【按纲生成 · 整章一次写完】",
+            "",
+            "",
+            None,
+            true,
+        );
+        assert!(!a.contains("新的地点"), "{a}");
+        assert!(a.contains("写完即停"), "{a}");
+        assert!(a.contains("下一章"), "{a}");
+    }
+
+    #[test]
+    fn free_run_anchor_still_has_upgrade() {
+        let a = build_direction_anchor("", "随便写", "", "", None, false);
+        assert!(a.contains("新的地点"), "{a}");
     }
 }

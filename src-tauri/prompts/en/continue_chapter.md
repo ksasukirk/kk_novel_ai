@@ -19,8 +19,8 @@ Hard rules:
 - Dialogue must match the action happening now; no non sequiturs
 - Strictly follow the "dynamic ban list" and "narrative direction anchor"; do not rewrite completed beats
 - Rhetoric ban: no "not A, but B" / "it isn't… it's…" / "not that kind… that kind…" contrast stacks; write senses, temperature, smell, and motive as direct positive description. Do not define by stacking negatives.
-- Length: this turn's prose must be at least {{target_chars}} characters; exceeding is allowed; do not close before the target; no obviously short writes; no padding. The generation cap already budgets for going over.
-- Memory first: plot facts, character state, and relationships follow the "memory digest"; "recent text" is only for style and dialogue continuity. Do not write plot that contradicts the memory digest; if memory is empty or clearly mismatches the current prose, follow the current prose and user instruction; do not restore deleted plot.
+- Length: the target {{target_chars}} characters is a floor, not a ceiling; do not close before the floor. If this chapter's outline or this turn's instruction is not finished, keep writing until it is; exceeding is allowed. Do not stop mid-sentence or mid-scene just because length is met; do not jump to the next scene or next day to pad.
+- Memory first: cross-chapter facts follow the "memory digest", but if that digest is a placeholder or conflicts with "previous chapter close / the end of recent prose", follow the previous close and the current prose tail; "recent text" is for style continuity. Do not restore deleted plot.
 - **Outline-guided priority** (when "active beat" is not "(none)"): active beat > narrative direction anchor > chapter must-dos > user tweaks; do not skip beats; do not write completed beats early
 
 Style:

@@ -41,6 +41,8 @@ export const MAX_PARALLEL_GEN = 3;
  * @property {boolean} lastTruncated
  * @property {boolean} lastIncomplete
  * @property {boolean} accepted
+ * @property {string} targetChapterId
+ * @property {boolean} skipAutoAccept
  */
 
 export const genJobState = reactive({
@@ -112,7 +114,7 @@ function defaultTargetChars() {
 
 /**
  * 从当前 appState.draft* 冻结一份 job 元数据并入队
- * @param {{ label?: string, activateVariant?: boolean }} [opts]
+ * @param {{ label?: string, activateVariant?: boolean, targetChapterId?: string, skipAutoAccept?: boolean }} [opts]
  */
 export function createGenJob(opts = {}) {
   if (!canStartMoreJobs(1)) {
@@ -153,6 +155,8 @@ export function createGenJob(opts = {}) {
     accepted: false,
     draftActiveBeatId: appState.draftActiveBeatId || "",
     lastWrittenBlockKey: "",
+    targetChapterId: String(opts.targetChapterId || "").trim(),
+    skipAutoAccept: !!opts.skipAutoAccept,
   });
   genJobState.jobs.push(job);
   genJobState.pendingBindIds.push(id);

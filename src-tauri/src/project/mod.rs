@@ -857,6 +857,18 @@ fn clip_snapshot_for_rolling(s: &str) -> String {
     format!("{}…", t.chars().take(280).collect::<String>())
 }
 
+fn snapshot_usable_for_rolling(summary: &str) -> bool {
+    let t = summary.trim();
+    if t.is_empty() {
+        return false;
+    }
+    if t.contains("写后总结过长或复读正文") {
+        return false;
+    }
+    let n = t.chars().count();
+    n >= 24 && n <= 400
+}
+
 /// 重建 rolling_summary：其它章用 chapter_snapshots（无快照则回退该章最新块笔记）；指定章用块笔记优先
 pub fn rebuild_rolling_summary(memory: &mut MemoryStore, focus_chapter_id: Option<&str>) {
     let mut parts: Vec<String> = Vec::new();
@@ -882,7 +894,7 @@ pub fn rebuild_rolling_summary(memory: &mut MemoryStore, focus_chapter_id: Optio
                 .iter()
                 .find(|s| &s.chapter_id == cid)
             {
-                if !snap.summary.trim().is_empty() {
+                if snapshot_usable_for_rolling(&snap.summary) {
                     cross.push(format!("【它章】{}", clip_snapshot_for_rolling(&snap.summary)));
                     continue;
                 }
@@ -909,6 +921,7 @@ pub fn rebuild_rolling_summary(memory: &mut MemoryStore, focus_chapter_id: Optio
             .chapter_snapshots
             .iter()
             .rev()
+            .filter(|s| snapshot_usable_for_rolling(&s.summary))
             .take(6)
             .map(|s| clip_snapshot_for_rolling(&s.summary))
             .collect::<Vec<_>>()

@@ -158,6 +158,9 @@ pub struct WritingRequest {
     /// 按纲续写：当前要兑现的 beat id
     #[serde(default)]
     pub active_beat_id: Option<String>,
+    /// 按纲整章队列：true 时禁止换场升级、写完本章纲再停
+    #[serde(default)]
+    pub outline_run: Option<bool>,
     /// outline_to_chapters：full | append
     #[serde(default)]
     pub split_mode: Option<String>,
@@ -253,6 +256,19 @@ fn strip_draft_overlap(draft: &str, piece: &str) -> String {
         }
     }
     piece.to_string()
+}
+
+fn scrub_dump_memory(s: &str) -> String {
+    let parts: Vec<&str> = s
+        .split("\n\n")
+        .filter(|p| !continuity::is_dump_placeholder(p))
+        .collect();
+    let out = parts.join("\n\n");
+    if out.trim().is_empty() {
+        "（无）".into()
+    } else {
+        out
+    }
 }
 
 /// 同位置变体目标字数：不低于设定续写字数；参考更长时对齐参考，避免越变越短
@@ -550,6 +566,41 @@ fn outline_split_max_tokens(prompt_chars: u32, current: u32) -> u32 {
     current.max(estimated).clamp(1024, 16384)
 }
 
+/// 按纲整章续写：在规定字数预算上按章纲长度略抬，避免一轮写爆半句。
+fn outline_continue_max_tokens(base: u32, outline_chars: u32) -> u32 {
+    let extra = ((outline_chars as f64 / 2.0).ceil() as u32).min(4096);
+    base.saturating_add(extra).clamp(base.max(2048), 8192)
+}
+
+fn request_is_outline_run(req: &WritingRequest) -> bool {
+    if req.outline_run.unwrap_or(false) {
+        return true;
+    }
+    let instr = req.instruction.trim();
+    instr.contains("【按纲生成")
+        || instr.contains("[Outline run")
+        || instr.contains("【アウトライン実行")
+}
+
+fn completeness_goal(locale: &str, mode: &str) -> String {
+    let loc = AppSettings::normalize_locale_code(locale);
+    if mode == "sentence" {
+        if loc == "en" {
+            "Finish only the last sentence. Do not start a new scene or the next day.".into()
+        } else if loc == "ja" {
+            "最後の一文だけ書き切る。新しい場面や翌日へ進まない。".into()
+        } else {
+            "只写完最后一句，禁止新场景、禁止下一天。".into()
+        }
+    } else if loc == "en" {
+        "Length is already enough. Finish remaining outline beats for THIS chapter only, then stop. Do not jump to the next chapter or the next day.".into()
+    } else if loc == "ja" {
+        "字数は足りている。本章の章綱でまだ書いていない収束だけ書き切って止める。次章や翌日へ飛ばない。".into()
+    } else {
+        "字数已够。把本章纲尚未写出的收束写完即停，禁止跳到下一章或下一天。".into()
+    }
+}
+
 fn resolve_writing_options(
     settings: &AppSettings,
     task: &WritingTask,
@@ -596,6 +647,11 @@ fn resolve_writing_options(
         let aligned = if matches!(task, WritingTask::SameSlotVariant) {
             // 与设定续写字数对齐（不再跟 selection/总结长度走）
             same_slot_max_tokens(settings.resolve_writing_target_chars(), 0)
+        } else if matches!(task, WritingTask::Continue) && request_is_outline_run(req) {
+            outline_continue_max_tokens(
+                settings.resolve_writing_max_tokens(),
+                req.instruction.chars().count() as u32,
+            )
         } else {
             settings.resolve_writing_max_tokens()
         };
@@ -651,7 +707,7 @@ pub fn assemble_messages_with_scores(
         let prev_memory = if memory.rolling_summary.is_empty() {
             "（无）".into()
         } else {
-            memory.rolling_summary.clone()
+            scrub_dump_memory(&memory.rolling_summary)
         };
         let instruction = if req.instruction.is_empty() {
             "（无）"
@@ -959,11 +1015,7 @@ pub fn assemble_messages_with_scores(
             beat_engine::ensure_active_beat(&chapter.beats, &mut beat_progress, bid.trim());
         }
     }
-    let outline_run = req
-        .active_beat_id
-        .as_ref()
-        .map(|s| !s.trim().is_empty())
-        .unwrap_or(false);
+    let outline_run = request_is_outline_run(req);
     let active_beat_ref = req
         .active_beat_id
         .as_ref()
@@ -1054,7 +1106,7 @@ pub fn assemble_messages_with_scores(
             } else if memory.rolling_summary.is_empty() {
                 "（无）".into()
             } else {
-                memory.rolling_summary.clone()
+                scrub_dump_memory(&memory.rolling_summary)
             };
             (plot_text, timeline_text, relations_text, canon_text, lore_text, memory_text)
         };
@@ -1420,6 +1472,15 @@ pub async fn run_writing(
     mut on_delta: impl FnMut(&str),
 ) -> AppResult<WritingOutcome> {
     let task = WritingTask::from_str_loose(&req.task)?;
+    if task == WritingTask::ChapterSummary {
+        let body = project::read_chapter(Path::new(&req.project_root), &req.chapter_id)
+            .map(|(_, c)| c)
+            .unwrap_or_default();
+        let n = body.chars().filter(|c| !c.is_whitespace()).count();
+        if n < 80 {
+            return Err(AppError::t("errors.chapterSummaryEmptyBody"));
+        }
+    }
     let scores = if matches!(
         task,
         WritingTask::BlockDigest | WritingTask::CastExtract | WritingTask::SectionPlan | WritingTask::OutlineToBeats | WritingTask::OutlineToChapters | WritingTask::OutlineToMindmap | WritingTask::BeatsToStoryboard | WritingTask::ContentToImagePrompt
@@ -1660,23 +1721,47 @@ pub async fn run_writing(
         }
     }
 
-    // 续写 / 同位置重写：不足规定字数则自动补写，直到达标或达上限次数（允许超出）
+    // 续写 / 同位置重写：先补规定字数下限，再补半句/按纲未收束（下限可超）
     if matches!(
         task,
         WritingTask::Continue | WritingTask::SameSlotVariant
     ) {
         let min_chars = settings.resolve_writing_target_chars() as usize;
-        const MAX_LENGTH_FILLS: u32 = 4;
+        const MAX_FILLS: u32 = 6;
+        const OUTLINE_CHAPTER_CHAR_CAP: usize = 8000;
+        let outline_run = request_is_outline_run(req);
+        let fill_ctx = build_length_fill_context(settings, req);
         let mut fill_i = 0u32;
-        while text.chars().count() < min_chars && fill_i < MAX_LENGTH_FILLS {
+        while fill_i < MAX_FILLS {
             if cancel.load(Ordering::Relaxed) {
                 break;
             }
-            fill_i += 1;
+            if outline_run && text.chars().count() >= OUTLINE_CHAPTER_CHAR_CAP {
+                eprintln!(
+                    "[writing] completeness cap {} chars; stop",
+                    text.chars().count()
+                );
+                break;
+            }
             let have = text.chars().count();
             let need = min_chars.saturating_sub(have);
+            let need_length = have < min_chars;
+            let need_sentence = continuity::prose_incomplete(&text);
+            let need_outline = outline_run
+                && !need_length
+                && continuity::outline_hook_missing(&text, &fill_ctx.outline);
+            let mode = if need_length {
+                "length"
+            } else if need_sentence {
+                "sentence"
+            } else if need_outline {
+                "outline"
+            } else {
+                break;
+            };
+            fill_i += 1;
             eprintln!(
-                "[writing] length-fill {fill_i}/{MAX_LENGTH_FILLS}: have={have} need≈{need} min={min_chars}"
+                "[writing] completeness-fill {fill_i}/{MAX_FILLS} mode={mode} have={have} min={min_chars}"
             );
 
             let sep = if text.ends_with('\n') {
@@ -1693,21 +1778,35 @@ pub async fn run_writing(
             } else {
                 req.instruction.as_str()
             };
-            let fill_ctx = build_length_fill_context(settings, req);
-            let fill_user = render_template(
-                crate::prompt_i18n::prompt("length_fill.md"),
-                &[
-                    ("min_chars", &min_chars.to_string()),
-                    ("have_chars", &have.to_string()),
-                    ("need_chars", &need.to_string()),
-                    ("draft", &text),
-                    ("instruction", instr),
-                    ("outline", &fill_ctx.outline),
-                    ("must_do", &fill_ctx.must_do),
-                    ("direction_anchor", &fill_ctx.direction_anchor),
-                    ("active_beat", &fill_ctx.active_beat),
-                ],
-            );
+            let goal = completeness_goal(&settings.writing_locale, mode);
+            let fill_user = if mode == "length" {
+                render_template(
+                    crate::prompt_i18n::prompt("length_fill.md"),
+                    &[
+                        ("min_chars", &min_chars.to_string()),
+                        ("have_chars", &have.to_string()),
+                        ("need_chars", &need.to_string()),
+                        ("draft", &text),
+                        ("instruction", instr),
+                        ("outline", &fill_ctx.outline),
+                        ("must_do", &fill_ctx.must_do),
+                        ("direction_anchor", &fill_ctx.direction_anchor),
+                        ("active_beat", &fill_ctx.active_beat),
+                    ],
+                )
+            } else {
+                render_template(
+                    crate::prompt_i18n::prompt("scene_complete.md"),
+                    &[
+                        ("goal", &goal),
+                        ("draft", &text),
+                        ("instruction", instr),
+                        ("outline", &fill_ctx.outline),
+                        ("must_do", &fill_ctx.must_do),
+                        ("direction_anchor", &fill_ctx.direction_anchor),
+                    ],
+                )
+            };
             let fill_messages = vec![
                 ChatMessage {
                     role: "system".into(),
@@ -1720,7 +1819,13 @@ pub async fn run_writing(
             ];
 
             let mut fill_opts = options.clone();
-            let fill_mt = (((need as f64) * 2.0).ceil() as u32).max(800).min(32768);
+            let fill_mt = if mode == "sentence" {
+                512
+            } else if mode == "outline" {
+                2048
+            } else {
+                (((need as f64) * 2.0).ceil() as u32).max(800).min(32768)
+            };
             fill_opts.max_tokens = Some(fill_mt);
 
             match client
@@ -1736,12 +1841,12 @@ pub async fn run_writing(
                 Ok(r) => {
                     let piece = r.text.trim_start().to_string();
                     if piece.is_empty() {
-                        eprintln!("[writing] length-fill empty; stop");
+                        eprintln!("[writing] completeness-fill empty; stop");
                         break;
                     }
                     let append = strip_draft_overlap(&text, &piece);
                     if append.trim().is_empty() {
-                        eprintln!("[writing] length-fill no new content; stop");
+                        eprintln!("[writing] completeness-fill no new content; stop");
                         break;
                     }
                     if !text.ends_with('\n') && !append.starts_with('\n') {
@@ -1749,7 +1854,6 @@ pub async fn run_writing(
                         text.push('\n');
                         raw_text.push('\n');
                     }
-                    // 重叠裁掉的部分已在模型流里发出；定稿以裁后为准，预览可能略含回声，可接受
                     text.push_str(&append);
                     raw_text.push_str(&append);
                     usage.prompt_tokens =
@@ -1762,16 +1866,19 @@ pub async fn run_writing(
                     if usage.source != "api" {
                         usage.source = r.usage.source;
                     }
+                    if r.usage.completion_tokens >= fill_mt && continuity::prose_incomplete(&text) {
+                        continue;
+                    }
                 }
                 Err(e) => {
-                    eprintln!("[writing] length-fill failed: {e}");
+                    eprintln!("[writing] completeness-fill failed: {e}");
                     break;
                 }
             }
         }
         if text.chars().count() < min_chars {
             eprintln!(
-                "[writing] length-fill ended short: {} < {}",
+                "[writing] completeness-fill ended short: {} < {}",
                 text.chars().count(),
                 min_chars
             );
@@ -1793,10 +1900,13 @@ pub async fn run_writing(
             .unwrap_or("");
         if continuity::chapter_summary_is_dump(&text, &source) {
             eprintln!(
-                "[writing] chapter_summary dump/overlong ({} chars); fallback to block_note",
+                "[writing] chapter_summary dump/overlong ({} chars); compress",
                 text.chars().count()
             );
             let rescued = continuity::fallback_chapter_summary(&text, &source, note);
+            if rescued.trim().is_empty() || continuity::is_dump_placeholder(&rescued) {
+                return Err(AppError::t("errors.chapterSummaryEmptyBody"));
+            }
             text = rescued.clone();
             raw_text = rescued;
         }
@@ -1862,11 +1972,7 @@ fn build_length_fill_context(settings: &AppSettings, req: &WritingRequest) -> Le
             beat_engine::ensure_active_beat(&chapter.beats, &mut beat_progress, bid.trim());
         }
     }
-    let outline_run = req
-        .active_beat_id
-        .as_ref()
-        .map(|s| !s.trim().is_empty())
-        .unwrap_or(false);
+    let outline_run = request_is_outline_run(req);
     let active_beat_ref = req
         .active_beat_id
         .as_ref()
@@ -1998,7 +2104,7 @@ fn resolve_fallback_model(
 
 #[cfg(test)]
 mod tests {
-    use super::outline_split_max_tokens;
+    use super::{outline_continue_max_tokens, outline_split_max_tokens};
 
     #[test]
     fn split_tokens_floor_on_short_prompt() {
@@ -2015,5 +2121,13 @@ mod tests {
     #[test]
     fn split_tokens_keeps_higher_request() {
         assert_eq!(outline_split_max_tokens(100, 9000), 9000);
+    }
+
+    #[test]
+    fn continue_tokens_raise_but_cap() {
+        let n = outline_continue_max_tokens(1844, 800);
+        assert!(n >= 1844, "got {n}");
+        assert!(n <= 8192);
+        assert_eq!(outline_continue_max_tokens(7000, 50_000), 8192);
     }
 }

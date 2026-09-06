@@ -67,6 +67,7 @@
     "primaryProbeAndFallbackFailed": "Primary model `{primary}` probe failed: {probe}; fallback `{fallback}` also failed: {e}",
     "primaryAndFallbackFailed": "Primary model `{primary}` failed: {e}; fallback `{fallback}` also failed: {e2}",
     "chapterMissing": "Chapter not found",
+    "chapterSummaryEmptyBody": "Chapter prose is empty or too short; cannot write a chapter summary",
     "patchNoRecognizedFields": "No recognized fields in patch (arcs/promises/events/edges/facts)",
     "dirAlreadyHasProject": "This folder already has a work. Choose another folder or open it",
     "dirAlreadyHasProjectOrKb": "This folder already has a work or knowledge base. Choose another folder or open it",

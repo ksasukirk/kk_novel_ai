@@ -12,7 +12,12 @@ import {
   updateChapterMeta,
   applyBranchDoc,
   getMemory,
+  peekChapterBlocks,
 } from "./projectClient.js";
+import {
+  bodyHasSubstantialProse,
+  snapshotLooksValid,
+} from "../utils/outlineSnapshot.js";
 import { runBlockDigestAndWait } from "./blockDigest.js";
 import {
   canStartMoreJobs,
@@ -155,7 +160,7 @@ export function resolveMaxSectionsPerChapter() {
 
 function wrapChapterInstruction(chapter, userInstr) {
   const user = String(userInstr || "").trim();
-  const title = String(chapter.title || "").trim() || writingT("editor.thisChapter");
+  const title = String(chapter.title || "").trim();
   const summary = String(chapter.summary || "").trim();
   const parts = [
     writingT("outlineQ.instrWrap", { title }),
@@ -172,10 +177,16 @@ function wrapChapterInstruction(chapter, userInstr) {
 }
 
 function chapterHasSubstantialBody(chapter) {
-  const title = (chapter && chapter.title) || appState.chapterTitle || "";
+  if (!chapter || appState.chapterId !== chapter.id) return false;
+  const title = chapter.title || "";
   if (isChapterBodyEmpty(appState.chapterContent, title)) return false;
-  const raw = String(appState.chapterContent || "").trim();
-  return raw.replace(/\s+/g, "").length >= 80;
+  return bodyHasSubstantialProse(appState.chapterContent, 80);
+}
+
+async function chapterDiskHasBody(chapterId) {
+  const blocks = await peekChapterBlocks(chapterId);
+  const raw = (blocks || []).map((b) => String(b.text || "")).join("");
+  return bodyHasSubstantialProse(raw, 80);
 }
 
 async function chapterHasWrittenSnapshot(chapterId) {
@@ -183,10 +194,8 @@ async function chapterHasWrittenSnapshot(chapterId) {
     const memory = await getMemory();
     const snaps = (memory && memory.chapter_snapshots) || [];
     const hit = snaps.find((s) => s && s.chapter_id === chapterId);
-    const t = String((hit && hit.summary) || "").trim();
-    if (!t) return false;
-    const n = [...t].length;
-    if (n < 40 || n > 400) return false;
+    if (!snapshotLooksValid((hit && hit.summary) || "")) return false;
+    if (!(await chapterDiskHasBody(chapterId))) return false;
     return true;
   } catch {
     return false;
@@ -230,14 +239,9 @@ async function runChapterWrittenSummary(chapter) {
         job.previewText ||
         ""
     ).trim();
-    if (text.length < 40) {
+    if (!snapshotLooksValid(text)) {
       throw new Error(
         t("outlineQ.sumShort", { title: chapter.title || t("editor.thisChapter") })
-      );
-    }
-    if ([...text].length > 400) {
-      throw new Error(
-        t("outlineQ.sumRepeat", { title: chapter.title || t("editor.thisChapter") })
       );
     }
     return text;
@@ -259,16 +263,25 @@ async function runChapterWrittenSummary(chapter) {
 }
 
 async function runChapterOutlineQueue(chapterId, userInstr) {
+  if (appState.chapterId !== chapterId) {
+    await saveChapter();
+    await loadChapter(chapterId);
+  }
+
   const chapter = chapterById(chapterId);
   if (!chapter) throw new Error(t("outlineQ.noChapter"));
 
+  const title = String(chapter.title || "").trim();
+  if (!title) {
+    throw new Error(t("outlineQ.needTitle"));
+  }
   const summary = String(chapter.summary || "").trim();
   if (!summary && !(Array.isArray(chapter.beats) && chapter.beats.length)) {
-    throw new Error(t("outlineQ.needSummary", { title: chapter.title }));
+    throw new Error(t("outlineQ.needSummary", { title }));
   }
 
   outlineQueueState.chapterId = chapter.id;
-  outlineQueueState.chapterTitle = chapter.title || "";
+  outlineQueueState.chapterTitle = title;
   outlineQueueState.beatIndex = 1;
   outlineQueueState.beatTotal = 1;
   outlineQueueState.beatTitle = "";
@@ -283,6 +296,10 @@ async function runChapterOutlineQueue(chapterId, userInstr) {
     outlineQueueState.phase = "writing";
     appState.statusMessage = outlineQueueStatusLine();
     await waitForSlot();
+
+    if (appState.chapterId !== chapter.id) {
+      await loadChapter(chapter.id);
+    }
 
     // 空章或残稿才清空；已有实质正文（总结失败重跑）禁止抹掉
     const hasBody =
@@ -309,7 +326,9 @@ async function runChapterOutlineQueue(chapterId, userInstr) {
     appState.draftForkFromVariantId = "";
 
     const job = createGenJob({
-      label: t("outlineQ.labelChapter", { title: chapter.title || t("editor.thisChapter") }),
+      label: t("outlineQ.labelChapter", { title }),
+      targetChapterId: chapter.id,
+      skipAutoAccept: true,
     });
     job.draftActiveBeatId = "";
 
@@ -322,6 +341,7 @@ async function runChapterOutlineQueue(chapterId, userInstr) {
             task: "continue",
             instruction: wrapped,
             selection: "",
+            outline_run: true,
           },
           "continue",
           ""
@@ -340,6 +360,11 @@ async function runChapterOutlineQueue(chapterId, userInstr) {
     if (job.status === "done" && !job.accepted) {
       const acc = await acceptDraft(job);
       if (!acc.ok) throw new Error(acc.error || t("draft.writeFailed"));
+    }
+
+    await saveChapter();
+    if (!(await chapterDiskHasBody(chapter.id))) {
+      throw new Error(t("outlineQ.emptyBody", { title }));
     }
 
     const blockKey =
@@ -365,9 +390,11 @@ async function runChapterOutlineQueue(chapterId, userInstr) {
   }
 
   if (!(await chapterHasWrittenSnapshot(chapter.id))) {
-    throw new Error(
-      t("outlineQ.sumMissing", { title: chapter.title || t("editor.thisChapter") })
-    );
+    throw new Error(t("outlineQ.sumMissing", { title: title || t("editor.thisChapter") }));
+  }
+
+  if (!(await chapterDiskHasBody(chapter.id))) {
+    throw new Error(t("outlineQ.emptyBody", { title }));
   }
 
   await updateChapterMeta(chapter.id, {

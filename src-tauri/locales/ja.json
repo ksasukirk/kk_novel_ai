@@ -67,6 +67,7 @@
     "primaryProbeAndFallbackFailed": "主モデル `{primary}` のプローブ失敗: {probe}；フォールバック `{fallback}` も失敗: {e}",
     "primaryAndFallbackFailed": "主モデル `{primary}` 失敗: {e}；フォールバック `{fallback}` も失敗: {e2}",
     "chapterMissing": "章が存在しません",
+    "chapterSummaryEmptyBody": "章の本文が空か短すぎるため、章末要約を作れません",
     "patchNoRecognizedFields": "patch に認識できるフィールドがありません（arcs/promises/events/edges/facts）",
     "dirAlreadyHasProject": "フォルダに既に作品があります。別のフォルダにするか、そのまま開いてください",
     "dirAlreadyHasProjectOrKb": "フォルダに既に作品/知識庫があります。別のフォルダにするか、そのまま開いてください",

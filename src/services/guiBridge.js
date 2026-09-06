@@ -322,7 +322,7 @@ export async function startGuiBridge() {
     syncGeneratingFromJobs();
     finishGenProgress();
     void loadGenLogs(50).catch(() => {});
-    if (job && job.draftPlacement === "editor" && !job.accepted) {
+    if (job && job.draftPlacement === "editor" && !job.accepted && !job.skipAutoAccept) {
       void import("./draftAccept.js").then((m) => m.autoAcceptJobIfNeeded(job));
     } else if (!job && appState.draftPlacement === "editor") {
       void import("./draftAccept.js").then((m) => m.autoAcceptDraftIfNeeded());

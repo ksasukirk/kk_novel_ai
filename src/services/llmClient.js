@@ -145,7 +145,12 @@ export async function runWriting(request, opts = {}) {
     syncGeneratingFromJobs();
   }
 
-  if (job.draftPlacement === "editor" && job.status === "done" && !job.accepted) {
+  if (
+    job.draftPlacement === "editor" &&
+    job.status === "done" &&
+    !job.accepted &&
+    !job.skipAutoAccept
+  ) {
     const { autoAcceptJobIfNeeded } = await import("./draftAccept.js");
     await autoAcceptJobIfNeeded(job);
   }

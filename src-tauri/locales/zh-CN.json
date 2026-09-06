@@ -67,6 +67,7 @@
     "primaryProbeAndFallbackFailed": "主模型 `{primary}` 探测失败：{probe}；回退 `{fallback}` 亦失败：{e}",
     "primaryAndFallbackFailed": "主模型 `{primary}` 失败：{e}；回退 `{fallback}` 亦失败：{e2}",
     "chapterMissing": "章节不存在",
+    "chapterSummaryEmptyBody": "章节正文为空或过短，无法生成写后总结",
     "patchNoRecognizedFields": "patch 中无可识别字段（arcs/promises/events/edges/facts）",
     "dirAlreadyHasProject": "目录已存在作品，请换目录或直接打开",
     "dirAlreadyHasProjectOrKb": "目录已存在作品/知识库，请换目录或直接打开",

@@ -84,6 +84,10 @@ pub fn prompt(name: &str) -> &'static str {
         ("ja", "length_fill.md") => include_str!("../prompts/ja/length_fill.md"),
         (_, "length_fill.md") => include_str!("../prompts/length_fill.md"),
 
+        ("en", "scene_complete.md") => include_str!("../prompts/en/scene_complete.md"),
+        ("ja", "scene_complete.md") => include_str!("../prompts/ja/scene_complete.md"),
+        (_, "scene_complete.md") => include_str!("../prompts/scene_complete.md"),
+
         ("en", "suggest_book_title.md") => include_str!("../prompts/en/suggest_book_title.md"),
         ("ja", "suggest_book_title.md") => include_str!("../prompts/ja/suggest_book_title.md"),
         (_, "suggest_book_title.md") => include_str!("../prompts/suggest_book_title.md"),
