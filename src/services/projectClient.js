@@ -4,6 +4,7 @@
  */
 import { invoke } from "./tauri.js";
 import { appState } from "../stores/appState.js";
+import { t } from "../i18n/index.js";
 import { syncBookOutlineFromProject } from "../stores/aiPanelState.js";
 import {
   blocksFromContent,
@@ -143,7 +144,7 @@ export async function migrateLegacyChapterSections(root) {
     }
   }
   if (migrated > 0) {
-    appState.statusMessage = `已自动合并 ${migrated} 章残留小节为整章`;
+    appState.statusMessage = t("project.mergedSections", { n: migrated });
   }
   return { migrated };
 }
@@ -186,7 +187,7 @@ export async function loadChapter(chapterId) {
   if (changed) {
     appState.dirty = true;
     await saveChapter();
-    appState.statusMessage = "已自动合并本章残留小节为整章";
+    appState.statusMessage = t("project.mergedThisChapter");
   } else {
     appState.dirty = false;
   }
@@ -234,7 +235,7 @@ export async function saveChapter() {
     blocks: branchDocForPersist(doc),
   });
   appState.dirty = false;
-  appState.statusMessage = "章节已保存";
+  appState.statusMessage = t("status.saved");
 }
 
 export async function createChapter(title, summary = "", opts = {}) {
@@ -423,7 +424,7 @@ export async function exportEpub(output) {
   return await invoke("export_epub", { root: appState.projectRoot, output });
 }
 
-export async function pickFile(title = "选择文件", extensions = ["txt", "md"]) {
+export async function pickFile(title = t("project.pickFile"), extensions = ["txt", "md"]) {
   return await invoke("pick_file", { title, extensions });
 }
 
@@ -542,7 +543,7 @@ export function fileToBase64(file) {
       const idx = result.indexOf(",");
       resolve(idx >= 0 ? result.slice(idx + 1) : result);
     };
-    reader.onerror = () => reject(reader.error || new Error("读取文件失败"));
+    reader.onerror = () => reject(reader.error || new Error(t("common.readFileFailed")));
     reader.readAsDataURL(file);
   });
 }

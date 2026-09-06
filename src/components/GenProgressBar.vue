@@ -5,6 +5,7 @@
 <script setup>
 import { computed } from "vue";
 import { appState } from "../stores/appState.js";
+import { t } from "../i18n/index.js";
 
 const props = defineProps({
   /** compact：顶栏细条；panel：AI 面板较粗 */
@@ -17,10 +18,10 @@ const indeterminate = computed(
 );
 const pct = computed(() => Math.max(0, Math.min(100, Number(appState.genProgressPct) || 0)));
 const label = computed(() => {
-  if (!appState.generating && pct.value >= 100) return "完成";
-  if (indeterminate.value) return "连接模型…";
+  if (!appState.generating && pct.value >= 100) return t("progress.done");
+  if (indeterminate.value) return t("progress.connecting");
   const chars = appState.genStreamChars || 0;
-  return `${chars} 字 · ${pct.value}%`;
+  return t("progress.chars", { n: chars, pct: pct.value });
 });
 </script>
 

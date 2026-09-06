@@ -61,6 +61,10 @@ fn default_image_size() -> String {
     "1024x1024".into()
 }
 
+fn default_locale() -> String {
+    "zh-CN".into()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RecentProject {
     #[serde(default)]
@@ -179,6 +183,12 @@ pub struct AppSettings {
     /// 最近知识库（知识库首页）
     #[serde(default)]
     pub recent_knowledge_bases: Vec<RecentProject>,
+    /// 界面语言：zh-CN | en | ja
+    #[serde(default = "default_locale")]
+    pub ui_locale: String,
+    /// 写作 prompt / EPUB 语言：zh-CN | en | ja
+    #[serde(default = "default_locale")]
+    pub writing_locale: String,
 }
 
 impl Default for AppSettings {
@@ -230,11 +240,29 @@ impl Default for AppSettings {
             last_project_path: None,
             recent_projects: vec![],
             recent_knowledge_bases: vec![],
+            ui_locale: default_locale(),
+            writing_locale: default_locale(),
         }
     }
 }
 
 impl AppSettings {
+    pub fn normalize_locale_code(raw: &str) -> String {
+        let s = raw.trim();
+        if s == "en" || s == "en-US" || s == "en-GB" {
+            "en".into()
+        } else if s == "ja" || s == "ja-JP" {
+            "ja".into()
+        } else {
+            "zh-CN".into()
+        }
+    }
+
+    pub fn sanitize_locales(&mut self) {
+        self.ui_locale = Self::normalize_locale_code(&self.ui_locale);
+        self.writing_locale = Self::normalize_locale_code(&self.writing_locale);
+    }
+
     /// 写作类任务用的模型 ID
     pub fn writing_model(&self) -> &str {
         &self.model
@@ -604,6 +632,7 @@ pub fn load_settings() -> AppResult<AppSettings> {
     // 旧配置无 writing_target_chars 时，用 max_tokens 当作规定字数并回写对齐
     let before = (settings.writing_target_chars, settings.max_tokens);
     settings.sync_max_tokens_to_target();
+    settings.sanitize_locales();
     settings.base_url = AppSettings::normalize_base_url(&settings.base_url);
     let price_before = (
         settings.price_cache_hit_per_1m,
@@ -631,6 +660,7 @@ pub fn save_settings(settings: &AppSettings) -> AppResult<()> {
         fs::create_dir_all(parent)?;
     }
     let mut synced = settings.clone();
+    synced.sanitize_locales();
     synced.base_url = AppSettings::normalize_base_url(&synced.base_url);
     synced.sync_deepseek_price_fields();
     synced.sync_max_tokens_to_target();
@@ -646,14 +676,10 @@ pub fn validate_for_platform(settings: &AppSettings) -> AppResult<()> {
     }
     let u = settings.base_url.trim().to_lowercase();
     if u.is_empty() {
-        return Err(crate::error::AppError::msg(
-            "请填写可访问的 API Base URL（局域网或公网 OpenAI 兼容地址）",
-        ));
+        return Err(crate::error::AppError::t("errors.needReachableApiBaseUrl"));
     }
     if u.contains("127.0.0.1") || u.contains("localhost") || u.contains("[::1]") {
-        return Err(crate::error::AppError::msg(
-            "手机端不能使用 localhost / 127.0.0.1（指向手机自身）。请填写电脑局域网 IP 或公网 HTTPS 地址，例如 http://192.168.1.8:1234/v1",
-        ));
+        return Err(crate::error::AppError::t("errors.mobileNoLocalhost"));
     }
     Ok(())
 }

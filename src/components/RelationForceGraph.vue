@@ -271,36 +271,36 @@ onUnmounted(() => stopSim());
   <div class="rg-wrap" :class="{ fill: fillHeight }">
     <div
       class="rg-toolbar"
-      title="拖动画布平移 · 拖节点钉住 · 滚轮缩放 · 点击高亮邻居"
+      :title="$t('graph.tip')"
     >
       <slot name="toolbar" />
-      <button type="button" class="app-btn" @click="zoomOut">缩小</button>
-      <button type="button" class="app-btn" @click="zoomIn">放大</button>
-      <button type="button" class="app-btn" @click="resetView">复位</button>
+      <button type="button" class="app-btn" @click="zoomOut">{{ $t("common.zoomOut") }}</button>
+      <button type="button" class="app-btn" @click="zoomIn">{{ $t("common.zoomIn") }}</button>
+      <button type="button" class="app-btn" @click="resetView">{{ $t("common.reset") }}</button>
       <button
         type="button"
         class="app-btn"
         :class="{ 'chip-on': showForces }"
         @click="showForces = !showForces"
       >
-        力
+        {{ $t("graph.force") }}
       </button>
     </div>
     <div v-if="showForces" class="rg-forces">
       <label class="rg-force">
-        中心
+        {{ $t("graph.center") }}
         <input v-model.number="center" type="range" min="0.02" max="0.45" step="0.01" />
       </label>
       <label class="rg-force">
-        斥力
+        {{ $t("graph.charge") }}
         <input v-model.number="chargeAbs" type="range" min="40" max="360" step="5" />
       </label>
       <label class="rg-force">
-        连线距离
+        {{ $t("graph.linkDist") }}
         <input v-model.number="linkDistance" type="range" min="40" max="180" step="2" />
       </label>
       <label class="rg-force">
-        碰撞
+        {{ $t("graph.collide") }}
         <input v-model.number="collidePad" type="range" min="2" max="36" step="1" />
       </label>
     </div>
@@ -360,7 +360,7 @@ onUnmounted(() => stopSim());
           </g>
         </g>
       </svg>
-      <p v-if="!hasGraph" class="empty muted">暂无关系边。点「加边」后会出现节点。</p>
+      <p v-if="!hasGraph" class="empty muted">{{ $t("graph.empty") }}</p>
     </div>
   </div>
 </template>

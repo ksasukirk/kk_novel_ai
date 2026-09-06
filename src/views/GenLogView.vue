@@ -9,6 +9,7 @@ import { loadGenLogs, loadUsageSummary, exportTxt, exportPdf, exportEpub, pickDi
 import CapsuleSwitch from "../components/CapsuleSwitch.vue";
 import { useToastError } from "../services/toast.js";
 import { formatCost, formatMessages, formatTokens } from "../utils/usageFormat.js";
+import { t } from "../i18n/index.js";
 
 const error = useToastError();
 const exportMsg = ref("");
@@ -34,17 +35,22 @@ const usageLine = computed(() => {
   const hit = g.prompt_cache_hit_tokens || 0;
   const miss = g.prompt_cache_miss_tokens || 0;
   const parts = [
-    `全局 ${g.total_tokens || (g.prompt_tokens || 0) + (g.completion_tokens || 0)} tok`,
+    t("log.usageGlobal", {
+      tokens: g.total_tokens || (g.prompt_tokens || 0) + (g.completion_tokens || 0),
+    }),
     `¥${Number(g.cost_cny || 0).toFixed(4)}`,
-    `${g.calls || 0} 次`,
+    t("log.usageCalls", { n: g.calls || 0 }),
   ];
   if (hit > 0 || miss > 0) {
     const rate = hit + miss > 0 ? Math.round((hit / (hit + miss)) * 100) : 0;
-    parts.push(`缓存命中 ${hit}/${hit + miss} (${rate}%)`);
+    parts.push(t("log.usageCache", { hit, total: hit + miss, pct: rate }));
   }
   if (p) {
     parts.push(
-      `本作品 ${(p.prompt_tokens || 0) + (p.completion_tokens || 0)} tok · ¥${Number(p.cost_cny || 0).toFixed(4)}`
+      t("log.usageProject", {
+        tokens: (p.prompt_tokens || 0) + (p.completion_tokens || 0),
+        cost: Number(p.cost_cny || 0).toFixed(4),
+      })
     );
   }
   return parts.join(" · ");
@@ -62,7 +68,7 @@ async function exportToDir(ext, runner, label) {
   error.value = "";
   exportMsg.value = "";
   if (!appState.projectRoot) {
-    error.value = "请先打开作品";
+    error.value = t("project.needProject");
     return;
   }
   exporting.value = true;
@@ -71,7 +77,7 @@ async function exportToDir(ext, runner, label) {
     const stem = safeFileStem(appState.project && appState.project.title);
     const out = `${picked.path}\\${stem}.${ext}`;
     await runner(out);
-    exportMsg.value = `已导出 ${label}：${out}`;
+    exportMsg.value = t("project.exported", { label, path: out });
   } catch (e) {
     error.value = String(e.message || e);
   } finally {
@@ -138,17 +144,17 @@ async function onExportEpub() {
 
 <template>
   <section class="panel">
-    <h1 class="panel-heading">日志 / 导出</h1>
+    <h1 class="panel-heading">{{ $t("log.title") }}</h1>
     <p v-if="usageLine" class="muted usage-sum">{{ usageLine }}</p>
     <div class="actions">
       <button type="button" class="app-btn app-btn-primary" :disabled="exporting" @click="onExport">
-        导出 TXT
+        {{ $t("project.exportTxt") }}
       </button>
       <button type="button" class="app-btn" :disabled="exporting" @click="onExportPdf">
-        导出 PDF
+        {{ $t("project.exportPdf") }}
       </button>
       <button type="button" class="app-btn app-btn-warning" :disabled="exporting" @click="onExportEpub">
-        导出 EPUB
+        {{ $t("project.exportEpub") }}
       </button>
     </div>
     <p v-if="exportMsg" class="muted">{{ exportMsg }}</p>
@@ -156,21 +162,21 @@ async function onExportEpub() {
     <div class="history-controls">
       <CapsuleSwitch
         :model-value="showHistory"
-        label="查看 AI 历史对话"
+        :label="$t('log.showHistory')"
         @update:model-value="onHistoryToggle"
       />
       <template v-if="showHistory">
         <CapsuleSwitch
           v-model="showAllProjects"
-          label="包含其他作品"
+          :label="$t('analytics.includeOthers')"
         />
         <button type="button" class="app-btn app-btn-info" @click="refreshHistory">
-          刷新历史
+          {{ $t("log.refreshHistory") }}
         </button>
       </template>
     </div>
     <p v-if="!showHistory" class="muted history-hint">
-      历史对话默认隐藏；打开开关后仅显示当前作品。
+      {{ $t("log.historyHint") }}
     </p>
 
     <template v-if="showHistory">
@@ -178,26 +184,26 @@ async function onExportEpub() {
         <div class="log-meta">
           {{ item.ts }} · {{ item.source }} · {{ item.task }}
           <span v-if="item.model_used"> · {{ item.model_used }}</span>
-          <span v-if="item.truncated"> · 已截断</span>
+          <span v-if="item.truncated"> · {{ $t("log.truncated") }}</span>
           <span v-if="usageLabel(item)"> · {{ usageLabel(item) }}</span>
           <span v-if="item.cost_cny"> · {{ formatCost(item.cost_cny) }}</span>
         </div>
         <div class="muted">{{ item.project_root }} / {{ item.chapter_id }}</div>
         <details v-if="item.final_text || item.preview">
-          <summary>正文</summary>
+          <summary>{{ $t("log.body") }}</summary>
           <pre class="preview">{{ item.final_text || item.preview }}</pre>
         </details>
         <details v-if="(item.messages && item.messages.length) || item.instruction">
-          <summary>提示词</summary>
+          <summary>{{ $t("log.prompt") }}</summary>
           <pre class="preview">{{ formatMessages(item) }}</pre>
         </details>
         <details v-if="item.raw_text && item.raw_text !== item.final_text">
-          <summary>原始全文（截断前）</summary>
+          <summary>{{ $t("log.rawFull") }}</summary>
           <pre class="preview">{{ item.raw_text }}</pre>
         </details>
       </div>
       <p v-if="historyLoaded && !visibleLogs.length" class="muted">
-        {{ showAllProjects ? "暂无生成记录。" : "当前作品暂无 AI 历史对话。" }}
+        {{ showAllProjects ? $t("log.emptyAll") : $t("log.emptyCurrent") }}
       </p>
     </template>
   </section>

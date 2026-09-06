@@ -286,9 +286,7 @@ pub fn project_open(root: &str) -> AppResult<Value> {
 /// 不切换当前打开作品；知识库类会进最近知识库列表。
 pub fn project_import_directory(parent: &str, max_depth: Option<u32>) -> AppResult<Value> {
     if crate::paths::is_mobile() {
-        return Err(AppError::msg(
-            "手机端不支持从任意路径批量导入，请用「导入备份」或应用内目录",
-        ));
+        return Err(AppError::t("errors.mobileNoBatchImport"));
     }
     let parent_path = Path::new(parent);
     let depth = max_depth.unwrap_or(2).min(4) as usize;
@@ -386,18 +384,23 @@ pub fn project_delete(root: &str, purge: bool) -> AppResult<Value> {
     let mut purged = false;
     if purge {
         if let Some(reason) = purge_path_blocked(path) {
-            return Err(AppError::msg(format!(
-                "拒绝 purge（{reason}），仅已从最近列表移除：{root}"
-            )));
+            return Err(AppError::t_fmt(
+                "errors.purgeBlocked",
+                &[("reason", reason), ("root", root)],
+            ));
         }
         if !had_meta {
-            return Err(AppError::msg(format!(
-                "拒绝 purge：路径无 project.json，仅已从最近列表移除：{root}"
-            )));
+            return Err(AppError::t_fmt(
+                "errors.purgeNoProjectJson",
+                &[("root", root)],
+            ));
         }
         if path.exists() {
             fs::remove_dir_all(path).map_err(|e| {
-                AppError::msg(format!("删除作品目录失败 {root}: {e}"))
+                AppError::t_fmt(
+                    "errors.deleteProjectDirFailed",
+                    &[("root", root), ("e", &e.to_string())],
+                )
             })?;
             purged = true;
         }
@@ -621,7 +624,7 @@ fn sanitize_book_title(raw: &str) -> AppResult<String> {
         t = t.trim_end().to_string();
     }
     if t.is_empty() {
-        return Err(AppError::msg("模型未返回有效书名"));
+        return Err(AppError::t("errors.invalidBookTitle"));
     }
     if t.chars().count() > 24 {
         t = t.chars().take(24).collect();
@@ -634,18 +637,16 @@ pub async fn project_suggest_title(root: &str) -> AppResult<Value> {
     let path = Path::new(root);
     let opened = project::open_project(path)?;
     if project::is_knowledge_kind(&opened.project.kind) {
-        return Err(AppError::msg("知识库不支持生成书名"));
+        return Err(AppError::t("errors.kbNoSuggestTitle"));
     }
     let (seed, substance) = build_book_title_seed(path, &opened.project);
     if substance < EMPTY_SUBSTANCE_THRESHOLD {
-        return Err(AppError::msg(
-            "内容太少，请先写全书大纲、章纲或正文再生成书名",
-        ));
+        return Err(AppError::t("errors.titleNeedMoreContent"));
     }
 
     let s = settings::load_settings()?;
     let model = s.resolve_analysis_model().to_string();
-    let tpl = include_str!("../prompts/suggest_book_title.md");
+    let tpl = crate::prompt_i18n::prompt("suggest_book_title.md");
     let user = tpl.replace("{{seed}}", &seed);
     let messages = vec![
         ChatMessage {
@@ -699,7 +700,7 @@ pub fn project_apply_title(root: &str, title: &str, rename_folder: bool) -> AppR
     let path = Path::new(root);
     let mut opened = project::open_project(path)?;
     if project::is_knowledge_kind(&opened.project.kind) {
-        return Err(AppError::msg("知识库不支持改书名"));
+        return Err(AppError::t("errors.kbNoRenameTitle"));
     }
     opened.project.title = title.clone();
     project::save_project_meta(path, &opened.project)?;
@@ -715,15 +716,18 @@ pub fn project_apply_title(root: &str, title: &str, rename_folder: bool) -> AppR
     if rename_folder {
         let parent = path
             .parent()
-            .ok_or_else(|| AppError::msg(format!("无法解析作品父目录：{root}")))?;
+            .ok_or_else(|| AppError::t_fmt("errors.cannotResolveProjectParent", &[("root", root)]))?;
         let dest = crate::paths::allocate_folder_in_parent(parent, &title, path)?;
         if dest != path {
             fs::rename(path, &dest).map_err(|e| {
-                AppError::msg(format!(
-                    "重命名作品文件夹失败（{} → {}）：{e}",
-                    path.display(),
-                    dest.display()
-                ))
+                AppError::t_fmt(
+                    "errors.renameProjectFolderFailed",
+                    &[
+                        ("from", &path.display().to_string()),
+                        ("to", &dest.display().to_string()),
+                        ("e", &e.to_string()),
+                    ],
+                )
             })?;
             final_path = dest;
             folder_renamed = true;
@@ -1100,14 +1104,12 @@ pub fn kb_migrate(root: &str, source_file: Option<&str>, sync: bool) -> AppResul
 
 pub fn pick_file(title: Option<&str>, extensions: Option<Vec<String>>) -> AppResult<Value> {
     if crate::paths::is_mobile() {
-        return Err(AppError::msg(
-            "手机端请使用系统文件选择（导入备份 / 导入 TXT），不支持桌面路径对话框",
-        ));
+        return Err(AppError::t("errors.mobileNoDesktopFileDialog"));
     }
     #[cfg(any(target_os = "android", target_os = "ios"))]
     {
         let _ = (title, extensions);
-        return Err(AppError::msg("当前平台不支持桌面文件对话框"));
+        return Err(AppError::t("errors.platformNoFileDialog"));
     }
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
@@ -1121,7 +1123,7 @@ pub fn pick_file(title: Option<&str>, extensions: Option<Vec<String>>) -> AppRes
         }
         let file = dlg
             .pick_file()
-            .ok_or_else(|| AppError::msg("已取消选择"))?;
+            .ok_or_else(|| AppError::t("errors.pickCancelled"))?;
         Ok(json!({ "ok": true, "path": file.to_string_lossy() }))
     }
 }
@@ -1150,20 +1152,18 @@ pub async fn rag_rebuild(root: &str) -> AppResult<Value> {
 
 pub fn pick_directory() -> AppResult<Value> {
     if crate::paths::is_mobile() {
-        return Err(AppError::msg(
-            "手机端作品保存在应用私有目录，请用「新建」或「导入备份」，不支持打开任意路径",
-        ));
+        return Err(AppError::t("errors.mobileNoArbitraryPath"));
     }
     #[cfg(any(target_os = "android", target_os = "ios"))]
     {
-        return Err(AppError::msg("当前平台不支持桌面目录对话框"));
+        return Err(AppError::t("errors.platformNoDirDialog"));
     }
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
         let folder = rfd::FileDialog::new()
             .set_title("选择作品目录")
             .pick_folder()
-            .ok_or_else(|| AppError::msg("已取消选择"))?;
+            .ok_or_else(|| AppError::t("errors.pickCancelled"))?;
         Ok(json!({ "ok": true, "path": folder.to_string_lossy() }))
     }
 }
@@ -1171,20 +1171,18 @@ pub fn pick_directory() -> AppResult<Value> {
 /// 选择要批量扫描导入的父目录
 pub fn pick_import_directory() -> AppResult<Value> {
     if crate::paths::is_mobile() {
-        return Err(AppError::msg(
-            "手机端不支持从任意路径批量导入，请用「导入备份」",
-        ));
+        return Err(AppError::t("errors.mobileNoBatchImportShort"));
     }
     #[cfg(any(target_os = "android", target_os = "ios"))]
     {
-        return Err(AppError::msg("当前平台不支持桌面目录对话框"));
+        return Err(AppError::t("errors.platformNoDirDialog"));
     }
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
         let folder = rfd::FileDialog::new()
             .set_title("选择含有多个作品的目录")
             .pick_folder()
-            .ok_or_else(|| AppError::msg("已取消选择"))?;
+            .ok_or_else(|| AppError::t("errors.pickCancelled"))?;
         Ok(json!({ "ok": true, "path": folder.to_string_lossy() }))
     }
 }
@@ -1227,7 +1225,7 @@ pub async fn dispatch_rpc(req: Value) -> AppResult<Value> {
     let cmd = req
         .get("cmd")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| AppError::msg("缺少 cmd"))?;
+        .ok_or_else(|| AppError::t("errors.missingCmd"))?;
 
     match cmd {
         "ping" => Ok(json!({ "ok": true, "message": "pong" })),
@@ -1236,7 +1234,7 @@ pub async fn dispatch_rpc(req: Value) -> AppResult<Value> {
             let settings: AppSettings = serde_json::from_value(
                 req.get("settings")
                     .cloned()
-                    .ok_or_else(|| AppError::msg("缺少 settings"))?,
+                    .ok_or_else(|| AppError::t("errors.missingSettings"))?,
             )?;
             settings_save(settings)
         }
@@ -1246,7 +1244,7 @@ pub async fn dispatch_rpc(req: Value) -> AppResult<Value> {
             let messages: Vec<ChatMessage> = serde_json::from_value(
                 req.get("messages")
                     .cloned()
-                    .ok_or_else(|| AppError::msg("缺少 messages"))?,
+                    .ok_or_else(|| AppError::t("errors.missingMessages"))?,
             )?;
             let options: ChatOptions = req
                 .get("options")
@@ -1260,7 +1258,7 @@ pub async fn dispatch_rpc(req: Value) -> AppResult<Value> {
             let writing_req: WritingRequest = serde_json::from_value(
                 req.get("request")
                     .cloned()
-                    .ok_or_else(|| AppError::msg("缺少 request"))?,
+                    .ok_or_else(|| AppError::t("errors.missingRequest"))?,
             )?;
             writing_run_blocking(writing_req, "cli-rpc", |_| {}).await
         }
@@ -1311,7 +1309,7 @@ pub async fn dispatch_rpc(req: Value) -> AppResult<Value> {
             let project: project::NovelProject = serde_json::from_value(
                 req.get("project")
                     .cloned()
-                    .ok_or_else(|| AppError::msg("缺少 project"))?,
+                    .ok_or_else(|| AppError::t("errors.missingProject"))?,
             )?;
             project_save_meta(root, project)
         }
@@ -1402,7 +1400,7 @@ pub async fn dispatch_rpc(req: Value) -> AppResult<Value> {
             let plot = serde_json::from_value(
                 req.get("plot")
                     .cloned()
-                    .ok_or_else(|| AppError::msg("缺少 plot"))?,
+                    .ok_or_else(|| AppError::t("errors.missingPlot"))?,
             )?;
             story_plot_save(req_str(&req, "root")?, plot)
         }
@@ -1411,7 +1409,7 @@ pub async fn dispatch_rpc(req: Value) -> AppResult<Value> {
             let timeline = serde_json::from_value(
                 req.get("timeline")
                     .cloned()
-                    .ok_or_else(|| AppError::msg("缺少 timeline"))?,
+                    .ok_or_else(|| AppError::t("errors.missingTimeline"))?,
             )?;
             story_timeline_save(req_str(&req, "root")?, timeline)
         }
@@ -1420,7 +1418,7 @@ pub async fn dispatch_rpc(req: Value) -> AppResult<Value> {
             let relations = serde_json::from_value(
                 req.get("relations")
                     .cloned()
-                    .ok_or_else(|| AppError::msg("缺少 relations"))?,
+                    .ok_or_else(|| AppError::t("errors.missingRelations"))?,
             )?;
             story_relations_save(req_str(&req, "root")?, relations)
         }
@@ -1429,7 +1427,7 @@ pub async fn dispatch_rpc(req: Value) -> AppResult<Value> {
             let canon = serde_json::from_value(
                 req.get("canon")
                     .cloned()
-                    .ok_or_else(|| AppError::msg("缺少 canon"))?,
+                    .ok_or_else(|| AppError::t("errors.missingCanon"))?,
             )?;
             story_canon_save(req_str(&req, "root")?, canon)
         }
@@ -1437,7 +1435,7 @@ pub async fn dispatch_rpc(req: Value) -> AppResult<Value> {
             let patch = req
                 .get("patch")
                 .cloned()
-                .ok_or_else(|| AppError::msg("缺少 patch"))?;
+                .ok_or_else(|| AppError::t("errors.missingPatch"))?;
             story_apply_patch(req_str(&req, "root")?, patch)
         }
         "story_dashboard" => story_dashboard(req_str(&req, "root")?),
@@ -1446,7 +1444,7 @@ pub async fn dispatch_rpc(req: Value) -> AppResult<Value> {
             let storyboard = serde_json::from_value(
                 req.get("storyboard")
                     .cloned()
-                    .ok_or_else(|| AppError::msg("缺少 storyboard"))?,
+                    .ok_or_else(|| AppError::t("errors.missingStoryboard"))?,
             )?;
             story_storyboard_save(req_str(&req, "root")?, storyboard)
         }
@@ -1461,7 +1459,7 @@ pub async fn dispatch_rpc(req: Value) -> AppResult<Value> {
             let session = serde_json::from_value(
                 req.get("session")
                     .cloned()
-                    .ok_or_else(|| AppError::msg("缺少 session"))?,
+                    .ok_or_else(|| AppError::t("errors.missingSession"))?,
             )?;
             chat_session_save(mode, root, session)
         }
@@ -1475,7 +1473,7 @@ pub async fn dispatch_rpc(req: Value) -> AppResult<Value> {
             let entry: LoreEntry = serde_json::from_value(
                 req.get("entry")
                     .cloned()
-                    .ok_or_else(|| AppError::msg("缺少 entry"))?,
+                    .ok_or_else(|| AppError::t("errors.missingEntry"))?,
             )?;
             lore_upsert(req_str(&req, "root")?, entry)
         }
@@ -1591,7 +1589,7 @@ pub async fn dispatch_rpc(req: Value) -> AppResult<Value> {
             let request: crate::image::ImageGenerateRequest = serde_json::from_value(
                 req.get("request")
                     .cloned()
-                    .ok_or_else(|| AppError::msg("缺少 request"))?,
+                    .ok_or_else(|| AppError::t("errors.missingRequest"))?,
             )?;
             crate::image::generate(&settings::load_settings()?, request).await
         }
@@ -1599,14 +1597,14 @@ pub async fn dispatch_rpc(req: Value) -> AppResult<Value> {
             req_str(&req, "root")?,
             req_str(&req, "rel")?,
         ),
-        other => Err(AppError::msg(format!("未知 cmd: {other}"))),
+        other => Err(AppError::t_fmt("errors.unknownCmd", &[("cmd", other)])),
     }
 }
 
 fn req_str<'a>(req: &'a Value, key: &str) -> AppResult<&'a str> {
     req.get(key)
         .and_then(|v| v.as_str())
-        .ok_or_else(|| AppError::msg(format!("缺少 {key}")))
+        .ok_or_else(|| AppError::t_fmt("errors.missingField", &[("key", key)]))
 }
 
 /// 供 GUI 流式任务使用

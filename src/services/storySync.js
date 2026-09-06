@@ -18,6 +18,11 @@ import { refreshCharacterNameIndex } from "./characterIndex.js";
 import { peekChapterBranchDoc } from "./projectClient.js";
 import { contentFromActivePath } from "../utils/branchModel.js";
 import { isChapterBodyEmpty } from "../utils/chapterStatus.js";
+import { t, tLocale } from "../i18n/index.js";
+
+function writingT(key, values) {
+  return tLocale(appState.settings?.writing_locale || "zh-CN", key, values);
+}
 
 const inFlightKeys = new Set();
 
@@ -236,7 +241,7 @@ export async function runStorySync(opts) {
 
   inFlightKeys.add(blockKey);
   const prevStatus = appState.statusMessage;
-  if (!quiet) appState.statusMessage = "正在同步总谱…";
+  if (!quiet) appState.statusMessage = t("sync.syncing");
   try {
     try {
       await refreshCharacterNameIndex();
@@ -262,7 +267,7 @@ export async function runStorySync(opts) {
     const raw = String((result && (result.text || result.raw_text)) || "");
     const parsed = parsePatch(raw);
     if (parsed == null) {
-      if (!quiet) appState.statusMessage = "总谱同步未解析到 JSON（不影响正文）";
+      if (!quiet) appState.statusMessage = t("sync.noJson");
       return null;
     }
 
@@ -283,7 +288,7 @@ export async function runStorySync(opts) {
       chapterId,
     });
     if (!patchHasFields(clean)) {
-      if (!quiet) appState.statusMessage = prevStatus || "总谱无新条目";
+      if (!quiet) appState.statusMessage = prevStatus || t("sync.noNew");
       return [];
     }
 
@@ -294,17 +299,17 @@ export async function runStorySync(opts) {
     }
     if (!quiet) {
       appState.statusMessage = updated.length
-        ? `已同步总谱：${updated.join("、")}`
-        : "已同步总谱";
+        ? t("sync.syncedFields", { fields: updated.join(t("common.listSep")) })
+        : t("sync.synced");
     }
     return updated;
   } catch (e) {
     const msg = String((e && e.message) || e || "");
-    if (/无可识别字段/.test(msg)) {
-      if (!quiet) appState.statusMessage = prevStatus || "总谱无新条目";
+    if (/无可识别字段|no recognizable field|識別できるフィールド/i.test(msg)) {
+      if (!quiet) appState.statusMessage = prevStatus || t("sync.noNew");
       return [];
     }
-    if (!quiet) appState.statusMessage = `总谱同步失败（不影响正文）：${msg}`;
+    if (!quiet) appState.statusMessage = t("sync.failed", { msg });
     return null;
   } finally {
     inFlightKeys.delete(blockKey);
@@ -355,7 +360,7 @@ export async function resetUnlockedStoryStores() {
  */
 export async function rebuildStoryFromExistingWork() {
   if (storyRebuildState.running) {
-    throw new Error("总谱重建正在进行");
+    throw new Error(t("sync.rebuildBusy"));
   }
   storyRebuildState.running = true;
   storyRebuildState.cancelled = false;
@@ -369,7 +374,7 @@ export async function rebuildStoryFromExistingWork() {
     const chapters = ((appState.project && appState.project.chapters) || []).filter(
       (c) => c && c.id
     );
-    if (!chapters.length) throw new Error("作品还没有章节");
+    if (!chapters.length) throw new Error(t("sync.noChapters"));
 
     const targets = [];
     for (const ch of chapters) {
@@ -385,7 +390,7 @@ export async function rebuildStoryFromExistingWork() {
       if (isChapterBodyEmpty(text, ch.title)) continue;
       targets.push({ ch, text: String(text || "").trim() });
     }
-    if (!targets.length) throw new Error("没有可读取的章节正文");
+    if (!targets.length) throw new Error(t("sync.noBodies"));
 
     storyRebuildState.total = targets.length;
     await resetUnlockedStoryStores();
@@ -398,13 +403,19 @@ export async function rebuildStoryFromExistingWork() {
 
     for (let i = 0; i < targets.length; i++) {
       if (storyRebuildState.cancelled) {
-        appState.statusMessage = `总谱重建已取消（已完成 ${storyRebuildState.ok}/${targets.length} 章）`;
+        appState.statusMessage = t("sync.rebuildCancelled", {
+          ok: storyRebuildState.ok,
+          total: targets.length,
+        });
         break;
       }
       const { ch, text } = targets[i];
       storyRebuildState.index = i + 1;
-      storyRebuildState.chapterTitle = ch.title || `第${i + 1}章`;
-      appState.statusMessage = `正在按正文重建总谱 ${i + 1}/${targets.length} · ${storyRebuildState.chapterTitle}`;
+      storyRebuildState.chapterTitle = ch.title || t("editor.chapterN", { n: i + 1 });
+      appState.statusMessage = `${t("story.rebuildProgress", {
+        index: i + 1,
+        total: targets.length,
+      })} · ${storyRebuildState.chapterTitle}`;
       const updated = await runStorySync({
         blockKey: `rebuild:${ch.id}`,
         text,
@@ -413,11 +424,13 @@ export async function rebuildStoryFromExistingWork() {
         quiet: true,
         bumpRevision: false,
         branchContextText: text,
-        instruction:
-          "根据本章已有正文重建总谱增量；只写本章新出现的情节、时间、关系和事实；不要编造本章没写的事。",
+        instruction: writingT("sync.instrRebuild"),
       });
       if (storyRebuildState.cancelled) {
-        appState.statusMessage = `总谱重建已取消（已完成 ${storyRebuildState.ok}/${targets.length} 章）`;
+        appState.statusMessage = t("sync.rebuildCancelled", {
+          ok: storyRebuildState.ok,
+          total: targets.length,
+        });
         break;
       }
       if (updated == null) {
@@ -433,8 +446,12 @@ export async function rebuildStoryFromExistingWork() {
     }
     const failN = storyRebuildState.failed.length;
     appState.statusMessage = failN
-      ? `总谱已按正文重建：成功 ${storyRebuildState.ok} 章，失败 ${failN} 章（${storyRebuildState.failed.join("、")}）`
-      : `总谱已按正文重建：${storyRebuildState.ok} 章`;
+      ? t("sync.doneFail", {
+          ok: storyRebuildState.ok,
+          fail: failN,
+          titles: storyRebuildState.failed.join(t("common.listSep")),
+        })
+      : t("sync.doneOk", { ok: storyRebuildState.ok });
     return { ...storyRebuildState, cancelled: false };
   } finally {
     storyRebuildState.running = false;

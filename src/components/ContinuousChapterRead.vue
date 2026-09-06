@@ -4,6 +4,7 @@
 -->
 <script setup>
 import { computed } from "vue";
+import { t } from "../i18n/index.js";
 
 const props = defineProps({
   chapterId: { type: String, required: true },
@@ -21,7 +22,7 @@ function blockLabel(block, index) {
   if (dig) return dig.length > 48 ? `${dig.slice(0, 48)}…` : dig;
   const instr = String(block.instruction || "").trim();
   if (instr) return instr.length > 48 ? `${instr.slice(0, 48)}…` : instr;
-  return `段落 ${index + 1}`;
+  return t("editor.paragraphN", { n: index + 1 });
 }
 
 function onActivate() {
@@ -32,7 +33,7 @@ function onActivate() {
 <template>
   <div
     class="continuous-read"
-    title="点击本章可进入编辑"
+    :title="$t('editor.clickToEdit')"
     @click="onActivate"
   >
     <div
@@ -51,7 +52,7 @@ function onActivate() {
       </div>
       <div class="continuous-read-text">{{ block.text || "" }}</div>
     </div>
-    <p v-if="!list.length" class="continuous-empty muted">（本章暂无正文）</p>
+    <p v-if="!list.length" class="continuous-empty muted">{{ $t("editor.noBody") }}</p>
   </div>
 </template>
 

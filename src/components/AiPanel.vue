@@ -13,6 +13,7 @@ import { undoLastAi } from "../services/aiUndo.js";
 import { applyStoryPatch } from "../services/storyClient.js";
 import { lineDiff } from "../utils/lineDiff.js";
 import { isBackgroundAnalysisTask } from "../utils/writingTasks.js";
+import { isCancelledMsg, t } from "../i18n/index.js";
 import { clearDraftPreview, rejectDraft } from "../services/draftAccept.js";
 import { canStartMoreJobs } from "../stores/genJobs.js";
 import {
@@ -250,23 +251,23 @@ watch(task, (id) => {
   if (id === "polish") floatExpanded.value = true;
 });
 
-const tasks = [
-  { id: "outline_run", label: "使用大纲生成章节描述" },
-  { id: "continue", label: "续写" },
-  { id: "polish", label: "润色" },
-  { id: "outline", label: "章纲" },
-  { id: "consistency", label: "一致性" },
-  { id: "chapter_summary", label: "章摘要" },
-  { id: "story_sync", label: "同步总谱" },
-];
+const tasks = computed(() => [
+  { id: "outline_run", label: t("ai.taskOutlineRun") },
+  { id: "continue", label: t("ai.taskContinue") },
+  { id: "polish", label: t("ai.taskPolish") },
+  { id: "outline", label: t("ai.taskOutline") },
+  { id: "consistency", label: t("ai.taskConsistency") },
+  { id: "chapter_summary", label: t("ai.taskChapterSummary") },
+  { id: "story_sync", label: t("ai.taskStorySync") },
+]);
 
 const EDITOR_DRAFT_TASKS = new Set(["continue", "polish"]);
 
 const useEditorDraft = computed(() => EDITOR_DRAFT_TASKS.has(task.value));
 
 const currentTaskLabel = computed(() => {
-  const t = tasks.find((x) => x.id === task.value);
-  return (t && t.label) || "使用大纲生成章节描述";
+  const row = tasks.value.find((x) => x.id === task.value);
+  return (row && row.label) || t("ai.taskOutlineRun");
 });
 
 const selectedPlanCount = computed(
@@ -286,12 +287,12 @@ const previewMeta = computed(() => {
   const q = queueStatusLine();
   if (q) parts.push(q);
   if (appState.lastModelUsed) parts.push(appState.lastModelUsed);
-  if (appState.generating) parts.push("生成中…");
-  if (appState.lastTruncated) parts.push("疑似复读（未截断）");
-  if (appState.lastIncomplete) parts.push("疑似半截");
+  if (appState.generating) parts.push(t("status.generating"));
+  if (appState.lastTruncated) parts.push(t("ai.truncatedLoop"));
+  if (appState.lastIncomplete) parts.push(t("ai.incomplete"));
   const u = appState.lastUsage;
   if (u && (u.total_tokens || u.prompt_tokens || u.completion_tokens)) {
-    const src = u.source === "api" ? "api" : "估";
+    const src = u.source === "api" ? "api" : t("ai.tokenEst");
     parts.push(
       `tokens ${u.total_tokens || (u.prompt_tokens || 0) + (u.completion_tokens || 0)} (${src})`
     );
@@ -309,10 +310,10 @@ const currentChapter = computed(() => {
 
 const focusHint = computed(() => {
   const ch = currentChapter.value;
-  if (!ch) return "未选章节";
-  const arcs = (ch.focus_arc_ids || []).join(", ") || "未绑弧";
-  const must = ch.must_do || "（无必达）";
-  return `POV:${ch.pov_lore_id || "无"} · 弧:${arcs} · 必达:${must}`;
+  if (!ch) return t("editor.noChapter");
+  const arcs = (ch.focus_arc_ids || []).join(", ") || t("ai.noArc");
+  const must = ch.must_do || t("ai.noMust");
+  return t("ai.focusLine", { pov: ch.pov_lore_id || t("ai.noPov"), arcs, must });
 });
 
 const syncPatch = computed(() => {
@@ -388,7 +389,7 @@ async function onRun() {
   error.value = "";
   syncMsg.value = "";
   if (!appState.projectRoot) {
-    error.value = "请先打开作品";
+    error.value = t("project.needProject");
     return;
   }
   try {
@@ -399,7 +400,7 @@ async function onRun() {
       return;
     }
     if (!appState.chapterId) {
-      error.value = "请先选择章节，或用「按纲生成」写入目录";
+      error.value = t("ai.needChapterOrOutline");
       return;
     }
     if (task.value === "continue") {
@@ -461,18 +462,15 @@ async function guardEmptyChapterContinue() {
     project.book_outline || bookOutline.value || ""
   ).trim();
   if (!bookOutlineText) return false;
-  const ok = await appConfirm(
-    "本章还没有章纲。建议先「拆成章节」或写入本章纲，再按纲写；若仍要直接续写，点继续。",
-    {
-      title: "本章无章纲",
-      confirmText: "仍要续写",
-      cancelText: "去按纲",
-    }
-  );
+  const ok = await appConfirm(t("ai.noOutlineBody"), {
+    title: t("ai.noOutlineTitle"),
+    confirmText: t("ai.stillContinue"),
+    cancelText: t("ai.goOutline"),
+  });
   if (!ok) {
     task.value = "outline_run";
     floatExpanded.value = true;
-    error.value = "本章无章纲，请先拆章或写入本章纲";
+    error.value = t("ai.noOutlineErr");
     return true;
   }
   return false;
@@ -487,7 +485,7 @@ async function onGenerateChapterQueue() {
       instruction: instruction.value,
     });
     if (!seed) {
-      error.value = "请先填写创作提示：写在上方「创作提示」框，或底部指令栏";
+      error.value = t("ai.needPrompt");
       floatExpanded.value = true;
       return;
     }
@@ -497,11 +495,11 @@ async function onGenerateChapterQueue() {
     });
     const n = (r.updatedIds || []).length + (r.createdIds || []).length;
     syncMsg.value = r.writingCancelled
-      ? `已写入目录 ${n} 章，写作已取消`
-      : `已写入 ${n} 章并按纲写完`;
+      ? t("ai.wroteCancel", { n })
+      : t("ai.wroteDone", { n });
   } catch (e) {
     const msg = String(e.message || e);
-    if (msg.includes("取消")) {
+    if (isCancelledMsg(msg)) {
       syncMsg.value = msg;
       return;
     }
@@ -518,7 +516,7 @@ async function onSaveBookOutline() {
       instruction: instruction.value,
     });
     await saveBookOutline(seed || bookOutline.value);
-    syncMsg.value = "创作提示已保存";
+    syncMsg.value = t("ai.promptSaved");
   } catch (e) {
     error.value = String(e.message || e);
   }
@@ -536,11 +534,11 @@ async function onContinueSplit() {
       instruction: instruction.value,
     });
     syncMsg.value = r.writingCancelled
-      ? `已续拆 ${(r.createdIds || []).length} 章，写作已取消`
-      : `已续拆 ${(r.createdIds || []).length} 章并按纲写完`;
+      ? t("editor.continueSplitCancel", { n: (r.createdIds || []).length })
+      : t("editor.continueSplitDone", { n: (r.createdIds || []).length });
   } catch (e) {
     const msg = String(e.message || e);
-    if (msg.includes("取消")) {
+    if (isCancelledMsg(msg)) {
       syncMsg.value = msg;
       return;
     }
@@ -558,8 +556,8 @@ async function onApplyChapterPlan() {
     });
     const n = r.updatedIds.length + r.createdIds.length;
     syncMsg.value = r.writingCancelled
-      ? `已写入目录 ${n} 章，写作已取消`
-      : `已写入 ${n} 章并按纲写完`;
+      ? t("ai.wroteCancel", { n })
+      : t("ai.wroteDone", { n });
   } catch (e) {
     error.value = String(e.message || e);
   }
@@ -582,11 +580,11 @@ async function onWriteOutlineToChapter() {
   error.value = "";
   const text = String(appState.previewText || "").trim();
   if (!text) {
-    error.value = "没有可写入的章纲预览";
+    error.value = t("ai.noOutlinePreview");
     return;
   }
   if (!appState.chapterId) {
-    error.value = "请先选择章节";
+    error.value = t("editor.needChapter");
     return;
   }
   try {
@@ -594,7 +592,7 @@ async function onWriteOutlineToChapter() {
       summary: text,
       status: "pending",
     });
-    syncMsg.value = "已写入本章纲";
+    syncMsg.value = t("ai.wroteChapterOutline");
     appState.previewText = "";
   } catch (e) {
     error.value = String(e.message || e);
@@ -606,13 +604,13 @@ async function onWriteOutlineToBook() {
   error.value = "";
   const text = String(appState.previewText || "").trim();
   if (!text) {
-    error.value = "没有可写入的章纲预览";
+    error.value = t("ai.noOutlinePreview");
     return;
   }
   try {
     bookOutline.value = text;
     await saveBookOutline(text);
-    syncMsg.value = "已写入全书大纲（请确认不是单场章纲）";
+    syncMsg.value = t("ai.wroteBookOutline");
     task.value = "outline_run";
     floatExpanded.value = true;
   } catch (e) {
@@ -639,19 +637,19 @@ function clearInstruction() {
 function runButtonLabel() {
   if (outlineQueueState.running) {
     if (outlineQueueState.phase === "splitting_chapters") {
-      return isFloat.value ? "拆章中" : "生成章节队列中…";
+      return isFloat.value ? t("ai.splittingShort") : t("ai.splittingLong");
     }
-    return isFloat.value ? "按纲中" : "按纲写正文中…";
+    return isFloat.value ? t("ai.outliningShort") : t("ai.outliningLong");
   }
-  if (sectionQueueState.running) return isFloat.value ? "队列中" : "队列中…";
-  if (appState.generating) return isFloat.value ? "再发" : "再发一路";
+  if (sectionQueueState.running) return isFloat.value ? t("ai.queueShort") : t("ai.queueLong");
+  if (appState.generating) return isFloat.value ? t("ai.sendAgainShort") : t("ai.sendAgainLong");
   if (task.value === "outline_run") {
-    return isFloat.value ? "生成队列" : "生成章节队列";
+    return isFloat.value ? t("ai.genQueueShort") : t("ai.genChapterQueue");
   }
   if (task.value === "continue" && instructionQueue.value) {
-    return isFloat.value ? "连跑" : `按队列生成（${filledStepCount.value}）`;
+    return isFloat.value ? t("ai.runQueueShort") : t("ai.runQueueLong", { n: filledStepCount.value });
   }
-  return isFloat.value ? "发送" : "开始生成";
+  return isFloat.value ? t("common.send") : t("ai.startGen");
 }
 function clearSelection() {
   selection.value = "";
@@ -682,12 +680,12 @@ async function onApplySync() {
   error.value = "";
   syncMsg.value = "";
   if (!syncPatch.value) {
-    error.value = "预览不是合法 JSON patch";
+    error.value = t("ai.badPatch");
     return;
   }
   try {
     const r = await applyStoryPatch(syncPatch.value);
-    syncMsg.value = `已应用：${(r.updated || []).join(", ")}`;
+    syncMsg.value = t("ai.applied", { items: (r.updated || []).join(", ") });
   } catch (e) {
     error.value = String(e.message || e);
   }
@@ -700,39 +698,39 @@ function onToggleLayout() {
 
 <template>
   <div class="ai-panel-root" :data-layout="layout">
-    <div v-if="isFloat" class="ai-float" :class="{ 'is-busy': floatBusy }" role="region" aria-label="AI 指令">
+    <div v-if="isFloat" class="ai-float" :class="{ 'is-busy': floatBusy }" role="region" :aria-label="$t('ai.region')">
       <div v-if="floatExtraVisible" class="ai-float-extra">
         <!-- 浮条用下拉选任务，不再重复渲染芯片行 -->
         <div v-if="task === 'polish'" class="ai-float-selection">
           <div class="field-label-row">
-            <span class="field-label">选区（润色）</span>
+            <span class="field-label">{{ $t("ai.selectionPolish") }}</span>
             <button
               type="button"
               class="clear-btn"
-              title="清空选区"
+              :title="$t('ai.clearSelection')"
               :disabled="!selection"
               @click="clearSelection"
             >
-              清
+              {{ $t("ai.clearShort") }}
             </button>
           </div>
           <textarea
             v-model="selection"
             rows="2"
-            placeholder="粘贴要润色的段落"
+            :placeholder="$t('ai.pastePolish')"
           />
         </div>
         <div
           v-if="characterTags.length && floatExpanded && !floatBusy"
           class="char-tag-row float-char-tags"
-          aria-label="本篇角色"
+          :aria-label="$t('ai.localCast')"
         >
           <button
             v-for="c in characterTags"
             :key="c.id"
             type="button"
             class="char-tag"
-            :title="`填入「${c.title}」`"
+            :title="$t('ai.insertChar', { title: c.title })"
             @click="insertCharacterName(c.title)"
           >
             {{ c.title }}
@@ -741,7 +739,7 @@ function onToggleLayout() {
         <div v-if="task === 'continue'" class="ai-float-queue">
           <CapsuleSwitch
             v-model="instructionQueue"
-            label="指令队列"
+            :label="$t('ai.instructionQueue')"
             :disabled="sectionQueueState.running"
           />
         </div>
@@ -769,7 +767,7 @@ function onToggleLayout() {
               <button
                 type="button"
                 class="step-icon-btn"
-                title="上移"
+                :title="$t('common.up')"
                 :disabled="si === 0 || sectionQueueState.running"
                 @click="moveInstructionStep(step.id, -1)"
               >
@@ -778,7 +776,7 @@ function onToggleLayout() {
               <button
                 type="button"
                 class="step-icon-btn"
-                title="下移"
+                :title="$t('common.down')"
                 :disabled="si >= instructionSteps.length - 1 || sectionQueueState.running"
                 @click="moveInstructionStep(step.id, 1)"
               >
@@ -787,7 +785,7 @@ function onToggleLayout() {
               <button
                 type="button"
                 class="step-icon-btn danger"
-                title="删除"
+                :title="$t('common.delete')"
                 :disabled="sectionQueueState.running"
                 @click="removeInstructionStep(step.id)"
               >
@@ -798,7 +796,7 @@ function onToggleLayout() {
               :ref="(el) => setStepEl(step.id, el)"
               v-model="step.text"
               rows="2"
-              :placeholder="`第 ${si + 1} 步指令（只写这一拍）`"
+              :placeholder="$t('ai.stepPh', { n: si + 1 })"
               :disabled="sectionQueueState.running"
               @focus="activeStepId = step.id"
               @select="rememberStepCaret(step, $event)"
@@ -814,13 +812,13 @@ function onToggleLayout() {
             "
             @click="addInstructionStep"
           >
-            加一步（{{ instructionSteps.length }}/{{ MAX_INSTRUCTION_STEPS }}）
+            {{ $t("ai.addStep", { n: instructionSteps.length, max: MAX_INSTRUCTION_STEPS }) }}
           </button>
         </div>
         <template v-if="showPanelPreview">
           <div class="field preview-field">
             <label class="field-label">
-              预览
+              {{ $t("ai.preview") }}
               <CapsuleSwitch v-model="showDiff" label="Diff" class="diff-toggle" />
             </label>
             <p v-if="previewMeta" class="muted preview-meta">{{ previewMeta }}</p>
@@ -853,7 +851,7 @@ function onToggleLayout() {
               :disabled="!syncPatch"
               @click="onApplySync"
             >
-              确认应用总谱 patch
+              {{ $t("ai.applyStoryPatch") }}
             </button>
             <button
               v-if="task === 'outline' && appState.previewText"
@@ -861,18 +859,18 @@ function onToggleLayout() {
               class="app-btn app-btn-primary"
               @click="onWriteOutlineToChapter"
             >
-              写入本章纲
+              {{ $t("ai.writeChapterOutline") }}
             </button>
             <button
               v-if="task === 'outline' && appState.previewText"
               type="button"
               class="app-btn"
-              title="仅当预览确为全书大纲时使用"
+              :title="$t('ai.writeBookHint')"
               @click="onWriteOutlineToBook"
             >
-              写入全书大纲
+              {{ $t("ai.writeBookOutline") }}
             </button>
-            <button type="button" class="app-btn" @click="onDiscard">丢弃</button>
+            <button type="button" class="app-btn" @click="onDiscard">{{ $t("ai.discard") }}</button>
           </div>
         </template>
         <p v-if="syncMsg" class="muted float-sync-msg">{{ syncMsg }}</p>
@@ -892,8 +890,8 @@ function onToggleLayout() {
           rows="1"
           :placeholder="
             task === 'outline_run'
-              ? '创作提示 · Enter 生成章节队列'
-              : `指令（${currentTaskLabel}）· Enter 发送`
+              ? $t('ai.promptEnterQueue')
+              : $t('ai.instrEnterSend', { task: currentTaskLabel })
           "
           @select="rememberInstrCaret"
           @click="rememberInstrCaret"
@@ -905,17 +903,17 @@ function onToggleLayout() {
           v-show="task === 'continue' && instructionQueue"
           class="ai-float-input queue-hint muted"
         >
-          已开指令队列 · 上方编辑各步 · {{ filledStepCount }} 条待跑
+          {{ $t("ai.queueOpenHint", { n: filledStepCount }) }}
         </div>
         <div class="ai-float-actions">
           <button
             type="button"
             class="ai-float-icon-btn"
-            :title="floatExpanded ? '收起选项' : '展开角色/队列等'"
+            :title="floatExpanded ? $t('ai.collapseOpts') : $t('ai.expandOpts')"
             :disabled="floatBusy"
             @click="floatExpanded = !floatExpanded"
           >
-            {{ floatExpanded && !floatBusy ? "收起" : "更多" }}
+            {{ floatExpanded && !floatBusy ? $t("ai.collapse") : $t("ai.more") }}
           </button>
           <button
             type="button"
@@ -929,10 +927,10 @@ function onToggleLayout() {
             type="button"
             class="app-btn"
             :disabled="!canCancel"
-            title="取消全部进行中的生成"
+            :title="$t('ai.cancelAll')"
             @click="onCancelAll"
           >
-            取消
+            {{ $t("common.cancel") }}
           </button>
         </div>
       </div>
@@ -947,46 +945,46 @@ function onToggleLayout() {
             type="button"
             class="link-btn"
             :disabled="!canSend"
-            title="续拆后续章节到目录"
+            :title="$t('editor.continueSplitTitle')"
             @click="onContinueSplit"
           >
-            续拆
+            {{ $t("ai.continueSplit") }}
           </button>
           <button
             type="button"
             class="link-btn"
             :disabled="!canSend || !hasPendingOutlineChapter"
-            title="目录待写章齐后再点；会写正文"
+            :title="$t('ai.writeAllHint')"
             @click="onWriteAllByOutline"
           >
-            全写
+            {{ $t("ai.writeAllShort") }}
           </button>
           <button
             type="button"
             class="link-btn"
             :disabled="!canSend"
-            title="保存创作提示"
+            :title="$t('ai.savePrompt')"
             @click="onSaveBookOutline"
           >
-            存提示
+            {{ $t("ai.savePromptShort") }}
           </button>
         </template>
         <CapsuleSwitch
           v-if="task === 'continue' && !floatExtraVisible"
           v-model="instructionQueue"
-          label="指令队列"
+          :label="$t('ai.instructionQueue')"
           :disabled="sectionQueueState.running"
         />
         <GenProgressBar variant="compact" />
         <div class="ai-float-foot-actions">
-          <button type="button" class="link-btn" @click="onUndoAi">撤销</button>
+          <button type="button" class="link-btn" @click="onUndoAi">{{ $t("ai.undo") }}</button>
           <button
             type="button"
             class="link-btn"
-            title="切回右侧侧栏形态"
+            :title="$t('ai.toDock')"
             @click="onToggleLayout"
           >
-            侧栏
+            {{ $t("ai.dock") }}
           </button>
         </div>
       </div>
@@ -998,10 +996,10 @@ function onToggleLayout() {
         <button
           type="button"
           class="link-btn"
-          title="切换为阅读区底部浮条"
+          :title="$t('ai.toFloat')"
           @click="onToggleLayout"
         >
-          浮条模式
+          {{ $t("ai.floatMode") }}
         </button>
       </div>
       <p class="focus-hint muted">{{ focusHint }}</p>
@@ -1019,21 +1017,21 @@ function onToggleLayout() {
       </div>
       <div v-if="task === 'outline_run'" class="field outline-run-block">
         <div class="field-label-row">
-          <label class="field-label">创作提示</label>
+          <label class="field-label">{{ $t("ai.creativePrompt") }}</label>
           <button
             type="button"
             class="clear-btn"
-            title="保存提示"
+            :title="$t('ai.savePrompt')"
             :disabled="!canSend"
             @click="onSaveBookOutline"
           >
-            存
+            {{ $t("ai.saveShort") }}
           </button>
         </div>
         <textarea
           v-model="bookOutline"
           rows="2"
-          placeholder="一句话或几句提示即可 · 生成后弹窗确认写入左侧目录"
+          :placeholder="$t('ai.promptPh')"
           :disabled="outlineQueueState.running"
         />
         <div class="outline-run-actions">
@@ -1043,7 +1041,7 @@ function onToggleLayout() {
             :disabled="!canSend || !outlineSeedReady"
             @click="onGenerateChapterQueue"
           >
-            生成章节队列
+            {{ $t("ai.genChapterQueue") }}
           </button>
           <button
             type="button"
@@ -1051,16 +1049,16 @@ function onToggleLayout() {
             :disabled="!canSend"
             @click="onContinueSplit"
           >
-            续拆后续
+            {{ $t("editor.expandMore") }}
           </button>
           <button
             type="button"
             class="app-btn"
             :disabled="!canSend || !hasPendingOutlineChapter"
-            title="目录待写章齐后再点；会写正文"
+            :title="$t('ai.writeAllHint')"
             @click="onWriteAllByOutline"
           >
-            全部按纲写
+            {{ $t("editor.writeAll") }}
           </button>
         </div>
         <p
@@ -1074,13 +1072,13 @@ function onToggleLayout() {
         <div class="field-label-row">
           <label class="field-label">{{
             instructionQueue && task === 'continue'
-              ? '指令队列'
-              : '指令'
+              ? $t('ai.instructionQueue')
+              : $t('ai.instruction')
           }}</label>
           <button
             type="button"
             class="clear-btn"
-            title="清空指令"
+            :title="$t('ai.clearInstruction')"
             :disabled="instructionQueue ? filledStepCount < 1 : !instruction"
             @click="clearInstruction"
           >
@@ -1114,11 +1112,11 @@ function onToggleLayout() {
               }"
             >
               <div class="instr-step-head">
-                <span class="instr-step-idx">第 {{ si + 1 }} 步</span>
+                <span class="instr-step-idx">{{ $t("ai.stepN", { n: si + 1 }) }}</span>
                 <button
                   type="button"
                   class="step-icon-btn"
-                  title="上移"
+                  :title="$t('common.up')"
                   :disabled="si === 0 || sectionQueueState.running"
                   @click="moveInstructionStep(step.id, -1)"
                 >
@@ -1127,7 +1125,7 @@ function onToggleLayout() {
                 <button
                   type="button"
                   class="step-icon-btn"
-                  title="下移"
+                  :title="$t('common.down')"
                   :disabled="si >= instructionSteps.length - 1 || sectionQueueState.running"
                   @click="moveInstructionStep(step.id, 1)"
                 >
@@ -1136,7 +1134,7 @@ function onToggleLayout() {
                 <button
                   type="button"
                   class="step-icon-btn danger"
-                  title="删除"
+                  :title="$t('common.delete')"
                   :disabled="sectionQueueState.running"
                   @click="removeInstructionStep(step.id)"
                 >
@@ -1147,7 +1145,7 @@ function onToggleLayout() {
                 :ref="(el) => setStepEl(step.id, el)"
                 v-model="step.text"
                 rows="2"
-                :placeholder="`只写这一拍，例如：隔着内裤坐到脸上磨`"
+                :placeholder="$t('ai.stepPhDock')"
                 :disabled="sectionQueueState.running"
                 @focus="activeStepId = step.id"
                 @select="rememberStepCaret(step, $event)"
@@ -1163,7 +1161,7 @@ function onToggleLayout() {
               "
               @click="addInstructionStep"
             >
-              加一步（{{ instructionSteps.length }}/{{ MAX_INSTRUCTION_STEPS }}）
+              {{ $t("ai.addStep", { n: instructionSteps.length, max: MAX_INSTRUCTION_STEPS }) }}
             </button>
           </div>
         </div>
@@ -1172,19 +1170,19 @@ function onToggleLayout() {
           ref="instructionEl"
           v-model="instruction"
           rows="3"
-          placeholder="例如：写一场雨夜对决"
+          :placeholder="$t('ai.instrExample')"
           @select="rememberInstrCaret"
           @click="rememberInstrCaret"
           @keyup="rememberInstrCaret"
           @blur="rememberInstrCaret"
         />
-        <div v-if="characterTags.length" class="char-tag-row" aria-label="本篇角色">
+        <div v-if="characterTags.length" class="char-tag-row" :aria-label="$t('ai.localCast')">
           <button
             v-for="c in characterTags"
             :key="c.id"
             type="button"
             class="char-tag"
-            :title="`填入「${c.title}」`"
+            :title="$t('ai.insertChar', { title: c.title })"
             @click="insertCharacterName(c.title)"
           >
             {{ c.title }}
@@ -1194,7 +1192,7 @@ function onToggleLayout() {
       <div v-if="task === 'continue'" class="field queue-field">
         <CapsuleSwitch
           v-model="instructionQueue"
-          label="指令队列：多条指令按顺序连续生成"
+          :label="$t('ai.instructionQueueLong')"
           :disabled="sectionQueueState.running"
         />
         <p
@@ -1228,11 +1226,11 @@ function onToggleLayout() {
       </div>
       <div class="field">
         <div class="field-label-row">
-          <label class="field-label">选区（润色用）</label>
+          <label class="field-label">{{ $t("ai.selectionPolishLong") }}</label>
           <button
             type="button"
             class="clear-btn"
-            title="清空选区"
+            :title="$t('ai.clearSelection')"
             :disabled="!selection"
             @click="clearSelection"
           >
@@ -1248,7 +1246,7 @@ function onToggleLayout() {
             </svg>
           </button>
         </div>
-        <textarea v-model="selection" rows="3" placeholder="粘贴要润色的段落" />
+        <textarea v-model="selection" rows="3" :placeholder="$t('ai.pastePolish')" />
       </div>
       <div class="actions">
         <button
@@ -1263,26 +1261,26 @@ function onToggleLayout() {
           type="button"
           class="app-btn"
           :disabled="!canCancel"
-          title="取消全部进行中的生成"
+          :title="$t('ai.cancelAll')"
           @click="onCancelAll"
         >
-          取消
+          {{ $t("common.cancel") }}
         </button>
-        <button type="button" class="app-btn" @click="onUndoAi">撤销上次 AI</button>
+        <button type="button" class="app-btn" @click="onUndoAi">{{ $t("ai.undoLastAi") }}</button>
       </div>
       <div class="progress-slot">
         <GenProgressBar variant="panel" />
       </div>
 
       <div v-if="useEditorDraft" class="editor-draft-hint muted">
-        <p>续写 / 润色在正文区流式显示，<strong>完成后自动写入</strong>。</p>
+        <p>{{ $t("ai.draftHint1") }}</p>
         <p v-if="task === 'continue' && instructionQueue">
-          指令队列：按你填的每一步顺序连续调用续写，一步一节。
+          {{ $t("ai.draftHint2") }}
         </p>
         <p v-else-if="task === 'continue'">
-          续写按整章一块写入；按纲生成也是每章只写一整段。
+          {{ $t("ai.draftHint3") }}
         </p>
-        <p>生成块可点「重写」或「删除」；生成中可取消。</p>
+        <p>{{ $t("ai.draftHint4") }}</p>
         <p v-if="previewMeta" class="preview-meta">{{ previewMeta }}</p>
         <button
           v-if="canCancel && (appState.draftPlacement === 'editor' || sectionQueueState.running || outlineQueueState.running)"
@@ -1291,14 +1289,14 @@ function onToggleLayout() {
           style="margin-top: 8px"
           @click="onDiscard"
         >
-          取消生成
+          {{ $t("ai.cancelGen") }}
         </button>
       </div>
 
       <template v-if="!useEditorDraft && task !== 'outline_run'">
         <div class="field preview-field">
           <label class="field-label">
-            预览
+            {{ $t("ai.preview") }}
             <CapsuleSwitch v-model="showDiff" label="Diff" class="diff-toggle" />
           </label>
           <p v-if="previewMeta" class="muted preview-meta">{{ previewMeta }}</p>
@@ -1331,7 +1329,7 @@ function onToggleLayout() {
             :disabled="!syncPatch"
             @click="onApplySync"
           >
-            确认应用总谱 patch
+            {{ $t("ai.applyStoryPatch") }}
           </button>
           <button
             v-if="task === 'outline' && appState.previewText"
@@ -1339,18 +1337,18 @@ function onToggleLayout() {
             class="app-btn app-btn-primary"
             @click="onWriteOutlineToChapter"
           >
-            写入本章纲
+            {{ $t("ai.writeChapterOutline") }}
           </button>
           <button
             v-if="task === 'outline' && appState.previewText"
             type="button"
             class="app-btn"
-            title="仅当预览确为全书大纲时使用"
+            :title="$t('ai.writeBookHint')"
             @click="onWriteOutlineToBook"
           >
-            写入全书大纲
+            {{ $t("ai.writeBookOutline") }}
           </button>
-          <button type="button" class="app-btn" @click="onDiscard">丢弃</button>
+          <button type="button" class="app-btn" @click="onDiscard">{{ $t("ai.discard") }}</button>
         </div>
       </template>
 

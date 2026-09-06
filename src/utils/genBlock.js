@@ -2,6 +2,7 @@
  * 章节生成块：UI 分块数据模型（正文不写 HTML 注释）
  * 代码路径: kk_novel_ai/src/utils/genBlock.js
  */
+import { t } from "../i18n/index.js";
 
 let _keySeq = 0;
 
@@ -326,9 +327,9 @@ export function formatBlockMeta(block) {
   if (block.task) parts.push(block.task);
   if (block.model) parts.push(block.model);
   const chars = block.chars != null ? block.chars : [...String(block.text || "")].length;
-  parts.push(`${chars} 字`);
+  parts.push(t("editor.chars", { n: chars }));
   if (block.tokens != null && Number(block.tokens) > 0) {
-    const src = block.usageSource === "api" ? "api" : block.usageSource ? "估" : "";
+    const src = block.usageSource === "api" ? "api" : block.usageSource ? t("ai.tokenEst") : "";
     parts.push(`tokens ${block.tokens}${src ? ` (${src})` : ""}`);
   }
   if (block.cost != null && Number(block.cost) > 0) {
@@ -350,64 +351,84 @@ export function formatBlockMeta(block) {
   return parts.join(" · ");
 }
 
-const SOURCE_KIND_LABEL = {
-  instruction: "指令",
-  outline: "章纲",
-  pov: "POV",
-  arc: "故事弧",
-  must_do: "必达",
-  beat: "节拍",
-  lore: "设定",
+const SOURCE_KIND_KEYS = {
+  instruction: "block.kindInstruction",
+  outline: "block.kindOutline",
+  pov: "block.kindPov",
+  arc: "block.kindArc",
+  must_do: "block.kindMust",
+  beat: "block.kindBeat",
+  lore: "block.kindLore",
 };
+
+function sourceKindLabel(kind) {
+  const key = SOURCE_KIND_KEYS[kind];
+  return key ? t(key) : kind || t("block.kindSource");
+}
 
 /**
  * 生成块「设定来源」一行摘要
  * @param {{type?:string,instruction?:string,sources?:Array<{kind:string,title:string,detail?:string}>}} block
  */
-export function formatBlockSources(block) {
+export function formatBlockSources(block, opts = {}) {
   if (!block || block.type !== "gen") return "";
   const items = normalizeSources(block.sources);
   const parts = [];
   const byKind = (k) => items.filter((x) => x.kind === k);
+  const sep = t("common.listSep");
+  const loreMode = opts.loreMode || "default";
 
   const instr = byKind("instruction")[0];
   if (instr?.detail) {
-    parts.push(`指令「${instr.detail}」`);
+    parts.push(t("block.instrQuoted", { msg: instr.detail }));
   } else if ((block.instruction || "").trim()) {
-    const t = String(block.instruction).trim();
-    parts.push(`指令「${t.length > 80 ? `${t.slice(0, 80)}…` : t}」`);
+    const instrText = String(block.instruction).trim();
+    parts.push(
+      t("block.instrQuoted", {
+        msg: instrText.length > 80 ? `${instrText.slice(0, 80)}…` : instrText,
+      })
+    );
   }
 
   const outline = byKind("outline")[0];
   if (outline?.title) {
-    parts.push(`章纲「${outline.title}」`);
+    parts.push(t("block.outlineQuoted", { title: outline.title }));
   }
 
   const pov = byKind("pov")[0];
-  if (pov?.title) parts.push(`POV ${pov.title}`);
+  if (pov?.title) parts.push(t("block.povLine", { title: pov.title }));
 
   const arcs = byKind("arc").map((x) => x.title).filter(Boolean);
-  if (arcs.length) parts.push(`弧 ${arcs.join("、")}`);
+  if (arcs.length) parts.push(t("block.arcsLine", { title: arcs.join(sep) }));
 
   const must = byKind("must_do")[0];
-  if (must?.detail) parts.push(`必达「${must.detail}」`);
+  if (must?.detail) parts.push(t("block.mustQuoted", { msg: must.detail }));
 
   const lore = byKind("lore").map((x) => x.title).filter(Boolean);
   if (lore.length) {
     const shown = lore.slice(0, 6);
-    parts.push(`设定 ${shown.join("、")}${lore.length > 6 ? ` 等${lore.length}条` : ""}`);
+    const titles = shown.join(sep);
+    const loreKey =
+      loreMode === "injected"
+        ? "block.loreInjected"
+        : loreMode === "related"
+          ? "block.loreRelated"
+          : "block.loreLine";
+    parts.push(
+      `${t(loreKey, { title: titles })}${lore.length > 6 ? t("block.loreMore", { n: lore.length }) : ""}`
+    );
   }
 
   const beats = byKind("beat").map((x) => x.title).filter(Boolean);
   if (beats.length && parts.length < 5) {
-    parts.push(`节拍 ${beats.slice(0, 3).join("、")}`);
+    parts.push(t("block.beatsLine", { title: beats.slice(0, 3).join(sep) }));
   }
 
   if (!parts.length && items.length) {
     return items
       .slice(0, 8)
       .map((x) => {
-        const label = SOURCE_KIND_LABEL[x.kind] || x.kind || "来源";
+        const label = sourceKindLabel(x.kind);
         return x.detail ? `${label}「${x.title || x.detail}」` : `${label} ${x.title}`;
       })
       .join(" · ");
@@ -502,14 +523,13 @@ export function formatParagraphSources(paraText, block) {
       ...picked.lore.map((l) => ({ ...l, kind: "lore" })),
     ],
   };
-  let line = formatBlockSources(fake);
-  if (!line) return "";
+  let loreMode = "default";
   if (picked.loreTotal && !picked.loreMatched && picked.lore.length) {
-    line = line.replace(/设定 /, "注入设定 ");
+    loreMode = "injected";
   } else if (picked.loreMatched) {
-    line = line.replace(/设定 /, "相关设定 ");
+    loreMode = "related";
   }
-  return line;
+  return formatBlockSources(fake, { loreMode });
 }
 
 /**
@@ -518,12 +538,12 @@ export function formatParagraphSources(paraText, block) {
  * @param {number} [maxLen]
  */
 export function paragraphSummaryLabel(paraText, maxLen = 36) {
-  const t = String(paraText || "")
+  const text = String(paraText || "")
     .replace(/\s+/g, " ")
     .trim();
-  if (!t) return "（空段）";
+  if (!text) return t("block.emptyPara");
   const n = Math.max(8, maxLen || 36);
-  return t.length > n ? `${t.slice(0, n)}…` : t;
+  return text.length > n ? `${text.slice(0, n)}…` : text;
 }
 
 function bareSourceTitle(title) {
@@ -578,12 +598,12 @@ export function paragraphSummaryTags(paraText, block) {
  * @param {number} [index]
  */
 export function blockTocLabel(block, index = 0) {
-  if (!block) return `段落 ${(index || 0) + 1}`;
+  if (!block) return t("editor.paragraphN", { n: (index || 0) + 1 });
   const instr = String(block.instruction || "").trim();
   if (instr) return paragraphSummaryLabel(instr, 28);
   const fromText = paragraphSummaryLabel(block.text || "", 28);
-  if (fromText && fromText !== "（空段）") return fromText;
-  return `段落 ${(index || 0) + 1}`;
+  if (fromText && fromText !== t("block.emptyPara")) return fromText;
+  return t("editor.paragraphN", { n: (index || 0) + 1 });
 }
 
 /**

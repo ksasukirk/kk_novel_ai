@@ -5,13 +5,14 @@
 <script setup>
 import { computed, ref, watch } from "vue";
 import { layoutMindMap } from "../utils/mindmapLayout.js";
+import { t } from "../i18n/index.js";
 
 const props = defineProps({
   tree: { type: Object, required: true },
   height: { type: Number, default: 420 },
   /** 撑满父级剩余高度（大纲导图子视图） */
   fill: { type: Boolean, default: false },
-  emptyText: { type: String, default: "暂无导图数据，请先填写大纲或总谱。" },
+  emptyText: { type: String, default: "" },
 });
 
 const emit = defineEmits(["select"]);
@@ -86,6 +87,8 @@ function onNodeClick(n) {
   emit("select", n);
 }
 
+const resolvedEmpty = computed(() => props.emptyText || t("mindmap.empty"));
+
 function pathD(e) {
   const mx = (e.x1 + e.x2) / 2;
   return `M ${e.x1} ${e.y1} C ${mx} ${e.y1}, ${mx} ${e.y2}, ${e.x2} ${e.y2}`;
@@ -95,10 +98,10 @@ function pathD(e) {
 <template>
   <div class="mm-wrap" :class="{ 'mm-fill': fill }">
     <div class="mm-toolbar">
-      <button type="button" class="app-btn" @click="zoomOut">缩小</button>
-      <button type="button" class="app-btn" @click="zoomIn">放大</button>
-      <button type="button" class="app-btn" @click="resetView">复位</button>
-      <span class="muted tip">拖动画布平移 · 滚轮缩放 · 点击节点</span>
+      <button type="button" class="app-btn" @click="zoomOut">{{ $t("common.zoomOut") }}</button>
+      <button type="button" class="app-btn" @click="zoomIn">{{ $t("common.zoomIn") }}</button>
+      <button type="button" class="app-btn" @click="resetView">{{ $t("common.reset") }}</button>
+      <span class="muted tip">{{ $t("mindmap.tip") }}</span>
     </div>
     <div
       class="mm-viewport"
@@ -144,7 +147,7 @@ function pathD(e) {
           <title>{{ n.label }}{{ n.meta ? " — " + n.meta : "" }}</title>
         </g>
       </svg>
-      <p v-if="!layout.nodes.length" class="empty muted">{{ emptyText }}</p>
+      <p v-if="!layout.nodes.length" class="empty muted">{{ resolvedEmpty }}</p>
     </div>
   </div>
 </template>

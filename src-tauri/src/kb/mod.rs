@@ -230,7 +230,7 @@ pub fn sync_to_universal(novel_root: &Path) -> AppResult<Value> {
         }
     }
     if novel.project.kind == "universal" {
-        return Err(AppError::msg("不能把通用库同步到自身"));
+        return Err(AppError::t("errors.cannotSyncUniversalToSelf"));
     }
 
     let uni = ensure_universal()?;

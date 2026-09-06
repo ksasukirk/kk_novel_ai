@@ -4,12 +4,13 @@
 -->
 <script setup>
 import { toastState, dismissToast } from "../services/toast.js";
+import { t } from "../i18n/index.js";
 
 function label(type) {
-  if (type === "error") return "错误";
-  if (type === "warning") return "提示";
-  if (type === "success") return "完成";
-  return "消息";
+  if (type === "error") return t("toast.error");
+  if (type === "warning") return t("toast.info");
+  if (type === "success") return t("toast.success");
+  return t("toast.message");
 }
 </script>
 
@@ -28,7 +29,7 @@ function label(type) {
         <button
           type="button"
           class="toast-close"
-          aria-label="关闭"
+          :aria-label="$t('toast.dismiss')"
           @click="dismissToast(item.id)"
         >
           ×

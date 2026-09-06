@@ -1,8 +1,10 @@
 <script setup>
 // 代码路径: kk_novel_ai/src/App.vue
-import { computed, onMounted, onUnmounted, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { appState } from "./stores/appState.js";
 import { loadSettings, refreshHealth } from "./services/llmClient.js";
+import { applyUiLocale, msgMatchesKey } from "./i18n/index.js";
 import { scheduleStartupUpdateCheck } from "./services/updateFlow.js";
 import { startGuiBridge, resolveExternalConflict } from "./services/guiBridge.js";
 import ConfirmDialog from "./components/ConfirmDialog.vue";
@@ -33,6 +35,7 @@ import {
 } from "./utils/layoutPrefs.js";
 
 const THEME_KEY = "kk_novel_ai_theme";
+const { t, locale } = useI18n();
 const isWindowMaximized = ref(false);
 const theme = ref("light");
 const mobileUx = ref(isMobileUx());
@@ -42,27 +45,29 @@ const sidebarMode = ref(readSidebarMode());
 const sidebarDrawerOpen = ref(false);
 
 /** 全局侧栏固定，不因知识库切换而替换 */
-const sidebarTabs = [
-  { id: "project", label: "作品" },
-  { id: "knowledge", label: "知识库" },
-  { id: "characters", label: "角色定义" },
-  { id: "story", label: "总谱" },
-  { id: "outline", label: "大纲" },
-  { id: "editor", label: "写作" },
-  { id: "chat", label: "对话" },
-  { id: "lore", label: "设定" },
-  { id: "analytics", label: "分析" },
-  { id: "log", label: "日志" },
-  { id: "settings", label: "设置" },
+const sidebarTabIds = [
+  "project",
+  "knowledge",
+  "characters",
+  "story",
+  "outline",
+  "editor",
+  "chat",
+  "lore",
+  "analytics",
+  "log",
+  "settings",
 ];
+const bottomPrimaryIds = ["project", "editor", "chat", "outline", "story"];
 
-const bottomPrimary = [
-  { id: "project", label: "作品" },
-  { id: "editor", label: "写作" },
-  { id: "chat", label: "对话" },
-  { id: "outline", label: "大纲" },
-  { id: "story", label: "总谱" },
-];
+const sidebarTabs = computed(() => {
+  void locale.value;
+  return sidebarTabIds.map((id) => ({ id, label: t(`nav.${id}`) }));
+});
+const bottomPrimary = computed(() => {
+  void locale.value;
+  return bottomPrimaryIds.map((id) => ({ id, label: t(`nav.${id}`) }));
+});
 
 const moreTabIds = new Set(["knowledge", "characters", "lore", "analytics", "log", "settings"]);
 
@@ -83,22 +88,24 @@ const navViews = {
 const navComponent = computed(() => navViews[appState.activeNav] || ProjectHome);
 
 const titleSuffix = computed(() => {
+  void locale.value;
   if (appState.activeNav === "knowledge" && appState.project && isKbProject(appState.project)) {
-    if (appState.project.kind === "universal") return "通用知识库";
-    return `知识库 · ${appState.project.title}`;
+    if (appState.project.kind === "universal") return t("app.kbUniversal");
+    return t("app.kbTitled", { title: appState.project.title });
   }
   if (appState.project && appState.project.title && !isKbProject(appState.project)) {
     return appState.project.title;
   }
   if (appState.writingSnapshot && appState.writingSnapshot.project) {
-    return appState.writingSnapshot.project.title || "小说创作台";
+    return appState.writingSnapshot.project.title || t("app.studio");
   }
-  return "小说创作台";
+  return t("app.studio");
 });
 
 const pageTitle = computed(() => {
-  const tab = sidebarTabs.find((t) => t.id === appState.activeNav);
-  return tab ? tab.label : "作品";
+  void locale.value;
+  const tab = sidebarTabs.value.find((x) => x.id === appState.activeNav);
+  return tab ? tab.label : t("nav.project");
 });
 
 const moreActive = computed(() => moreTabIds.has(appState.activeNav));
@@ -122,7 +129,7 @@ function setActiveNav(tab) {
     if (["project", "editor", "outline", "story"].includes(tab.id)) {
       const ok = restoreWritingSnapshot();
       if (!ok && tab.id !== "project") {
-        appState.statusMessage = "知识库内容请在「知识库」页内查看；请先在「作品」打开写作工程";
+        appState.statusMessage = t("app.kbNeedWriting");
         appState.activeNav = "knowledge";
         if (mobileUx.value) sidebarDrawerOpen.value = false;
         return;
@@ -137,7 +144,10 @@ function openMoreDrawer() {
   sidebarDrawerOpen.value = true;
 }
 
-const themeLabel = computed(() => (theme.value === "dark" ? "浅色主题" : "深色主题"));
+const themeLabel = computed(() => {
+  void locale.value;
+  return theme.value === "dark" ? t("app.themeLight") : t("app.themeDark");
+});
 
 function applyTheme(next) {
   theme.value = next === "dark" ? "dark" : "light";
@@ -217,6 +227,16 @@ async function syncWindowMaximizedState() {
 
 let unwatchMobile = () => {};
 
+watch(
+  () => appState.settings && appState.settings.ui_locale,
+  (loc) => {
+    if (loc) applyUiLocale(loc);
+    if (msgMatchesKey(appState.statusMessage, "common.ready") || !appState.statusMessage) {
+      appState.statusMessage = t("common.ready");
+    }
+  }
+);
+
 onMounted(async () => {
   try {
     const saved = localStorage.getItem(THEME_KEY);
@@ -239,6 +259,7 @@ onMounted(async () => {
   }
   try {
     await loadSettings();
+    applyUiLocale(appState.settings && appState.settings.ui_locale);
     await refreshHealth();
   } catch {
     /* 设置页可再试 */
@@ -260,13 +281,13 @@ onUnmounted(() => {
         <div class="titlebar-title">{{ titleSuffix }}</div>
       </div>
       <div v-if="!mobileUx && !tauriMobile" class="titlebar-controls">
-        <button type="button" class="titlebar-btn" @click="minimizeWindow" title="最小化">
+        <button type="button" class="titlebar-btn" @click="minimizeWindow" :title="$t('app.minimize')">
           <span class="icon icon-minimize"></span>
         </button>
-        <button type="button" class="titlebar-btn" @click="toggleMaximizeWindow" :title="isWindowMaximized ? '还原' : '最大化'">
+        <button type="button" class="titlebar-btn" @click="toggleMaximizeWindow" :title="isWindowMaximized ? $t('app.restore') : $t('app.maximize')">
           <span class="icon icon-maximize" :class="isWindowMaximized ? 'restore' : ''"></span>
         </button>
-        <button type="button" class="titlebar-btn titlebar-btn-close" @click="closeWindow" title="关闭">
+        <button type="button" class="titlebar-btn titlebar-btn-close" @click="closeWindow" :title="$t('app.close')">
           <span class="icon icon-close"></span>
         </button>
       </div>
@@ -325,7 +346,7 @@ onUnmounted(() => {
       </main>
     </div>
 
-    <nav v-if="mobileUx" class="bottom-nav" aria-label="主导航">
+    <nav v-if="mobileUx" class="bottom-nav" :aria-label="$t('app.mainNav')">
       <button
         v-for="tab in bottomPrimary"
         :key="tab.id"
@@ -342,20 +363,20 @@ onUnmounted(() => {
         :class="{ active: moreActive || sidebarDrawerOpen }"
         @click="openMoreDrawer"
       >
-        更多
+        {{ $t("app.more") }}
       </button>
     </nav>
 
     <div v-if="appState.externalConflict" class="conflict-mask">
       <div class="conflict-card">
-        <h2>外部写入冲突</h2>
-        <p>当前章节有未保存编辑，CLI / 外部写入想覆盖。请选择：</p>
+        <h2>{{ $t("app.conflictTitle") }}</h2>
+        <p>{{ $t("app.conflictBody") }}</p>
         <div class="conflict-actions">
           <button type="button" class="app-btn app-btn-primary" @click="resolveExternalConflict(true)">
-            保留本地
+            {{ $t("app.keepLocal") }}
           </button>
           <button type="button" class="app-btn" @click="resolveExternalConflict(false)">
-            接受外部覆盖
+            {{ $t("app.acceptExternal") }}
           </button>
         </div>
       </div>

@@ -2,6 +2,7 @@
  * 解析模型输出的近似 JSON（围栏、漏逗号、拖尾逗号、截断对象）
  * 代码路径: kk_novel_ai/src/utils/llmJson.js
  */
+import { t } from "../i18n/index.js";
 
 function stripFence(text) {
   let s = String(text || "").trim();
@@ -313,6 +314,55 @@ function findBalancedObject(s, start) {
   return -1;
 }
 
+function escapeNewlinesInStrings(s) {
+  let out = "";
+  let inStr = false;
+  let esc = false;
+  for (let i = 0; i < s.length; i += 1) {
+    const c = s[i];
+    if (inStr) {
+      if (esc) {
+        out += c;
+        esc = false;
+        continue;
+      }
+      if (c === "\\") {
+        out += c;
+        esc = true;
+        continue;
+      }
+      if (c === '"') {
+        inStr = false;
+        out += c;
+        continue;
+      }
+      if (c === "\n" || c === "\r") {
+        out += "\\n";
+        continue;
+      }
+      if (c === "\t") {
+        out += "\\t";
+        continue;
+      }
+      const code = c.charCodeAt(0);
+      if (code < 32) {
+        out += `\\u${code.toString(16).padStart(4, "0")}`;
+        continue;
+      }
+      out += c;
+      continue;
+    }
+    if (c === '"') inStr = true;
+    out += c;
+  }
+  return out;
+}
+
+function parseObjectSlice(slice) {
+  const repaired = insertMissingCommas(dropTrailingCommas(escapeNewlinesInStrings(slice)));
+  return tryParse(repaired);
+}
+
 function salvageShots(s) {
   const shots = [];
   for (let i = 0; i < s.length; i += 1) {
@@ -322,7 +372,7 @@ function salvageShots(s) {
     const slice = s.slice(i, end + 1);
     if (!/"visual"\s*:/.test(slice) && !/"seq"\s*:/.test(slice)) continue;
     try {
-      const obj = tryParse(dropTrailingCommas(slice));
+      const obj = parseObjectSlice(slice);
       if (obj && typeof obj === "object" && !Array.isArray(obj)) {
         if (Array.isArray(obj.shots)) continue;
         shots.push(obj);
@@ -333,6 +383,50 @@ function salvageShots(s) {
     }
   }
   return shots;
+}
+
+/**
+ * 从截断/残缺 JSON 里捞出带 title 或 summary 的章对象。
+ * @param {string} text
+ * @returns {object[]}
+ */
+export function salvageChapterObjects(text) {
+  const s = String(text || "");
+  const chapters = [];
+  for (let i = 0; i < s.length; i += 1) {
+    if (s[i] !== "{") continue;
+    const end = findBalancedObject(s, i);
+    if (end < 0) continue;
+    const slice = s.slice(i, end + 1);
+    if (!/"title"\s*:/.test(slice) && !/"summary"\s*:/.test(slice)) continue;
+    try {
+      const obj = parseObjectSlice(slice);
+      if (obj && typeof obj === "object" && !Array.isArray(obj)) {
+        if (Array.isArray(obj.chapters)) continue;
+        const title = String(obj.title || "").trim();
+        const summary = String(obj.summary || "").trim();
+        if (title || summary) {
+          chapters.push(obj);
+          i = end;
+        }
+      }
+    } catch {
+      /* skip */
+    }
+  }
+  return chapters;
+}
+
+function parseVariants(body) {
+  const escaped = escapeNewlinesInStrings(body);
+  return [
+    body,
+    dropTrailingCommas(body),
+    insertMissingCommas(dropTrailingCommas(body)),
+    escaped,
+    dropTrailingCommas(escaped),
+    insertMissingCommas(dropTrailingCommas(escaped)),
+  ];
 }
 
 function candidatesFrom(text) {
@@ -353,12 +447,11 @@ function candidatesFrom(text) {
  */
 export function parseLlmJson(text) {
   const raw = String(text || "").trim();
-  if (!raw) throw new Error("模型没有返回内容");
+  if (!raw) throw new Error(t("llm.emptyResponse"));
   let lastErr = null;
   const bodies = candidatesFrom(raw);
   for (const body of bodies) {
-    const variants = [body, dropTrailingCommas(body), insertMissingCommas(dropTrailingCommas(body))];
-    for (const v of variants) {
+    for (const v of parseVariants(body)) {
       try {
         return tryParse(v);
       } catch (e) {
@@ -367,11 +460,9 @@ export function parseLlmJson(text) {
     }
   }
   for (const body of bodies) {
-    const shots = salvageShots(insertMissingCommas(dropTrailingCommas(body)));
+    const shots = salvageShots(insertMissingCommas(dropTrailingCommas(escapeNewlinesInStrings(body))));
     if (shots.length) return { shots };
   }
-  const hint = lastErr && lastErr.message ? lastErr.message : "未知错误";
-  throw new Error(
-    `模型返回的 JSON 无法解析（${hint}）。请再点一次生成；若仍失败，可把本章节拍缩短后再试。`
-  );
+  const hint = lastErr && lastErr.message ? lastErr.message : t("common.unknownError");
+  throw new Error(t("llm.jsonParseFailed", { msg: hint }));
 }

@@ -50,33 +50,44 @@ function onConfirm() {
       class="update-mask"
       role="dialog"
       aria-modal="true"
-      aria-label="发现新版本"
+      :aria-label="$t('update.found')"
       @mousedown="!busy && backdrop.onMouseDown($event)"
       @click="!busy && backdrop.onClick($event)"
     >
       <div class="update-card">
-        <h2 class="update-title">发现新版本</h2>
+        <h2 class="update-title">{{ $t("update.found") }}</h2>
         <template v-if="updateFlow.phase === 'prompt'">
           <p class="update-message">
-            当前 {{ updateFlow.info && updateFlow.info.current }}，可更新到
-            {{ updateFlow.info && updateFlow.info.latest }}。确认后会下载到临时目录并启动新程序，本窗口将关闭。
+            {{
+              $t("update.body", {
+                cur: updateFlow.info && updateFlow.info.current,
+                latest: updateFlow.info && updateFlow.info.latest,
+              })
+            }}
           </p>
           <p v-if="notes" class="update-notes">{{ notes }}</p>
         </template>
         <template v-else-if="updateFlow.phase === 'downloading'">
-          <p class="update-message">正在下载 {{ updateFlow.info && updateFlow.info.latest }}…</p>
+          <p class="update-message">{{ $t("update.downloading", { latest: updateFlow.info && updateFlow.info.latest }) }}</p>
           <div class="update-bar" aria-hidden="true">
             <span class="update-bar-fill" :style="{ width: `${pct}%` }" />
           </div>
           <p class="update-progress">
-            已下载 {{ receivedMb }} / {{ totalMb }} MB（{{ pct }}%），平均 {{ speedMbs }} MB/s
+            {{
+              $t("settings.downloadProgress", {
+                a: receivedMb,
+                b: totalMb,
+                pct,
+                speed: speedMbs,
+              })
+            }}
           </p>
         </template>
         <template v-else-if="updateFlow.phase === 'launching'">
-          <p class="update-message">下载完成，正在启动新版本…</p>
+          <p class="update-message">{{ $t("update.launching") }}</p>
         </template>
         <template v-else>
-          <p class="update-message">{{ updateFlow.error || "更新失败" }}</p>
+          <p class="update-message">{{ updateFlow.error || $t("update.failed") }}</p>
         </template>
         <div class="update-actions">
           <button
@@ -85,7 +96,7 @@ function onConfirm() {
             class="app-btn"
             @click="dismissUpdateFlow"
           >
-            稍后
+            {{ $t("common.later") }}
           </button>
           <button
             v-if="updateFlow.phase === 'prompt' || updateFlow.phase === 'error'"
@@ -93,7 +104,7 @@ function onConfirm() {
             class="app-btn app-btn-primary"
             @click="onConfirm"
           >
-            {{ updateFlow.phase === "error" ? "知道了" : "下载并启动" }}
+            {{ updateFlow.phase === "error" ? $t("common.gotIt") : $t("update.downloadLaunch") }}
           </button>
         </div>
       </div>

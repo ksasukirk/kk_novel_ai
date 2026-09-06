@@ -21,7 +21,7 @@ const attrsList = computed(() => {
   return Object.entries(a)
     .filter(([k]) => !String(k).startsWith("_") && k !== "unique")
     .slice(0, 8)
-    .map(([k, v]) => `${k}：${v}`);
+    .map(([k, v]) => `${k}: ${v}`);
 });
 
 const summary = computed(() => summaryForCard(props.entry));
@@ -49,7 +49,7 @@ const style = computed(() => {
       <div class="card-title">
         <strong>{{ entry.title }}</strong>
         <span v-if="term && term !== entry.title" class="term muted">「{{ term }}」</span>
-        <span class="scope muted">{{ entry.scope === "global" ? "全局" : "本篇" }}</span>
+        <span class="scope muted">{{ entry.scope === "global" ? $t("common.global") : $t("common.local") }}</span>
       </div>
       <ul v-if="attrsList.length" class="attrs">
         <li v-for="(line, i) in attrsList" :key="i">{{ line }}</li>

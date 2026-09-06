@@ -2,6 +2,7 @@
  * 预览文本完整性启发式（半截句 / 流未结束）
  * 代码路径: kk_novel_ai/src/utils/previewText.js
  */
+import { t } from "../i18n/index.js";
 
 /** 像被 max_tokens / 中途插入掐断的收尾 */
 export function looksIncomplete(text) {
@@ -30,5 +31,5 @@ export function previewDiffHint(raw, final) {
   const r = (raw || "").length;
   const f = (final || "").length;
   if (!r || r === f) return "";
-  return `原始 ${r} 字 → 定稿 ${f} 字`;
+  return t("editor.previewDiff", { n: r, msg: f });
 }

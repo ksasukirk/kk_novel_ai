@@ -6,7 +6,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 pub fn app_data_dir() -> AppResult<PathBuf> {
-    let base = dirs::data_dir().ok_or_else(|| AppError::msg("无法解析系统数据目录"))?;
+    let base = dirs::data_dir().ok_or_else(|| AppError::t("errors.cannotResolveDataDir"))?;
     let dir = base.join("kk_novel_ai");
     std::fs::create_dir_all(&dir)?;
     Ok(dir)
@@ -61,7 +61,7 @@ pub fn runtime_root_dir() -> AppResult<PathBuf> {
             return Ok(parent.to_path_buf());
         }
     }
-    std::env::current_dir().map_err(|e| AppError::msg(format!("无法解析运行目录: {e}")))
+    std::env::current_dir().map_err(|e| AppError::t_fmt("errors.cannotResolveCwd", &[("e", &e.to_string())]))
 }
 
 /// 默认小说库
@@ -122,10 +122,10 @@ pub fn allocate_novel_folder(title: &str) -> AppResult<PathBuf> {
             return Ok(path);
         }
     }
-    Err(AppError::msg(format!(
-        "无法在 {} 下为「{base_name}」分配文件夹（重名过多）",
-        root.display()
-    )))
+    Err(AppError::t_fmt(
+        "errors.cannotAllocateFolder",
+        &[("root", &root.display().to_string()), ("baseName", &base_name)],
+    ))
 }
 
 fn paths_equal(a: &Path, b: &Path) -> bool {
@@ -160,10 +160,10 @@ fn try_folder_names_in_parent(
             return Ok(path);
         }
     }
-    Err(AppError::msg(format!(
-        "无法在 {} 下为「{base_name}」分配文件夹（重名过多）",
-        parent.display()
-    )))
+    Err(AppError::t_fmt(
+        "errors.cannotAllocateFolder",
+        &[("root", &parent.display().to_string()), ("baseName", base_name)],
+    ))
 }
 
 /// 在指定父目录下按书名分配文件夹路径；`current` 为当前作品目录（可占用同名路径）

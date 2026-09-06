@@ -349,7 +349,7 @@ fn lore_dir(root: &Path) -> PathBuf {
 
 pub fn create_project(root: &Path, title: &str) -> AppResult<OpenedProject> {
     if project_json(root).exists() {
-        return Err(AppError::msg("目录已存在作品，请换目录或直接打开"));
+        return Err(AppError::t("errors.dirAlreadyHasProject"));
     }
     fs::create_dir_all(chapters_dir(root))?;
     fs::create_dir_all(lore_dir(root).join("characters"))?;
@@ -413,7 +413,7 @@ pub fn create_knowledge_base(
     source_file: Option<&str>,
 ) -> AppResult<OpenedProject> {
     if project_json(root).exists() {
-        return Err(AppError::msg("目录已存在作品/知识库，请换目录或直接打开"));
+        return Err(AppError::t("errors.dirAlreadyHasProjectOrKb"));
     }
     fs::create_dir_all(chapters_dir(root))?;
     fs::create_dir_all(lore_dir(root).join("characters"))?;
@@ -466,10 +466,10 @@ pub fn migrate_to_knowledge_base(root: &Path, source_file: Option<&str>) -> AppR
 pub fn open_project(root: &Path) -> AppResult<OpenedProject> {
     let path = project_json(root);
     if !path.exists() {
-        return Err(AppError::msg(format!(
-            "未找到 project.json: {}",
-            path.display()
-        )));
+        return Err(AppError::t_fmt(
+            "errors.projectJsonMissing",
+            &[("path", &path.display().to_string())],
+        ));
     }
     let text = fs::read_to_string(&path)?;
     let project: NovelProject = serde_json::from_str(&text)?;
@@ -508,16 +508,16 @@ fn should_skip_scan_dir(name: &str) -> bool {
 /// `max_depth=0` 只检查自身；`1` 检查子目录；建议导入用 `2`。
 pub fn discover_project_roots(parent: &Path, max_depth: usize) -> AppResult<Vec<PathBuf>> {
     if !parent.exists() {
-        return Err(AppError::msg(format!(
-            "目录不存在: {}",
-            parent.display()
-        )));
+        return Err(AppError::t_fmt(
+            "errors.dirMissing",
+            &[("path", &parent.display().to_string())],
+        ));
     }
     if !parent.is_dir() {
-        return Err(AppError::msg(format!(
-            "不是目录: {}",
-            parent.display()
-        )));
+        return Err(AppError::t_fmt(
+            "errors.notADirectory",
+            &[("path", &parent.display().to_string())],
+        ));
     }
 
     let mut found: Vec<PathBuf> = Vec::new();
@@ -580,7 +580,7 @@ pub fn read_chapter(root: &Path, chapter_id: &str) -> AppResult<(ChapterMeta, St
         .iter()
         .find(|c| c.id == chapter_id)
         .cloned()
-        .ok_or_else(|| AppError::msg("章节不存在"))?;
+        .ok_or_else(|| AppError::t("errors.chapterMissing"))?;
     let path = chapters_dir(root).join(&meta.file);
     let content = if path.exists() {
         fs::read_to_string(path)?
@@ -598,7 +598,7 @@ pub fn write_chapter(root: &Path, chapter_id: &str, content: &str) -> AppResult<
         .iter()
         .find(|c| c.id == chapter_id)
         .cloned()
-        .ok_or_else(|| AppError::msg("章节不存在"))?;
+        .ok_or_else(|| AppError::t("errors.chapterMissing"))?;
     let path = chapters_dir(root).join(&meta.file);
     let old = if path.exists() {
         fs::read_to_string(&path).unwrap_or_default()
@@ -767,7 +767,7 @@ pub fn create_chapter(root: &Path, title: &str, summary: &str) -> AppResult<Chap
 pub fn delete_chapter(root: &Path, chapter_id: &str) -> AppResult<()> {
     let mut opened = open_project(root)?;
     let Some(pos) = opened.project.chapters.iter().position(|c| c.id == chapter_id) else {
-        return Err(AppError::msg("章节不存在"));
+        return Err(AppError::t("errors.chapterMissing"));
     };
     let meta = opened.project.chapters.remove(pos);
     let path = chapters_dir(root).join(&meta.file);
@@ -794,7 +794,7 @@ pub fn update_chapter_meta(
         .chapters
         .iter_mut()
         .find(|c| c.id == chapter_id)
-        .ok_or_else(|| AppError::msg("章节不存在"))?;
+        .ok_or_else(|| AppError::t("errors.chapterMissing"))?;
     if let Some(t) = patch.title {
         meta.title = t;
     }
@@ -1481,7 +1481,7 @@ pub fn delete_lore(root: &Path, lore_id: &str) -> AppResult<()> {
             }
         }
     }
-    Err(AppError::msg("设定条目不存在"))
+    Err(AppError::t("errors.loreEntryMissing"))
 }
 
 pub fn project_to_value(root: &Path, project: &NovelProject) -> serde_json::Value {
@@ -1511,7 +1511,7 @@ pub fn sanitize_filename(name: &str) -> String {
 /// 导入用：清空现有章节并按序写入（一次保存元数据，适合大批量 TXT）
 pub fn replace_all_chapters(root: &Path, chapters: &[(String, String)]) -> AppResult<()> {
     if chapters.is_empty() {
-        return Err(AppError::msg("导入章节为空"));
+        return Err(AppError::t("errors.importChapterEmpty"));
     }
     let mut opened = open_project(root)?;
     for ch in &opened.project.chapters {

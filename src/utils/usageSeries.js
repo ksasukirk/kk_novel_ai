@@ -4,6 +4,7 @@
  */
 
 import { usageTotalTokens } from "./usageFormat.js";
+import { t } from "../i18n/index.js";
 
 function dayKey(ts) {
   const s = String(ts || "");
@@ -147,7 +148,7 @@ export function aggregateByChapter(logs) {
     if (!row) {
       row = {
         chapterId: id,
-        label: id === "_project" ? "作品级（无章节）" : id,
+        label: id === "_project" ? t("analytics.projectLevel") : id,
         cost: 0,
         tokens: 0,
         prompt: 0,

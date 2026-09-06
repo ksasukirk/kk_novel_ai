@@ -4,11 +4,12 @@
 -->
 <script setup>
 import GenProgressBar from "../GenProgressBar.vue";
+import { t } from "../../i18n/index.js";
 
 defineProps({
   /** expanded | compact | closed */
   sidebarMode: { type: String, default: "expanded" },
-  sidebarMenuTitle: { type: String, default: "切换导航" },
+  sidebarMenuTitle: { type: String, default: () => t("header.toggleNav") },
   title: { type: String, required: true },
   llmOnline: { type: Boolean, default: false },
   llmModel: { type: String, default: "" },
@@ -32,7 +33,7 @@ const emit = defineEmits(["toggle-sidebar"]);
         <path d="M3 6h18v2H3V6zm0 5h14v2H3v-2zm0 5h18v2H3v-2z" />
       </svg>
     </button>
-    <nav class="crumbs" aria-label="面包屑">
+    <nav class="crumbs" :aria-label="$t('header.breadcrumb')">
       <span class="crumb">{{ title }}</span>
     </nav>
     <div v-if="showGenProgress" class="header-progress">
@@ -40,10 +41,10 @@ const emit = defineEmits(["toggle-sidebar"]);
     </div>
     <div class="header-badges">
       <span class="app-badge" :class="llmOnline ? 'app-badge-success' : 'app-badge-warn'">
-        {{ llmOnline ? "LM Studio 在线" : "LM Studio 离线" }}
+        {{ llmOnline ? $t('header.llmOnline') : $t('header.llmOffline') }}
       </span>
-      <span class="app-badge">{{ llmModel || "未选模型" }}</span>
-      <span v-if="hasProject" class="app-badge">已打开作品</span>
+      <span class="app-badge">{{ llmModel || $t('header.noModel') }}</span>
+      <span v-if="hasProject" class="app-badge">{{ $t('header.projectOpen') }}</span>
       <span v-if="statusMessage && !showGenProgress" class="status-msg">{{ statusMessage }}</span>
     </div>
   </div>

@@ -8,6 +8,7 @@ import {
   resolveDeepseekPrices,
   resolveDeepseekPeak,
 } from "./deepseekPricing.js";
+import { t } from "../i18n/index.js";
 
 const SYS_OVERHEAD_TOKENS = 800;
 /** DeepSeek 粗估缓存命中率 */
@@ -82,10 +83,10 @@ export function estimateFromSettings(settings) {
     });
   }
 
-  const peakNote = deepseek && prices.peak ? "当前按高峰单价约算。" : "";
+  const peakNote = deepseek && prices.peak ? t("analytics.estPeak") : "";
   const cacheNote = deepseek
-    ? `DeepSeek 假设约 ${Math.round(ASSUMED_CACHE_HIT * 100)}% 缓存命中。`
-    : "非 DeepSeek 按输入全未命中计。";
+    ? t("analytics.estCacheDeepseek", { n: Math.round(ASSUMED_CACHE_HIT * 100) })
+    : t("analytics.estCacheOther");
 
   return {
     mode: "estimate",
@@ -100,6 +101,10 @@ export function estimateFromSettings(settings) {
     scenarios,
     scenarioDaily,
     prices,
-    note: `估算 · 非实测。按当前设置单次续写约算（规定字数 ${target}、上下文窗 ${recent}）。${cacheNote}${peakNote}`,
+    note: t("analytics.estNote", {
+      n: target,
+      title: recent,
+      msg: `${cacheNote}${peakNote}`,
+    }),
   };
 }

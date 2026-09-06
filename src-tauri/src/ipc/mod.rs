@@ -80,9 +80,7 @@ pub fn clear_endpoint() {
 pub fn read_endpoint() -> AppResult<IpcEndpoint> {
     let path = paths::ipc_endpoint_path()?;
     if !path.exists() {
-        return Err(AppError::msg(
-            "未检测到运行中的 GUI（缺少 ipc.json）。请先启动界面，或加 --offline 旁路直调。",
-        ));
+        return Err(AppError::t("errors.guiNotDetected"));
     }
     Ok(serde_json::from_str(&std::fs::read_to_string(&path)?)?)
 }
@@ -245,22 +243,22 @@ fn preview_apply(app: &AppHandle, req: &Value, id: &Value) -> AppResult<Value> {
         .get("project_root")
         .or_else(|| req.get("root"))
         .and_then(|v| v.as_str())
-        .ok_or_else(|| AppError::msg("缺少 project_root"))?;
+        .ok_or_else(|| AppError::t("errors.missingProjectRoot"))?;
     let chapter_id = req
         .get("chapter_id")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| AppError::msg("缺少 chapter_id"))?;
+        .ok_or_else(|| AppError::t("errors.missingChapterId"))?;
     let text = req
         .get("text")
         .and_then(|v| v.as_str())
-        .ok_or_else(|| AppError::msg("缺少 text"))?;
+        .ok_or_else(|| AppError::t("errors.missingText"))?;
     let selection = req.get("selection").and_then(|v| v.as_str()).unwrap_or("");
 
     let (_meta, content) = project::read_chapter(Path::new(root), chapter_id)?;
     let new_content = match mode {
         "replace" => {
             if selection.is_empty() {
-                return Err(AppError::msg("replace 需要 selection"));
+                return Err(AppError::t("errors.replaceNeedsSelection"));
             }
             content.replacen(selection, text, 1)
         }
@@ -301,7 +299,7 @@ async fn writing_run_ipc(
     let writing_req: WritingRequest = serde_json::from_value(
         req.get("request")
             .cloned()
-            .ok_or_else(|| AppError::msg("缺少 request"))?,
+            .ok_or_else(|| AppError::t("errors.missingRequest"))?,
     )?;
     let apply = req
         .get("apply")
@@ -410,14 +408,13 @@ pub async fn cli_request(req: Value, mut on_chunk: impl FnMut(&str)) -> AppResul
     let stream = tokio::time::timeout(Duration::from_secs(2), TcpStream::connect(&addr))
         .await
         .map_err(|_| {
-            AppError::msg(format!(
-                "连接 GUI IPC 超时 ({addr})。请确认界面已启动，或删除 %APPDATA%/kk_novel_ai/ipc.json 后重试。"
-            ))
+            AppError::t_fmt("errors.connectGuiIpcTimeout", &[("addr", &addr)])
         })?
         .map_err(|e| {
-            AppError::msg(format!(
-                "连接 GUI IPC 失败 ({addr}): {e}. 请确认界面已启动，或加 --offline。"
-            ))
+            AppError::t_fmt(
+                "errors.connectGuiIpcFailed",
+                &[("addr", &addr), ("e", &e.to_string())],
+            )
         })?;
     let mut stream = stream;
 
@@ -439,10 +436,10 @@ pub async fn cli_request(req: Value, mut on_chunk: impl FnMut(&str)) -> AppResul
         buf.clear();
         let n = reader.read_line(&mut buf).await?;
         if n == 0 {
-            return Err(AppError::msg("GUI IPC 连接已关闭"));
+            return Err(AppError::t("errors.guiIpcClosed"));
         }
         let v: Value = serde_json::from_str(buf.trim())
-            .map_err(|e| AppError::msg(format!("IPC 响应 JSON 无效: {e}")))?;
+            .map_err(|e| AppError::t_fmt("errors.ipcResponseJsonInvalid", &[("e", &e.to_string())]))?;
         if v.get("type").and_then(|t| t.as_str()) == Some("chunk") {
             if let Some(d) = v.get("delta").and_then(|x| x.as_str()) {
                 on_chunk(d);

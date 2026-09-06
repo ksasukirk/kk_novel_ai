@@ -2,6 +2,7 @@
  * Token / 缓存 / 费用展示格式化
  * 代码路径: kk_novel_ai/src/utils/usageFormat.js
  */
+import { t } from "../i18n/index.js";
 
 export function usageTotalTokens(u) {
   if (!u) return 0;
@@ -23,13 +24,13 @@ export function formatCacheHit(u) {
   const miss = u.prompt_cache_miss_tokens || 0;
   if (hit <= 0 && miss <= 0) return "";
   const rate = cacheHitRate(u);
-  return `缓存 ${hit}/${hit + miss} (${rate}%)`;
+  return t("analytics.cacheHitFmt", { n: hit, title: hit + miss, msg: rate });
 }
 
 export function formatTokens(u) {
   if (!u) return "";
   const total = usageTotalTokens(u);
-  const src = u.source === "api" ? "api" : "估";
+  const src = u.source === "api" ? "api" : t("ai.tokenEst");
   const cache = formatCacheHit(u);
   if (cache) return `${total} tok (${src}) · ${cache}`;
   return `${total} tok (${src})`;

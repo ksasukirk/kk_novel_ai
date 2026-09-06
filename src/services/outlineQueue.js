@@ -23,7 +23,12 @@ import {
 import { createPlainBlock } from "../utils/genBlock.js";
 import { migrateBlocksToBranchDoc } from "../utils/branchModel.js";
 import { isChapterBodyEmpty } from "../utils/chapterStatus.js";
-import { CONTINUITY_WRITE_HINT } from "../utils/outlineContinuity.js";
+import { continuityWriteHint } from "../utils/outlineContinuity.js";
+import { isCancelledMsg, t, tLocale } from "../i18n/index.js";
+
+function writingT(key, values) {
+  return tLocale(appState.settings?.writing_locale || "zh-CN", key, values);
+}
 
 export const outlineQueueState = reactive({
   running: false,
@@ -42,21 +47,21 @@ export const outlineQueueState = reactive({
 export function outlineQueueStatusLine() {
   const s = outlineQueueState;
   if (!s.running && s.phase !== "done") return "";
-  if (s.phase === "splitting_chapters") return "正在从全书大纲拆成章节…";
-  if (s.phase === "switching") return `切换章节 · ${s.chapterTitle}`;
+  if (s.phase === "splitting_chapters") return t("outlineQ.splitChapters");
+  if (s.phase === "switching") return t("outlineQ.switching", { title: s.chapterTitle });
   if (s.phase === "writing") {
-    return `按纲生成整章 · ${s.chapterTitle || "本章"}`;
+    return t("outlineQ.writing", { title: s.chapterTitle || t("editor.thisChapter") });
   }
   if (s.phase === "summarizing") {
-    return `正在生成章节总结 · ${s.chapterTitle || "本章"}`;
+    return t("outlineQ.summarizing", { title: s.chapterTitle || t("editor.thisChapter") });
   }
   if (s.phase === "done") {
     return s.chaptersDone > 1
-      ? `按纲生成已完成 ${s.chaptersDone} 章`
-      : "按纲生成已完成";
+      ? t("outlineQ.doneN", { n: s.chaptersDone })
+      : t("outlineQ.done");
   }
-  if (s.phase === "cancelled") return "已取消按纲生成";
-  if (s.phase === "error") return s.error || "按纲生成失败";
+  if (s.phase === "cancelled") return t("outlineQ.cancelled");
+  if (s.phase === "error") return s.error || t("outlineQ.failed");
   return "";
 }
 
@@ -83,13 +88,13 @@ function sleep(ms) {
 
 async function waitForSlot() {
   while (!canStartMoreJobs(1)) {
-    if (outlineQueueState.cancelled) throw new Error("已取消按纲生成");
+    if (outlineQueueState.cancelled) throw new Error(t("outlineQ.cancelled"));
     await sleep(350);
   }
 }
 
 function throwIfCancelled() {
-  if (outlineQueueState.cancelled) throw new Error("已取消按纲生成");
+  if (outlineQueueState.cancelled) throw new Error(t("outlineQ.cancelled"));
 }
 
 function chapterById(id) {
@@ -150,18 +155,18 @@ export function resolveMaxSectionsPerChapter() {
 
 function wrapChapterInstruction(chapter, userInstr) {
   const user = String(userInstr || "").trim();
-  const title = String(chapter.title || "").trim() || "本章";
+  const title = String(chapter.title || "").trim() || writingT("editor.thisChapter");
   const summary = String(chapter.summary || "").trim();
   const parts = [
-    `【按纲生成 · 整章一次写完】章节「${title}」。本章正文只生成一整段完整内容，不要拆小节、不要分段标拍、不要写「第一节/第一拍」之类标题。`,
-    "须达到或超出规定字数后再停；覆盖章纲中的冲突、推进与结尾钩子；承接上章收束（若有），人称性别与设定一致。",
-    CONTINUITY_WRITE_HINT,
+    writingT("outlineQ.instrWrap", { title }),
+    writingT("outlineQ.instrCover"),
+    continuityWriteHint(),
   ];
   if (summary) {
-    parts.push(`本章纲：\n${summary}`);
+    parts.push(writingT("outlineQ.chOutline", { summary }));
   }
   if (user) {
-    parts.push(`用户微调（不得覆盖章纲主线）：\n${user}`);
+    parts.push(writingT("outlineQ.userTweak", { user }));
   }
   return parts.join("\n");
 }
@@ -202,7 +207,7 @@ async function runChapterWrittenSummary(chapter) {
   const prevPlacement = appState.draftPlacement;
   appState.draftPlacement = "";
   const job = createGenJob({
-    label: `章节总结 · ${chapter.title || "本章"}`,
+    label: t("outlineQ.labelSummary", { title: chapter.title || t("editor.thisChapter") }),
   });
   job.draftPlacement = "";
   job.draftTask = "chapter_summary";
@@ -227,22 +232,25 @@ async function runChapterWrittenSummary(chapter) {
     ).trim();
     if (text.length < 40) {
       throw new Error(
-        `章节「${chapter.title || "本章"}」总结过短或为空，已停队列。请补总结后再继续。`
+        t("outlineQ.sumShort", { title: chapter.title || t("editor.thisChapter") })
       );
     }
     if ([...text].length > 400) {
       throw new Error(
-        `章节「${chapter.title || "本章"}」总结疑似复读正文（过长），已停队列。请重跑章摘要。`
+        t("outlineQ.sumRepeat", { title: chapter.title || t("editor.thisChapter") })
       );
     }
     return text;
   } catch (e) {
     const msg = String(e.message || e);
-    if (outlineQueueState.cancelled || /取消/.test(msg)) {
-      throw new Error("已取消按纲生成");
+    if (outlineQueueState.cancelled || isCancelledMsg(msg)) {
+      throw new Error(t("outlineQ.cancelled"));
     }
     throw new Error(
-      `章节「${chapter.title || "本章"}」总结失败：${msg}。已保留正文，未进入下一章。`
+      t("outlineQ.sumFailed", {
+        title: chapter.title || t("editor.thisChapter"),
+        msg,
+      })
     );
   } finally {
     discardJob(job);
@@ -252,11 +260,11 @@ async function runChapterWrittenSummary(chapter) {
 
 async function runChapterOutlineQueue(chapterId, userInstr) {
   const chapter = chapterById(chapterId);
-  if (!chapter) throw new Error("章节不存在");
+  if (!chapter) throw new Error(t("outlineQ.noChapter"));
 
   const summary = String(chapter.summary || "").trim();
   if (!summary && !(Array.isArray(chapter.beats) && chapter.beats.length)) {
-    throw new Error(`章节「${chapter.title}」缺少章纲 summary，无法按纲写正文`);
+    throw new Error(t("outlineQ.needSummary", { title: chapter.title }));
   }
 
   outlineQueueState.chapterId = chapter.id;
@@ -301,7 +309,7 @@ async function runChapterOutlineQueue(chapterId, userInstr) {
     appState.draftForkFromVariantId = "";
 
     const job = createGenJob({
-      label: `整章 · ${chapter.title || "本章"}`,
+      label: t("outlineQ.labelChapter", { title: chapter.title || t("editor.thisChapter") }),
     });
     job.draftActiveBeatId = "";
 
@@ -322,8 +330,8 @@ async function runChapterOutlineQueue(chapterId, userInstr) {
       );
     } catch (e) {
       const msg = String(e.message || e);
-      if (outlineQueueState.cancelled || /取消/.test(msg)) {
-        throw new Error("已取消按纲生成");
+      if (outlineQueueState.cancelled || isCancelledMsg(msg)) {
+        throw new Error(t("outlineQ.cancelled"));
       }
       throw e;
     }
@@ -331,7 +339,7 @@ async function runChapterOutlineQueue(chapterId, userInstr) {
 
     if (job.status === "done" && !job.accepted) {
       const acc = await acceptDraft(job);
-      if (!acc.ok) throw new Error(acc.error || "写入失败");
+      if (!acc.ok) throw new Error(acc.error || t("draft.writeFailed"));
     }
 
     const blockKey =
@@ -358,7 +366,7 @@ async function runChapterOutlineQueue(chapterId, userInstr) {
 
   if (!(await chapterHasWrittenSnapshot(chapter.id))) {
     throw new Error(
-      `章节「${chapter.title || "本章"}」总结未写入记忆快照，已停队列。请补总结后再继续。`
+      t("outlineQ.sumMissing", { title: chapter.title || t("editor.thisChapter") })
     );
   }
 
@@ -369,13 +377,13 @@ async function runChapterOutlineQueue(chapterId, userInstr) {
 
 function assertCanStartOutlineQueue() {
   if (!appState.projectRoot || !appState.chapterId) {
-    throw new Error("请先打开作品并选择章节");
+    throw new Error(t("outlineQ.needOpen"));
   }
   if (outlineQueueState.running) {
-    throw new Error("按纲生成已在进行中");
+    throw new Error(t("outlineQ.alreadyRunning"));
   }
   if (visibleGenJobs.value.length) {
-    throw new Error("请先等当前草稿写完或取消，再开按纲生成");
+    throw new Error(t("outlineQ.waitDraft"));
   }
 }
 
@@ -413,7 +421,7 @@ export async function runOutlineQueue(opts = {}) {
 
   resetOutlineQueue();
   outlineQueueState.running = true;
-  appState.statusMessage = stopAfterOne ? "单章按纲生成启动…" : "按纲生成启动…";
+  appState.statusMessage = stopAfterOne ? t("outlineQ.startOne") : t("outlineQ.start");
 
   let chapterId = startId;
   if (onlyIds.length && !chapterHasWritableOutline(chapterById(chapterId))) {
@@ -453,11 +461,11 @@ export async function runOutlineQueue(opts = {}) {
     appState.statusMessage = outlineQueueStatusLine();
   } catch (e) {
     const msg = String(e.message || e);
-    const cancelled = outlineQueueState.cancelled || /取消/.test(msg);
+    const cancelled = outlineQueueState.cancelled || isCancelledMsg(msg);
     outlineQueueState.running = false;
     outlineQueueState.phase = cancelled ? "cancelled" : "error";
     outlineQueueState.error = cancelled ? "" : msg;
-    appState.statusMessage = cancelled ? "已取消按纲生成" : msg;
+    appState.statusMessage = cancelled ? t("outlineQ.cancelled") : msg;
     if (!cancelled) throw e;
   }
 }

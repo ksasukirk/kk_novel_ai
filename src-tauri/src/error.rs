@@ -21,6 +21,14 @@ impl AppError {
         Self::Message(s.into())
     }
 
+    pub fn t(key: &str) -> Self {
+        Self::Message(crate::i18n::t(key))
+    }
+
+    pub fn t_fmt(key: &str, args: &[(&str, &str)]) -> Self {
+        Self::Message(crate::i18n::t_fmt(key, args))
+    }
+
     pub fn to_json(&self) -> serde_json::Value {
         json!({ "ok": false, "error": self.to_string() })
     }

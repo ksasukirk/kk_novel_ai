@@ -33,7 +33,9 @@ pub async fn fetch_provider_balance(settings: &AppSettings) -> AppResult<Value> 
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(8))
         .build()
-        .map_err(|e| crate::error::AppError::msg(format!("HTTP 客户端创建失败: {e}")))?;
+        .map_err(|e| {
+            crate::error::AppError::t_fmt("errors.httpClientCreateFailed", &[("e", &e.to_string())])
+        })?;
 
     let resp = match client
         .get(&url)

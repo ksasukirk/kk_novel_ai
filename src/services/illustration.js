@@ -19,6 +19,11 @@ import {
 import { formatSheetsForPrompt } from "../utils/loreVisual.js";
 import { parseLlmJson } from "../utils/llmJson.js";
 import * as story from "./storyClient.js";
+import { t, tLocale } from "../i18n/index.js";
+
+function writingT(key, values) {
+  return tLocale(appState.settings?.writing_locale || "zh-CN", key, values);
+}
 
 export const imageGenState = reactive({
   busy: false,
@@ -27,7 +32,7 @@ export const imageGenState = reactive({
 
 export const imagePromptDialog = reactive({
   open: false,
-  title: "配图",
+  title: t("illus.title"),
   prompt: "",
   negative: "",
   caption: "",
@@ -41,7 +46,7 @@ const dataUrlCache = new Map();
 export function parseJsonObject(text) {
   const v = parseJsonValue(text);
   if (!v || typeof v !== "object" || Array.isArray(v)) {
-    throw new Error("模型未返回 JSON 对象");
+    throw new Error(t("illus.needJson"));
   }
   return v;
 }
@@ -100,7 +105,7 @@ export function forgetIllustrationCache(rel) {
 export function openImagePromptDialog(seed = {}) {
   return new Promise((resolve) => {
     imagePromptDialog.open = true;
-    imagePromptDialog.title = seed.title || "配图";
+    imagePromptDialog.title = seed.title || t("illus.title");
     imagePromptDialog.prompt = String(seed.prompt || "");
     imagePromptDialog.negative = String(seed.negative || "");
     imagePromptDialog.caption = String(seed.caption || "");
@@ -164,10 +169,10 @@ export async function runBeatsToStoryboard({ instruction, chapterId } = {}) {
 
 export async function generateImageFile({ rel, prompt, negative, size } = {}) {
   if (imageGenState.busy) {
-    throw new Error("正在生成另一张图，请稍候");
+    throw new Error(t("illus.busyOther"));
   }
   imageGenState.busy = true;
-  imageGenState.message = "正在出图…";
+  imageGenState.message = t("illus.generating");
   try {
     const r = await invoke("image_generate", {
       request: {
@@ -216,10 +221,10 @@ function boardStyleInstruction(board, extraSheets) {
   const parts = [];
   const style = String((board && board.style_prefix) || "").trim();
   const neg = String((board && board.negative) || "").trim();
-  if (style) parts.push(`【画风】\n${style}`);
-  if (neg) parts.push(`【默认负向】\n${neg}`);
+  if (style) parts.push(writingT("illus.hdrStyle", { style }));
+  if (neg) parts.push(writingT("illus.hdrNeg", { neg }));
   const sheets = String(extraSheets || "").trim();
-  if (sheets) parts.push(`【形象卡】\n${sheets}`);
+  if (sheets) parts.push(writingT("illus.hdrSheets", { sheets }));
   return parts.join("\n\n");
 }
 
@@ -241,9 +246,9 @@ export async function promptFromShot(shot, loreItems, board) {
   );
   const scene = [
     shot.visual || "",
-    shot.location ? `地点：${shot.location}` : "",
-    shot.mood ? `氛围：${shot.mood}` : "",
-    shot.dialogue ? `对白：${shot.dialogue}` : "",
+    shot.location ? writingT("illus.loc", { v: shot.location }) : "",
+    shot.mood ? writingT("illus.mood", { v: shot.mood }) : "",
+    shot.dialogue ? writingT("illus.dialogue", { v: shot.dialogue }) : "",
   ]
     .filter(Boolean)
     .join("\n");
@@ -286,9 +291,9 @@ export async function isIllustrationStale(block, sourceText) {
  * 编辑器：根据 gen 块生成提示词 → 确认 → 出图 → 插入
  */
 export async function illustrateGenBlock(block, loreItems) {
-  if (!block || block.type !== "gen") throw new Error("只能给生成段配图");
+  if (!block || block.type !== "gen") throw new Error(t("illus.genOnly"));
   if (!appState.projectRoot || !appState.chapterId) {
-    throw new Error("请先打开作品和章节");
+    throw new Error(t("illus.needOpen"));
   }
   let board = { style_prefix: "", negative: "" };
   try {
@@ -308,7 +313,7 @@ export async function illustrateGenBlock(block, loreItems) {
     ),
   });
   const confirmed = await openImagePromptDialog({
-    title: "本段配图",
+    title: t("illus.blockTitle"),
     prompt: drafted.prompt,
     negative: drafted.negative || board.negative || "",
     caption: drafted.caption,
@@ -336,9 +341,9 @@ export async function illustrateGenBlock(block, loreItems) {
 }
 
 export async function regenerateIllustration(block, sourceText) {
-  if (!isIllustrationBlock(block)) throw new Error("不是插图块");
+  if (!isIllustrationBlock(block)) throw new Error(t("illus.notBlock"));
   const confirmed = await openImagePromptDialog({
-    title: "重生成插图",
+    title: t("illus.regenTitle"),
     prompt: block.prompt || "",
     negative: block.negative || "",
     caption: block.caption || "",

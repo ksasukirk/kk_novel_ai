@@ -55,7 +55,7 @@ pub fn export_project_zip(root: &Path) -> AppResult<serde_json::Value> {
     let filename = format!("{title}_{stamp}.zip");
     let out_path = export_cache_dir()?.join(&filename);
 
-    let file = File::create(&out_path).map_err(|e| AppError::msg(format!("创建备份失败: {e}")))?;
+    let file = File::create(&out_path).map_err(|e| AppError::t_fmt("errors.createBackupFailed", &[("e", &e.to_string())]))?;
     let mut zip = ZipWriter::new(file);
     let opts = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
 
@@ -63,7 +63,7 @@ pub fn export_project_zip(root: &Path) -> AppResult<serde_json::Value> {
     for path in files {
         let rel = path
             .strip_prefix(root)
-            .map_err(|_| AppError::msg("备份路径异常"))?;
+            .map_err(|_| AppError::t("errors.backupPathInvalid"))?;
         let name = rel.to_string_lossy().replace('\\', "/");
         if name.is_empty() || name.contains("..") {
             continue;
@@ -71,14 +71,19 @@ pub fn export_project_zip(root: &Path) -> AppResult<serde_json::Value> {
         let mut buf = Vec::new();
         File::open(&path)
             .and_then(|mut f| f.read_to_end(&mut buf))
-            .map_err(|e| AppError::msg(format!("读取 {} 失败: {e}", path.display())))?;
+            .map_err(|e| {
+                AppError::t_fmt(
+                    "errors.readPathFailed",
+                    &[("path", &path.display().to_string()), ("e", &e.to_string())],
+                )
+            })?;
         zip.start_file(name, opts)
-            .map_err(|e| AppError::msg(format!("写入 zip 失败: {e}")))?;
+            .map_err(|e| AppError::t_fmt("errors.writeZipFailed", &[("e", &e.to_string())]))?;
         zip.write_all(&buf)
-            .map_err(|e| AppError::msg(format!("写入 zip 数据失败: {e}")))?;
+            .map_err(|e| AppError::t_fmt("errors.writeZipDataFailed", &[("e", &e.to_string())]))?;
     }
     zip.finish()
-        .map_err(|e| AppError::msg(format!("完成备份失败: {e}")))?;
+        .map_err(|e| AppError::t_fmt("errors.finishBackupFailed", &[("e", &e.to_string())]))?;
 
     let meta = fs::metadata(&out_path).map_err(|e| AppError::msg(e.to_string()))?;
     Ok(json!({
@@ -93,18 +98,18 @@ pub fn export_project_zip(root: &Path) -> AppResult<serde_json::Value> {
 fn validate_zip_entry_name(name: &str) -> AppResult<PathBuf> {
     let name = name.replace('\\', "/");
     if name.is_empty() || name.starts_with('/') || name.contains('\0') {
-        return Err(AppError::msg(format!("非法备份条目: {name}")));
+        return Err(AppError::t_fmt("errors.illegalBackupEntry", &[("name", &name)]));
     }
     let path = PathBuf::from(&name);
     for c in path.components() {
         match c {
             Component::Normal(_) => {}
             Component::CurDir => {}
-            _ => return Err(AppError::msg(format!("非法备份路径: {name}"))),
+            _ => return Err(AppError::t_fmt("errors.illegalBackupPath", &[("name", &name)])),
         }
     }
     if name.contains("..") {
-        return Err(AppError::msg(format!("非法备份路径: {name}")));
+        return Err(AppError::t_fmt("errors.illegalBackupPath", &[("name", &name)]));
     }
     Ok(path)
 }
@@ -142,18 +147,18 @@ fn decode_base64(data: &str) -> AppResult<Vec<u8>> {
 /// 从 ZIP 字节导入作品到 novels 目录
 pub fn import_project_zip_bytes(bytes: &[u8], preferred_title: Option<&str>) -> AppResult<serde_json::Value> {
     if bytes.len() as u64 > MAX_ZIP_BYTES {
-        return Err(AppError::msg("备份文件过大（上限 200MB）"));
+        return Err(AppError::t("errors.backupTooLarge"));
     }
     let cursor = std::io::Cursor::new(bytes);
     let mut archive =
-        ZipArchive::new(cursor).map_err(|e| AppError::msg(format!("无法打开备份 ZIP: {e}")))?;
+        ZipArchive::new(cursor).map_err(|e| AppError::t_fmt("errors.cannotOpenBackupZip", &[("e", &e.to_string())]))?;
 
     let mut has_project = false;
     let mut staged: Vec<(PathBuf, Vec<u8>)> = Vec::new();
     for i in 0..archive.len() {
         let mut file = archive
             .by_index(i)
-            .map_err(|e| AppError::msg(format!("读取备份条目失败: {e}")))?;
+            .map_err(|e| AppError::t_fmt("errors.readBackupEntryFailed", &[("e", &e.to_string())]))?;
         if file.is_dir() {
             continue;
         }
@@ -161,7 +166,7 @@ pub fn import_project_zip_bytes(bytes: &[u8], preferred_title: Option<&str>) -> 
         let rel = validate_zip_entry_name(&name)?;
         let mut buf = Vec::new();
         file.read_to_end(&mut buf)
-            .map_err(|e| AppError::msg(format!("解压失败: {e}")))?;
+            .map_err(|e| AppError::t_fmt("errors.unzipFailed", &[("e", &e.to_string())]))?;
         if rel.file_name().and_then(|s| s.to_str()) == Some("project.json")
             && rel.components().count() == 1
         {
@@ -178,7 +183,7 @@ pub fn import_project_zip_bytes(bytes: &[u8], preferred_title: Option<&str>) -> 
         staged.push((rel, buf));
     }
     if !has_project {
-        return Err(AppError::msg("备份中缺少 project.json，不是有效作品包"));
+        return Err(AppError::t("errors.backupMissingProjectJson"));
     }
 
     // 若所有文件都在同一个顶层目录下，剥掉该前缀
@@ -233,7 +238,7 @@ pub fn import_project_zip_bytes(bytes: &[u8], preferred_title: Option<&str>) -> 
 
     let dest = allocate_novel_folder(&title)?;
     if dest.exists() && project_json(&dest).exists() {
-        return Err(AppError::msg("目标目录已存在作品"));
+        return Err(AppError::t("errors.targetDirAlreadyHasProject"));
     }
     fs::create_dir_all(&dest)?;
 
@@ -253,12 +258,12 @@ pub fn import_project_zip_bytes(bytes: &[u8], preferred_title: Option<&str>) -> 
         if let Some(parent) = out.parent() {
             fs::create_dir_all(parent)?;
         }
-        fs::write(&out, buf).map_err(|e| AppError::msg(format!("写入失败: {e}")))?;
+        fs::write(&out, buf).map_err(|e| AppError::t_fmt("errors.writeFailed", &[("e", &e.to_string())]))?;
     }
 
     if !project_json(&dest).is_file() {
         let _ = fs::remove_dir_all(&dest);
-        return Err(AppError::msg("导入后未找到 project.json"));
+        return Err(AppError::t("errors.importMissingProjectJson"));
     }
 
     let opened = open_project(&dest)?;
@@ -279,9 +284,9 @@ pub fn read_export_file_base64(path: &str) -> AppResult<serde_json::Value> {
     let p = PathBuf::from(path);
     let cache = export_cache_dir()?;
     if !p.starts_with(&cache) {
-        return Err(AppError::msg("只能读取导出缓存内的文件"));
+        return Err(AppError::t("errors.onlyReadExportCache"));
     }
-    let bytes = fs::read(&p).map_err(|e| AppError::msg(format!("读取失败: {e}")))?;
+    let bytes = fs::read(&p).map_err(|e| AppError::t_fmt("errors.readFailed", &[("e", &e.to_string())]))?;
     Ok(json!({
         "ok": true,
         "filename": p.file_name().and_then(|s| s.to_str()).unwrap_or("export.bin"),

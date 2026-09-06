@@ -8,6 +8,7 @@ import {
   closeImagePromptDialog,
   imagePromptDialog,
 } from "../services/illustration.js";
+import { t } from "../i18n/index.js";
 
 const backdrop = createBackdropDismiss(() => {
   if (imagePromptDialog.busy) return;
@@ -18,7 +19,7 @@ function onConfirm() {
   if (imagePromptDialog.busy) return;
   const prompt = String(imagePromptDialog.prompt || "").trim();
   if (!prompt) {
-    imagePromptDialog.error = "请填写提示词";
+    imagePromptDialog.error = t("illus.needPrompt");
     return;
   }
   closeImagePromptDialog({
@@ -42,12 +43,12 @@ function onConfirm() {
     >
       <div class="illus-card">
         <h2 class="illus-title">{{ imagePromptDialog.title }}</h2>
-        <p class="muted">确认提示词后再出图。可改词；取消则不生成。</p>
-        <label class="field-label">提示词</label>
+        <p class="muted">{{ $t("illus.hint") }}</p>
+        <label class="field-label">{{ $t("illus.prompt") }}</label>
         <textarea v-model="imagePromptDialog.prompt" rows="6" />
-        <label class="field-label">负向提示</label>
+        <label class="field-label">{{ $t("illus.negative") }}</label>
         <textarea v-model="imagePromptDialog.negative" rows="2" />
-        <label class="field-label">图题</label>
+        <label class="field-label">{{ $t("illus.caption") }}</label>
         <input v-model="imagePromptDialog.caption" type="text" />
         <p v-if="imagePromptDialog.error" class="err">{{ imagePromptDialog.error }}</p>
         <div class="illus-actions">
@@ -57,7 +58,7 @@ function onConfirm() {
             :disabled="imagePromptDialog.busy"
             @click="closeImagePromptDialog(null)"
           >
-            取消
+            {{ $t("common.cancel") }}
           </button>
           <button
             type="button"
@@ -65,7 +66,7 @@ function onConfirm() {
             :disabled="imagePromptDialog.busy"
             @click="onConfirm"
           >
-            生成图像
+            {{ $t("illus.generate") }}
           </button>
         </div>
       </div>

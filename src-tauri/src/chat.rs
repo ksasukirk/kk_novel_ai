@@ -39,7 +39,7 @@ fn session_path(mode: &str, project_root: Option<&str>) -> AppResult<PathBuf> {
             let root = project_root
                 .map(str::trim)
                 .filter(|s| !s.is_empty())
-                .ok_or_else(|| AppError::msg("本作对话需要打开作品"))?;
+                .ok_or_else(|| AppError::t("errors.needProject"))?;
             let dir = Path::new(root).join("chat");
             fs::create_dir_all(&dir)?;
             Ok(dir.join("novel.json"))
@@ -49,7 +49,7 @@ fn session_path(mode: &str, project_root: Option<&str>) -> AppResult<PathBuf> {
             fs::create_dir_all(&dir)?;
             Ok(dir.join("free.json"))
         }
-        _ => Err(AppError::msg(format!("未知对话模式: {mode}"))),
+        _ => Err(AppError::t_fmt("errors.unknownChatMode", &[("mode", mode)])),
     }
 }
 

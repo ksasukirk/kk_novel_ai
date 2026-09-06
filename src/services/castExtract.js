@@ -6,6 +6,11 @@ import { invoke } from "./tauri.js";
 import { appState, bumpCastRevision } from "../stores/appState.js";
 import { upsertLoreAt } from "./projectClient.js";
 import { refreshCharacterNameIndex } from "./characterIndex.js";
+import { t, tLocale } from "../i18n/index.js";
+
+function writingT(key, values) {
+  return tLocale(appState.settings?.writing_locale || "zh-CN", key, values);
+}
 
 const inFlightKeys = new Set();
 
@@ -103,7 +108,7 @@ export async function runCastExtract(opts) {
 
   inFlightKeys.add(blockKey);
   const prevStatus = appState.statusMessage;
-  appState.statusMessage = "正在识别新人物…";
+  appState.statusMessage = t("autoCast.recognizing");
   try {
     try {
       await refreshCharacterNameIndex();
@@ -128,7 +133,7 @@ export async function runCastExtract(opts) {
       if (isKnownName(known, c.title, c.aliases)) continue;
       const keywords = [c.title, ...c.aliases.map((a) => `alias:${a}`)];
       const content =
-        c.content || `${c.title}（生成块自动添加，待补设定）`;
+        c.content || writingT("autoCast.pendingContent", { title: c.title });
       try {
         await upsertLoreAt(appState.projectRoot, {
           id: "",
@@ -156,13 +161,15 @@ export async function runCastExtract(opts) {
         /* ignore */
       }
       bumpCastRevision();
-      appState.statusMessage = `已自动添加本篇角色：${added.join("、")}`;
+      appState.statusMessage = t("autoCast.added", {
+        names: added.join(t("common.listSep")),
+      });
     } else {
-      appState.statusMessage = prevStatus || "无新人物需添加";
+      appState.statusMessage = prevStatus || t("autoCast.none");
     }
     return added;
   } catch (e) {
-    appState.statusMessage = `新人物识别失败（不影响正文）：${e.message || e}`;
+    appState.statusMessage = t("autoCast.failed", { msg: e.message || e });
     return null;
   } finally {
     inFlightKeys.delete(blockKey);

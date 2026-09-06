@@ -2,6 +2,7 @@
  * 布局偏好（侧栏 / 写作页目录 / AI 面板）localStorage
  * 代码路径: kk_novel_ai/src/utils/layoutPrefs.js
  */
+import { t } from "../i18n/index.js";
 
 export const SIDEBAR_MODE_KEY = "kk_sidebar_mode";
 export const EDITOR_TOC_VISIBLE_KEY = "kk_editor_toc_visible";
@@ -39,9 +40,9 @@ export function cycleSidebarMode(mode) {
 
 /** @param {SidebarMode} mode */
 export function sidebarToggleTitle(mode) {
-  if (mode === "expanded") return "收为图标栏";
-  if (mode === "compact") return "完全隐藏导航";
-  return "展开导航";
+  if (mode === "expanded") return t("header.collapseIcons");
+  if (mode === "compact") return t("header.hideNav");
+  return t("header.expandNav");
 }
 
 export function readEditorTocVisible() {
@@ -92,7 +93,7 @@ export function cycleAiPanelLayout(layout) {
 
 /** @param {AiPanelLayout} layout */
 export function aiPanelLayoutButtonLabel(layout) {
-  if (layout === "dock") return "AI 浮条";
-  if (layout === "float") return "隐藏 AI";
-  return "显示 AI";
+  if (layout === "dock") return t("header.aiDock");
+  if (layout === "float") return t("header.aiHide");
+  return t("header.aiShow");
 }

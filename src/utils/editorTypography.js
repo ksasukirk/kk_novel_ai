@@ -2,6 +2,7 @@
  * 编辑器字体 / 字号
  * 代码路径: kk_novel_ai/src/utils/editorTypography.js
  */
+import { t } from "../i18n/index.js";
 
 /** 默认黑体 CSS 栈 */
 export const DEFAULT_EDITOR_FONT_CSS =
@@ -44,6 +45,12 @@ export const EDITOR_FONT_PRESETS = [
 ];
 
 export const EDITOR_FONT_SIZES = [12, 14, 16, 18, 20, 22, 24, 28];
+
+/** 界面显示用字体名（跟 writing/ui locale 走） */
+export function fontPresetLabel(preset) {
+  if (!preset) return t("editor.fonts.heiti");
+  return t(`editor.fonts.${preset.id}`);
+}
 
 export function resolveEditorFontCss(familyIdOrCss) {
   const raw = (familyIdOrCss || "").trim();

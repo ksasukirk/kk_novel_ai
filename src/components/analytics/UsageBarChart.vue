@@ -53,7 +53,7 @@ function shortName(n) {
 <template>
   <div class="chart-card">
     <h3 class="chart-title">{{ title }}</h3>
-    <p v-if="!sliced.length" class="muted empty">暂无数据</p>
+    <p v-if="!sliced.length" class="muted empty">{{ $t("analytics.noData") }}</p>
     <svg
       v-else
       class="bar-svg"

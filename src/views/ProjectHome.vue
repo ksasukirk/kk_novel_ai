@@ -14,8 +14,9 @@ import { appConfirm, appConfirmDelete } from "../services/confirmDialog.js";
 import { createBackdropDismiss } from "../utils/backdropDismiss.js";
 import { isMobileUx } from "../utils/platform.js";
 import { useToastError } from "../services/toast.js";
+import { msgMatchesKey, t } from "../i18n/index.js";
 
-const title = ref("未命名小说");
+const title = ref(t("project.untitled"));
 const error = useToastError();
 const stats = ref(null);
 const goalInput = ref(2000);
@@ -115,7 +116,7 @@ async function onCreateConfirm() {
   error.value = "";
   creating.value = true;
   try {
-    await project.createProjectInNovels(title.value.trim() || "未命名小说");
+    await project.createProjectInNovels(title.value.trim() || t("project.untitled"));
     await refreshSettings();
     await refreshStats();
     showCreate.value = false;
@@ -134,7 +135,7 @@ async function onCreateInPickedDir() {
   creating.value = true;
   try {
     const picked = await project.pickDirectory();
-    await project.createProject(picked.path, title.value.trim() || "未命名小说");
+    await project.createProject(picked.path, title.value.trim() || t("project.untitled"));
     await refreshSettings();
     await refreshStats();
     showCreate.value = false;
@@ -195,7 +196,7 @@ async function openByPath(path) {
       await kb.openKnowledgeBase(path);
       appState.kbSubNav = "home";
       appState.activeNav = "knowledge";
-      appState.statusMessage = "已转到知识库视图";
+      appState.statusMessage = t("project.switchedToKb");
       return;
     }
     await refreshSettings();
@@ -223,19 +224,22 @@ async function onImportDirectoryProjects() {
   try {
     const picked = await project.pickImportDirectory();
     const parent = picked && picked.path;
-    if (!parent) throw new Error("未选择目录");
-    appState.statusMessage = `正在扫描「${parent}」…`;
+    if (!parent) throw new Error(t("project.noDirSelected"));
+    appState.statusMessage = t("project.scanning", { path: parent });
     const r = await project.importProjectsFromDirectory(parent, { maxDepth: 2 });
     if (r.settings) appState.settings = r.settings;
     else await refreshSettings();
     const msg =
       r.message ||
-      `已导入写作 ${r.imported_novels || 0}、知识库 ${r.imported_knowledge || 0}`;
+      t("project.importedCount", {
+        novels: r.imported_novels || 0,
+        kb: r.imported_knowledge || 0,
+      });
     appState.statusMessage = msg;
     if ((r.found || 0) === 0) {
       error.value = msg;
     } else if (Array.isArray(r.failed) && r.failed.length) {
-      error.value = `${msg}；失败 ${r.failed.length} 个`;
+      error.value = t("project.withFailed", { msg, n: r.failed.length });
     }
   } catch (e) {
     error.value = String(e.message || e);
@@ -246,8 +250,8 @@ async function onForget(path, ev) {
   ev.stopPropagation();
   error.value = "";
   if (
-    !(await appConfirmDelete("从最近列表移除该作品？", {
-      title: "移除作品",
+    !(await appConfirmDelete(t("project.forgetQ"), {
+      title: t("project.forgetTitle"),
     }))
   ) {
     return;
@@ -266,14 +270,11 @@ async function onBulkSuggestTitles() {
   const paths = selectedPaths.value.slice();
   if (!paths.length || bulkBusy.value) return;
   error.value = "";
-  const ok = await appConfirm(
-    `为已选 ${paths.length} 部作品 AI 生成书名并应用？\n文件夹名不会改动；内容过少或知识库会跳过。`,
-    {
-      title: "批量 AI 生成书名",
-      confirmText: "开始",
-      cancelText: "取消",
-    }
-  );
+  const ok = await appConfirm(t("project.bulkTitleQ", { n: paths.length }), {
+    title: t("project.bulkTitleTitle"),
+    confirmText: t("common.start"),
+    cancelText: t("common.cancel"),
+  });
   if (!ok) return;
   bulkBusy.value = true;
   let okN = 0;
@@ -284,7 +285,7 @@ async function onBulkSuggestTitles() {
       try {
         const r = await project.suggestBookTitle(path);
         const next = (r && r.title) || "";
-        if (!next) throw new Error("未生成书名");
+        if (!next) throw new Error(t("project.noTitleGenerated"));
         await project.applyBookTitle(path, next);
         okN += 1;
       } catch (e) {
@@ -295,8 +296,8 @@ async function onBulkSuggestTitles() {
       }
     }
     await refreshSettings();
-    const tail = failed.length ? `；失败 ${failed.length} 个` : "";
-    appState.statusMessage = `批量书名：成功 ${okN}${tail}`;
+    const tail = failed.length ? t("project.failTail", { n: failed.length }) : "";
+    appState.statusMessage = `${t("project.bulkTitleResult", { n: okN })}${tail}`;
     if (failed.length) error.value = failed.slice(0, 5).join("\n");
   } finally {
     bulkBusy.value = false;
@@ -309,9 +310,9 @@ async function onBulkForget() {
   if (!paths.length || bulkBusy.value) return;
   error.value = "";
   if (
-    !(await appConfirmDelete(`从最近列表移除已选 ${paths.length} 部作品？`, {
-      title: "批量移除",
-      confirmText: "移除",
+    !(await appConfirmDelete(t("project.bulkForgetQ", { n: paths.length }), {
+      title: t("project.bulkForgetTitle"),
+      confirmText: t("project.remove"),
     }))
   ) {
     return;
@@ -323,7 +324,7 @@ async function onBulkForget() {
     }
     clearActiveProjectIfNeeded(paths);
     selectedPaths.value = [];
-    appState.statusMessage = `已从列表移除 ${paths.length} 部作品`;
+    appState.statusMessage = t("project.bulkForgetDone", { n: paths.length });
   } catch (e) {
     error.value = String(e.message || e);
   } finally {
@@ -337,13 +338,10 @@ async function onBulkPurge() {
   if (!paths.length || bulkBusy.value) return;
   error.value = "";
   if (
-    !(await appConfirmDelete(
-      `彻底删除已选 ${paths.length} 部作品目录？\n磁盘文件不可恢复；无 project.json 或受保护路径会跳过。`,
-      {
-        title: "批量彻底删除",
-        confirmText: "彻底删除",
-      }
-    ))
+    !(await appConfirmDelete(t("project.bulkPurgeQ", { n: paths.length }), {
+      title: t("project.bulkPurgeTitle"),
+      confirmText: t("project.purge"),
+    }))
   ) {
     return;
   }
@@ -363,35 +361,34 @@ async function onBulkPurge() {
     clearActiveProjectIfNeeded(paths);
     await refreshSettings();
     selectedPaths.value = selectedPaths.value.filter((p) => !paths.includes(p));
-    const tail = failed.length ? `；失败 ${failed.length} 个` : "";
-    appState.statusMessage = `已彻底删除 ${purged} 部作品${tail}`;
+    const tail = failed.length ? t("project.failTail", { n: failed.length }) : "";
+    appState.statusMessage = `${t("project.bulkPurgeDone", { n: purged })}${tail}`;
     if (failed.length) error.value = failed.slice(0, 5).join("\n");
   } finally {
     bulkBusy.value = false;
   }
 }
 
-const EMPTY_CONTENT_MSG = "内容太少，请先写全书大纲、章纲或正文再生成书名";
+function emptyContentMsg() {
+  return t("project.emptyContent");
+}
 
 /** 空内容作品：提示是否彻底删除 */
 async function offerPurgeEmptyProject(item, path) {
-  const name = (item && item.title) || "未命名小说";
-  const purge = await appConfirmDelete(
-    `「${name}」几乎没有任何大纲或正文，无法 AI 生成书名。\n\n是否彻底删除该作品目录？不可恢复。`,
-    {
-      title: "空内容作品",
-      confirmText: "彻底删除",
-    }
-  );
+  const name = (item && item.title) || t("project.untitled");
+  const purge = await appConfirmDelete(t("project.emptyPurgeQ", { name }), {
+    title: t("project.emptyWorkTitle"),
+    confirmText: t("project.purge"),
+  });
   if (!purge) {
-    error.value = EMPTY_CONTENT_MSG;
+    error.value = emptyContentMsg();
     return;
   }
   await project.deleteProject(path, { purge: true });
   clearActiveProjectIfNeeded([path]);
   selectedPaths.value = selectedPaths.value.filter((p) => p !== path);
   await refreshSettings();
-  appState.statusMessage = `已彻底删除空内容作品：${name}`;
+  appState.statusMessage = t("project.emptyPurged", { name });
 }
 
 /** AI 根据内容生成书名，确认后写入 */
@@ -409,17 +406,14 @@ async function onSuggestTitle(item, ev) {
     }
     const r = await project.suggestBookTitle(path);
     const next = (r && r.title) || "";
-    if (!next) throw new Error("未生成书名");
-    const prev = (r && r.previous_title) || item.title || "未命名小说";
-    const choice = await appConfirm(
-      `建议书名：「${next}」\n当前：「${prev}」\n\n「应用」只改书名；「应用并重命名文件夹」会同步改目录名（重名自动加 2、3…）。`,
-      {
-        title: "AI 生成书名",
-        confirmText: "应用",
-        cancelText: "不用",
-        extraText: "应用并重命名文件夹",
-      }
-    );
+    if (!next) throw new Error(t("project.noTitleGenerated"));
+    const prev = (r && r.previous_title) || item.title || t("project.untitled");
+    const choice = await appConfirm(t("project.suggestTitleQ", { next, prev }), {
+      title: t("project.suggestTitleTitle"),
+      confirmText: t("project.apply"),
+      cancelText: t("project.decline"),
+      extraText: t("project.applyAndRename"),
+    });
     if (!choice) return;
     const renameFolder = choice === "extra";
     const applied = await project.applyBookTitle(path, next, { renameFolder });
@@ -427,15 +421,20 @@ async function onSuggestTitle(item, ev) {
     if (renameFolder && applied && applied.folder_renamed) {
       const folder = applied.folder_name || next;
       selectedPaths.value = selectedPaths.value.map((p) => (p === path ? applied.root : p));
-      appState.statusMessage = `已更新书名并重命名文件夹：${folder}`;
+      appState.statusMessage = t("project.titleRenamedFolder", { folder });
     } else if (renameFolder && applied && !applied.folder_renamed) {
-      appState.statusMessage = `已更新书名（文件夹已是「${applied.folder_name || next}」）`;
+      appState.statusMessage = t("project.titleFolderSame", {
+        folder: applied.folder_name || next,
+      });
     } else {
-      appState.statusMessage = `已更新书名：${next}`;
+      appState.statusMessage = t("project.titleUpdated", { title: next });
     }
   } catch (e) {
     const msg = String(e.message || e);
-    if (msg.includes("内容太少")) {
+    if (
+      msgMatchesKey(msg, "project.emptyContent") ||
+      /内容太少|Too little content|少なすぎ/.test(msg)
+    ) {
       await offerPurgeEmptyProject(item, path);
       return;
     }
@@ -461,7 +460,7 @@ async function onSaveGoal() {
 async function onExportTxt() {
   error.value = "";
   if (!appState.projectRoot) {
-    error.value = "请先打开作品";
+    error.value = t("project.needProject");
     return;
   }
   try {
@@ -471,7 +470,7 @@ async function onExportTxt() {
       .trim() || "novel";
     const out = `${picked.path}\\${stem}.txt`;
     await project.exportTxt(out);
-    appState.statusMessage = `已导出 TXT：${out}`;
+    appState.statusMessage = t("project.exported", { label: "TXT", path: out });
   } catch (e) {
     error.value = String(e.message || e);
   }
@@ -480,7 +479,7 @@ async function onExportTxt() {
 async function onExportPdf() {
   error.value = "";
   if (!appState.projectRoot) {
-    error.value = "请先打开作品";
+    error.value = t("project.needProject");
     return;
   }
   try {
@@ -490,7 +489,7 @@ async function onExportPdf() {
       .trim() || "novel";
     const out = `${picked.path}\\${stem}.pdf`;
     await project.exportPdf(out);
-    appState.statusMessage = `已导出 PDF：${out}`;
+    appState.statusMessage = t("project.exported", { label: "PDF", path: out });
   } catch (e) {
     error.value = String(e.message || e);
   }
@@ -499,7 +498,7 @@ async function onExportPdf() {
 async function onExportEpub() {
   error.value = "";
   if (!appState.projectRoot) {
-    error.value = "请先打开作品";
+    error.value = t("project.needProject");
     return;
   }
   try {
@@ -509,7 +508,7 @@ async function onExportEpub() {
       .trim() || "novel";
     const out = `${picked.path}\\${stem}.epub`;
     await project.exportEpub(out);
-    appState.statusMessage = `已导出 EPUB：${out}`;
+    appState.statusMessage = t("project.exported", { label: "EPUB", path: out });
   } catch (e) {
     error.value = String(e.message || e);
   }
@@ -518,14 +517,16 @@ async function onExportEpub() {
 async function onExportBackup() {
   error.value = "";
   if (!appState.projectRoot) {
-    error.value = "请先打开作品";
+    error.value = t("project.needProject");
     return;
   }
   try {
     const r = await project.exportProjectBackup(appState.projectRoot);
     const file = await project.readExportFileBase64(r.path);
     project.downloadBase64File(file.filename || r.filename, file.base64, "application/zip");
-    appState.statusMessage = `已导出备份：${file.filename || r.filename}`;
+    appState.statusMessage = t("project.exportedBackup", {
+      name: file.filename || r.filename,
+    });
   } catch (e) {
     error.value = String(e.message || e);
   }
@@ -547,7 +548,9 @@ async function onImportBackupFile(ev) {
     await refreshStats();
     appState.activeNav = "editor";
     if (appState.chapterId) await project.loadChapter(appState.chapterId);
-    appState.statusMessage = `已导入：${(r.project && r.project.title) || "作品"}`;
+    appState.statusMessage = t("project.importedBackup", {
+      title: (r.project && r.project.title) || t("nav.project"),
+    });
   } catch (e) {
     error.value = String(e.message || e);
   }
@@ -590,14 +593,18 @@ const heatDays = computed(() => {
   }
   return out;
 });
+
+function heatCellTitle(d) {
+  return t("project.heatCell", { date: d.key, n: d.n });
+}
 </script>
 
 <template>
   <section class="panel">
     <div class="page-head">
       <div>
-        <h1 class="panel-heading">作品</h1>
-        <p class="muted">以卡片打开写作作品；点「+」新建。可用「导入目录下作品」批量登记；正文导入请到「知识库」。</p>
+        <h1 class="panel-heading">{{ $t("project.title") }}</h1>
+        <p class="muted">{{ $t("project.intro") }}</p>
       </div>
       <div class="head-actions">
         <button
@@ -606,25 +613,25 @@ const heatDays = computed(() => {
           class="app-btn"
           @click="onBrowseOpen"
         >
-          打开其它目录
+          {{ $t("project.openOther") }}
         </button>
         <button
           v-if="!mobileUx"
           type="button"
           class="app-btn"
-          title="选择父目录，自动发现并登记其下所有含 project.json 的作品"
+          :title="$t('project.importDirHint')"
           @click="onImportDirectoryProjects"
         >
-          导入目录下作品
+          {{ $t("project.importDir") }}
         </button>
-        <button type="button" class="app-btn" @click="onImportBackupPick">导入备份</button>
+        <button type="button" class="app-btn" @click="onImportBackupPick">{{ $t("project.importBackup") }}</button>
         <button
           type="button"
           class="app-btn"
           :disabled="!appState.projectRoot"
           @click="onExportBackup"
         >
-          导出备份
+          {{ $t("project.exportBackup") }}
         </button>
         <button
           v-if="!mobileUx"
@@ -632,7 +639,7 @@ const heatDays = computed(() => {
           class="app-btn"
           @click="appState.activeNav = 'knowledge'"
         >
-          去知识库导入
+          {{ $t("project.gotoKb") }}
         </button>
         <button
           v-if="!mobileUx"
@@ -641,7 +648,7 @@ const heatDays = computed(() => {
           :disabled="!appState.projectRoot"
           @click="onExportTxt"
         >
-          导出 TXT
+          {{ $t("project.exportTxt") }}
         </button>
         <button
           v-if="!mobileUx"
@@ -650,7 +657,7 @@ const heatDays = computed(() => {
           :disabled="!appState.projectRoot"
           @click="onExportPdf"
         >
-          导出 PDF
+          {{ $t("project.exportPdf") }}
         </button>
         <button
           v-if="!mobileUx"
@@ -659,7 +666,7 @@ const heatDays = computed(() => {
           :disabled="!appState.projectRoot"
           @click="onExportEpub"
         >
-          导出 EPUB
+          {{ $t("project.exportEpub") }}
         </button>
         <input
           ref="backupInput"
@@ -678,11 +685,11 @@ const heatDays = computed(() => {
         :class="{ 'app-btn-primary': selectMode }"
         @click="toggleSelectMode"
       >
-        {{ selectMode ? "完成多选" : "多选" }}
+        {{ selectMode ? $t("project.doneSelect") : $t("project.multiSelect") }}
       </button>
       <template v-if="selectMode">
         <span class="select-hint muted">
-          已选 {{ selectedCount }} / {{ recentList.length }}
+          {{ $t("project.selectedCount", { n: selectedCount, total: recentList.length }) }}
         </span>
         <button
           type="button"
@@ -690,7 +697,7 @@ const heatDays = computed(() => {
           :disabled="bulkBusy || !recentList.length"
           @click="allSelected ? clearSelection() : selectAllRecent()"
         >
-          {{ allSelected ? "取消全选" : "全选" }}
+          {{ allSelected ? $t("project.deselectAll") : $t("project.selectAll") }}
         </button>
         <button
           type="button"
@@ -698,7 +705,7 @@ const heatDays = computed(() => {
           :disabled="bulkBusy || selectedCount < 1"
           @click="onBulkSuggestTitles"
         >
-          {{ bulkBusy ? "处理中…" : "AI 生成名称" }}
+          {{ bulkBusy ? $t("common.processing") : $t("project.aiTitle") }}
         </button>
         <button
           type="button"
@@ -706,7 +713,7 @@ const heatDays = computed(() => {
           :disabled="bulkBusy || selectedCount < 1"
           @click="onBulkForget"
         >
-          从列表移除
+          {{ $t("project.removeFromList") }}
         </button>
         <button
           type="button"
@@ -714,7 +721,7 @@ const heatDays = computed(() => {
           :disabled="bulkBusy || selectedCount < 1"
           @click="onBulkPurge"
         >
-          彻底删除
+          {{ $t("project.purge") }}
         </button>
       </template>
     </div>
@@ -722,7 +729,7 @@ const heatDays = computed(() => {
     <div class="work-grid">
       <button type="button" class="work-bar work-bar-add" @click="openCreateDialog">
         <span class="plus" aria-hidden="true">+</span>
-        <span class="add-label">新建作品</span>
+        <span class="add-label">{{ $t("project.newWork") }}</span>
       </button>
 
       <button
@@ -745,23 +752,23 @@ const heatDays = computed(() => {
         />
         <div class="bar-body">
           <div class="bar-head">
-            <span class="row-badge">小说</span>
-            <span v-if="isActive(item.path)" class="row-active-tag">当前</span>
+            <span class="row-badge">{{ $t("project.novel") }}</span>
+            <span v-if="isActive(item.path)" class="row-active-tag">{{ $t("project.current") }}</span>
             <div v-if="!selectMode" class="row-actions" @click.stop>
               <span
                 class="card-ai-title"
                 :class="{ busy: titleBusy[item.path] }"
-                title="AI 根据内容重新生成书名"
+                :title="$t('project.aiTitleHint')"
                 @click="onSuggestTitle(item, $event)"
               >{{ titleBusy[item.path] ? "…" : "AI" }}</span>
               <span
                 class="card-forget"
-                title="从列表移除"
+                :title="$t('project.removeFromList')"
                 @click="onForget(item.path, $event)"
               >×</span>
             </div>
           </div>
-          <span class="row-title">{{ item.title || "未命名小说" }}</span>
+          <span class="row-title">{{ item.title || $t("project.untitled") }}</span>
           <span class="row-path muted">{{ shortPath(item.path) }}</span>
         </div>
       </button>
@@ -774,29 +781,29 @@ const heatDays = computed(() => {
       @click="createBackdrop.onClick"
     >
       <div class="create-dialog">
-        <h2>新建作品</h2>
+        <h2>{{ $t("project.newWork") }}</h2>
         <p class="muted">
-          默认创建在软件运行目录下的
+          {{ $t("project.createHintBefore") }}
           <code>novels</code>
-          文件夹；每本书单独一夹，重名自动加数字（如「书名2」）。
+          {{ $t("project.createHintAfter") }}
         </p>
         <p v-if="novelsDirHint" class="muted novels-hint" :title="novelsDirHint">
-          当前路径：{{ novelsDirHint }}
+          {{ $t("project.currentPath", { path: novelsDirHint }) }}
         </p>
         <div class="field">
-          <label class="field-label">新书书名</label>
-          <input v-model="title" type="text" placeholder="书名" @keydown.enter.prevent="onCreateConfirm" />
+          <label class="field-label">{{ $t("project.bookTitle") }}</label>
+          <input v-model="title" type="text" :placeholder="$t('project.bookTitlePh')" @keydown.enter.prevent="onCreateConfirm" />
         </div>
         <div class="dialog-actions">
-          <button type="button" class="app-btn" @click="showCreate = false">取消</button>
+          <button type="button" class="app-btn" @click="showCreate = false">{{ $t("common.cancel") }}</button>
           <button
             type="button"
             class="app-btn"
             :disabled="creating"
-            title="自行选择空目录创建"
+            :title="$t('project.pickDirHint')"
             @click="onCreateInPickedDir"
           >
-            自选目录…
+            {{ $t("project.pickDir") }}
           </button>
           <button
             type="button"
@@ -804,67 +811,80 @@ const heatDays = computed(() => {
             :disabled="creating"
             @click="onCreateConfirm"
           >
-            {{ creating ? "创建中…" : "创建" }}
+            {{ creating ? $t("project.creating") : $t("common.create") }}
           </button>
         </div>
       </div>
     </div>
 
     <div v-if="appState.projectRoot && dash" class="stats-block">
-      <h2 class="sub-head">叙事仪表盘</h2>
+      <h2 class="sub-head">{{ $t("project.dashTitle") }}</h2>
       <p class="muted">
-        当前故事日：{{ dash.current_story_time || "（无）" }} ·
-        未回收承诺 {{ dash.open_promises ?? 0 }} ·
-        锁定 Canon {{ dash.locked_canon ?? 0 }} ·
-        关系边 {{ dash.edge_count ?? 0 }} ·
-        事件 {{ dash.event_count ?? 0 }}
+        {{
+          $t("project.dashLine", {
+            time: dash.current_story_time || $t("common.none"),
+            promises: dash.open_promises ?? 0,
+            canon: dash.locked_canon ?? 0,
+            edges: dash.edge_count ?? 0,
+            events: dash.event_count ?? 0,
+          })
+        }}
       </p>
       <p v-if="dash.main_arc" class="muted">
-        主线：{{ dash.main_arc.title }}（{{ dash.main_arc.status }}）— {{ dash.main_arc.progress_note || "无进度备注" }}
+        {{
+          $t("project.mainArc", {
+            title: dash.main_arc.title,
+            status: dash.main_arc.status,
+            note: dash.main_arc.progress_note || $t("project.noProgressNote"),
+          })
+        }}
       </p>
       <ul v-if="dash.active_arcs && dash.active_arcs.length" class="arc-list">
         <li v-for="a in dash.active_arcs" :key="a.id">
           [{{ a.kind }}] {{ a.title }} · {{ a.status }}
         </li>
       </ul>
-      <button type="button" class="app-btn" @click="appState.activeNav = 'story'">打开总谱</button>
+      <button type="button" class="app-btn" @click="appState.activeNav = 'story'">{{ $t("project.openStory") }}</button>
     </div>
 
     <div v-if="appState.projectRoot" class="stats-block">
-      <h2 class="sub-head">码字看板</h2>
+      <h2 class="sub-head">{{ $t("project.statsTitle") }}</h2>
       <p v-if="appState.usageSummary && appState.usageSummary.global" class="muted">
-        Token 累计：全局
         {{
-          appState.usageSummary.global.total_tokens ||
-          (appState.usageSummary.global.prompt_tokens || 0) +
-            (appState.usageSummary.global.completion_tokens || 0)
+          $t("project.tokenGlobal", {
+            tokens:
+              appState.usageSummary.global.total_tokens ||
+              (appState.usageSummary.global.prompt_tokens || 0) +
+                (appState.usageSummary.global.completion_tokens || 0),
+            cost: Number(appState.usageSummary.global.cost_cny || 0).toFixed(4),
+          })
         }}
-        tok · ¥{{ Number(appState.usageSummary.global.cost_cny || 0).toFixed(4) }}
         <span v-if="appState.usageSummary.project">
-          · 本作品
           {{
-            (appState.usageSummary.project.prompt_tokens || 0) +
-            (appState.usageSummary.project.completion_tokens || 0)
+            $t("project.tokenProject", {
+              tokens:
+                (appState.usageSummary.project.prompt_tokens || 0) +
+                (appState.usageSummary.project.completion_tokens || 0),
+            })
           }}
-          tok
         </span>
       </p>
-      <p class="muted">今日 {{ todayChars }} / 目标 {{ goal }} 字（{{ progressPct }}%）</p>
+      <p class="muted">{{ $t("project.todayGoal", { today: todayChars, goal, pct: progressPct }) }}</p>
       <div class="bar">
         <div class="bar-fill" :style="{ width: progressPct + '%' }" />
       </div>
       <div class="goal-row">
         <input v-model.number="goalInput" type="number" min="100" step="100" />
-        <button type="button" class="app-btn" @click="onSaveGoal">保存日目标</button>
-        <button type="button" class="app-btn" @click="refreshStats">刷新统计</button>
+        <button type="button" class="app-btn" @click="onSaveGoal">{{ $t("project.saveGoal") }}</button>
+        <button type="button" class="app-btn" @click="refreshStats">{{ $t("project.refreshStats") }}</button>
       </div>
-      <div class="heat" title="近 12 周码字热力">
+      <div class="heat" :title="$t('project.heatTitle')">
         <div
           v-for="d in heatDays"
           :key="d.key"
           class="heat-cell"
           :class="'lv' + d.level"
-          :title="`${d.key}: ${d.n} 字`"
+          :title="heatCellTitle(d)"
         />
       </div>
     </div>

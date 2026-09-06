@@ -39,6 +39,11 @@ import {
   trailingVisibleJobs,
   visibleGenJobs,
 } from "../stores/genJobs.js";
+import { t, tLocale } from "../i18n/index.js";
+
+function writingT(key, values) {
+  return tLocale(appState.settings?.writing_locale || "zh-CN", key, values);
+}
 
 /** 用户停止滚动多久后才自动写入（避免正看着预览时被换壳打断） */
 const SCROLL_IDLE_MS = 1400;
@@ -166,7 +171,7 @@ export async function rejectJob(jobOrId) {
     discardJob(job);
     refreshLegacyFromJobs();
   }
-  appState.statusMessage = "已取消生成";
+  appState.statusMessage = t("status.cancelled");
 }
 
 /** 取消全部编辑区生成（面板「取消」） */
@@ -192,7 +197,7 @@ export async function rejectDraft() {
   clearDraftPreview();
   appState.genProgressPct = 0;
   appState.genStreamChars = 0;
-  appState.statusMessage = "已取消生成";
+  appState.statusMessage = t("status.cancelled");
 }
 
 function ensureBlockList() {
@@ -209,7 +214,7 @@ async function saveAfterWrite(okMessage) {
     await saveChapter();
     appState.statusMessage = okMessage;
   } catch (e) {
-    appState.statusMessage = `${okMessage}，但保存失败：${e.message || e}`;
+    appState.statusMessage = t("draft.saveFailed", { ok: okMessage, msg: e.message || e });
   }
 }
 
@@ -439,15 +444,15 @@ async function acceptDraftInner(jobOrNull) {
   const job = jobOrNull || null;
   if (job) {
     if (job.status === "pending" || job.status === "streaming") {
-      return { ok: false, error: "还在生成中。" };
+      return { ok: false, error: t("draft.stillGenerating") };
     }
     if (job.accepted) return { ok: true };
   } else if (appState.generating && activeJobCount() > 0) {
-    return { ok: false, error: "还在生成中。" };
+    return { ok: false, error: t("draft.stillGenerating") };
   }
 
   const body = draftBody(job);
-  if (!body) return { ok: false, error: "没有可写入的正文。" };
+  if (!body) return { ok: false, error: t("draft.noBody") };
 
   const task = (job ? job.draftTask : appState.draftTask) || "continue";
   const sel = ((job ? job.draftSelection : appState.draftSelection) || "").trim();
@@ -475,7 +480,7 @@ async function acceptDraftInner(jobOrNull) {
   const rid = (job && job.requestId) || appState.lastRequestId || "";
 
   if (task === "polish" && sel && !rewriteKey) {
-    await pushAiUndo("润色写入");
+    await pushAiUndo(t("draft.undoPolish"));
     let polishedKey = "";
     let polishedText = "";
     await commitEditorWrite(() => {
@@ -507,7 +512,7 @@ async function acceptDraftInner(jobOrNull) {
         syncBranchDocFromEditor();
       }
       return polishedKey;
-    }, "润色已写入并保存", job);
+    }, t("draft.polishSaved"), job);
     if (rid) acceptedRequestIds.add(rid);
     if (polishedKey) {
       void import("./blockDigest.js").then(async (m) => {
@@ -542,7 +547,7 @@ async function acceptDraftInner(jobOrNull) {
 
   // 同节点新变体
   if (branchMode === "variant" && branchNodeId) {
-    await pushAiUndo("生成变体");
+    await pushAiUndo(t("draft.undoVariant"));
     let writtenKey = "";
     await commitEditorWrite(() => {
       const doc = ensureBranchDoc();
@@ -555,7 +560,7 @@ async function acceptDraftInner(jobOrNull) {
       writtenKey = variant?.key || "";
       applyDocAndProject(next);
       return writtenKey;
-    }, "变体已写入并保存", job);
+    }, t("draft.variantSaved"), job);
     if (rid) acceptedRequestIds.add(rid);
     if (writtenKey) {
       void import("./blockDigest.js").then((m) =>
@@ -568,7 +573,7 @@ async function acceptDraftInner(jobOrNull) {
 
   // 从当前变体岔开子节点
   if (branchMode === "fork" && branchNodeId) {
-    await pushAiUndo("岔开分支");
+    await pushAiUndo(t("draft.undoFork"));
     let writtenKey = "";
     await commitEditorWrite(() => {
       const doc = ensureBranchDoc();
@@ -576,12 +581,12 @@ async function acceptDraftInner(jobOrNull) {
         doc,
         branchNodeId,
         forkFromVariantId || null,
-        variantFromGenBlock(createGenBlock(meta, body), { label: "变体1" })
+        variantFromGenBlock(createGenBlock(meta, body), { label: t("draft.variant1") })
       );
       writtenKey = variant?.key || "";
       applyDocAndProject(next);
       return writtenKey;
-    }, "分支已岔开并保存", job);
+    }, t("draft.forkSaved"), job);
     if (rid) acceptedRequestIds.add(rid);
     if (writtenKey) {
       void import("./blockDigest.js").then((m) =>
@@ -593,7 +598,7 @@ async function acceptDraftInner(jobOrNull) {
   }
 
   if (rewriteKey) {
-    await pushAiUndo("重写生成块");
+    await pushAiUndo(t("draft.undoRewrite"));
     const hit = findNodeByBlockKey(ensureBranchDoc(), rewriteKey);
     if (hit) {
       let writtenKey = rewriteKey;
@@ -608,7 +613,7 @@ async function acceptDraftInner(jobOrNull) {
         writtenKey = hit.variant.key;
         applyDocAndProject(next);
         return writtenKey;
-      }, "已重写该段并保存", job);
+      }, t("draft.rewriteSaved"), job);
       if (rid) acceptedRequestIds.add(rid);
       void import("./blockDigest.js").then(async (m) => {
         await m.removeBlockNote(writtenKey);
@@ -638,7 +643,7 @@ async function acceptDraftInner(jobOrNull) {
         appState.chapterContent = contentFromBlocks(blocks);
         appState.chapterBranchDoc = migrateBlocksToBranchDoc(blocks);
         return writtenKey;
-      }, "已重写该段并保存", job);
+      }, t("draft.rewriteSaved"), job);
       if (rid) acceptedRequestIds.add(rid);
       void import("./blockDigest.js").then(async (m) => {
         await m.removeBlockNote(writtenKey);
@@ -654,18 +659,18 @@ async function acceptDraftInner(jobOrNull) {
   }
 
   const gen = createGenBlock(meta, body);
-  await pushAiUndo("生成写入");
+  await pushAiUndo(t("draft.undoWrite"));
   let writtenKey = gen.key;
   await commitEditorWrite(() => {
     const doc = ensureBranchDoc();
     const { doc: next } = appendOnActivePath(
       doc,
-      variantFromGenBlock(gen, { label: "变体1" })
+      variantFromGenBlock(gen, { label: t("draft.variant1") })
     );
     applyDocAndProject(next);
     writtenKey = gen.key;
     return gen.key;
-  }, "生成已写入并保存", job);
+  }, t("draft.writeSaved"), job);
   if (rid) acceptedRequestIds.add(rid);
   if (job) job.lastWrittenBlockKey = writtenKey;
   void import("./blockDigest.js").then((m) =>
@@ -712,7 +717,7 @@ export async function autoAcceptDraftIfNeeded() {
   const sinceScroll = lastUserScrollAt ? Date.now() - lastUserScrollAt : SCROLL_IDLE_MS;
   if (sinceScroll < SCROLL_IDLE_MS) {
     const wait = SCROLL_IDLE_MS - sinceScroll + 40;
-    appState.statusMessage = "生成完毕，阅读中…停滚后自动写入";
+    appState.statusMessage = t("draft.reading");
     scheduleDeferredAutoAccept(wait);
     return;
   }
@@ -742,7 +747,7 @@ export async function autoAcceptJobIfNeeded(job) {
   const sinceScroll = lastUserScrollAt ? Date.now() - lastUserScrollAt : SCROLL_IDLE_MS;
   if (sinceScroll < SCROLL_IDLE_MS) {
     const wait = SCROLL_IDLE_MS - sinceScroll + 40;
-    appState.statusMessage = "生成完毕，阅读中…停滚后自动写入";
+    appState.statusMessage = t("draft.reading");
     scheduleDeferredAutoAccept(wait, job);
     return;
   }
@@ -760,7 +765,7 @@ export async function deleteGenBlock(blockKey) {
     const { deleteIllustrationBlock } = await import("./illustration.js");
     return await deleteIllustrationBlock(blockKey);
   }
-  await pushAiUndo("删除生成块");
+  await pushAiUndo(t("draft.undoDelete"));
   const doc = ensureBranchDoc();
   const hit = findNodeByBlockKey(doc, blockKey);
   if (hit) {
@@ -791,7 +796,7 @@ export async function deleteGenBlock(blockKey) {
       /* ignore */
     }
   }
-  appState.statusMessage = "已删除生成块（记忆已同步清除，未保存）";
+  appState.statusMessage = t("draft.deleted");
   return true;
 }
 
@@ -815,24 +820,18 @@ export function buildSameSlotVariantInstruction(baseInstr, opts = {}) {
   const base = String(baseInstr || "").trim();
   const prevDigest = String((opts && opts.prevDigest) || "").trim();
   const parts = [
-    "【任务类型：同位置完全重写】不要参照、改写、扩写或模仿已有正文/旧变体；仅按本块创作指令从零重写本节。",
-    "禁止续写后续、禁止推进到下一场；禁止把旧稿当底稿润色。",
-    "须达到或超出规定字数，禁止短于目标。",
+    writingT("draft.instrRewriteHeader"),
+    writingT("draft.instrNoContinue"),
+    writingT("draft.instrLength"),
   ];
   if (base) {
-    parts.push(
-      "创作依据：仅使用下方「本块创作指令」。不要阅读、复述或沿用任何已有正文、旧变体或上一节总结。"
-    );
-    parts.push(`本块创作指令（须严格遵守，按此从零重写）：\n${base}`);
+    parts.push(writingT("draft.instrUseOnly"));
+    parts.push(writingT("draft.instrOwn", { base }));
   } else if (prevDigest) {
-    parts.push(
-      "本块没有独立创作指令：请依据「上一节总结」在同一故事位置从零另写一节，人物与文风一致，细节可不同；仍禁止续写下一场。"
-    );
-    parts.push(`上一节总结：\n${prevDigest}`);
+    parts.push(writingT("draft.instrFromDigest"));
+    parts.push(writingT("draft.instrPrev", { digest: prevDigest }));
   } else {
-    parts.push(
-      "本块无指令、亦无上一节总结：在同位置从零另写一版，人物与文风一致，细节与走向可以不同；禁止续写下一场。"
-    );
+    parts.push(writingT("draft.instrBlank"));
   }
   return parts.join("\n");
 }
@@ -844,14 +843,14 @@ export function buildSameSlotVariantInstruction(baseInstr, opts = {}) {
  */
 export async function rewriteGenBlock(blockKey, opts = {}) {
   if (!blockKey || !appState.projectRoot || !appState.chapterId) {
-    throw new Error("无法重写：缺少作品或章节");
+    throw new Error(t("draft.needRewrite"));
   }
   if (!canStartMoreJobs(1)) {
-    throw new Error(`最多同时 ${MAX_PARALLEL_GEN} 路生成，请等一路完成或取消`);
+    throw new Error(t("draft.maxJobs", { n: MAX_PARALLEL_GEN }));
   }
   const block = (appState.chapterBlocks || []).find((b) => b.key === blockKey);
   if (!block || block.type !== "gen") {
-    throw new Error("未找到该生成块");
+    throw new Error(t("draft.blockMissing"));
   }
   if (appState.dirty) await saveChapter();
 
@@ -895,16 +894,16 @@ export async function rewriteGenBlock(blockKey, opts = {}) {
  */
 export async function generateVariantBlock(blockKey, opts = {}) {
   if (!blockKey || !appState.projectRoot || !appState.chapterId) {
-    throw new Error("无法生成变体：缺少作品或章节");
+    throw new Error(t("draft.needVariant"));
   }
   const want = Math.max(1, Math.min(MAX_PARALLEL_GEN, Number(opts.count) || 1));
   if (!canStartMoreJobs(want)) {
     throw new Error(
-      `最多同时 ${MAX_PARALLEL_GEN} 路（当前已有 ${activeJobCount()}），请等一路完成或取消`
+      t("draft.maxJobsCur", { n: MAX_PARALLEL_GEN, cur: activeJobCount() })
     );
   }
   const hit = findNodeByBlockKey(ensureBranchDoc(), blockKey);
-  if (!hit) throw new Error("未找到该生成块节点");
+  if (!hit) throw new Error(t("draft.nodeMissing"));
   if (appState.dirty) await saveChapter();
 
   const instr = String((opts && opts.instruction) || "").trim();
@@ -938,7 +937,7 @@ export async function generateVariantBlock(blockKey, opts = {}) {
 
   if (want === 1) {
     await runWriting(request, {
-      label: "变体",
+      label: t("draft.variant"),
       activateVariant: opts.activateVariant !== false,
     });
     return;
@@ -947,7 +946,7 @@ export async function generateVariantBlock(blockKey, opts = {}) {
   const tasks = [];
   for (let i = 0; i < want; i++) {
     const job = createGenJob({
-      label: `变体${i + 1}`,
+      label: t("draft.variantN", { n: i + 1 }),
       activateVariant: i === want - 1,
     });
     tasks.push(
@@ -961,10 +960,13 @@ export async function generateVariantBlock(blockKey, opts = {}) {
   const results = await Promise.allSettled(tasks);
   const failed = results.filter((r) => r.status === "rejected");
   if (failed.length === want) {
-    throw failed[0].reason || new Error("并发生成全部失败");
+    throw failed[0].reason || new Error(t("draft.allFailed"));
   }
   if (failed.length) {
-    appState.statusMessage = `并发生成：${want - failed.length} 路成功，${failed.length} 路失败`;
+    appState.statusMessage = t("draft.partialFail", {
+      ok: want - failed.length,
+      fail: failed.length,
+    });
   }
 }
 
@@ -975,13 +977,13 @@ export async function generateVariantBlock(blockKey, opts = {}) {
  */
 export async function forkFromBlock(blockKey, opts = {}) {
   if (!blockKey || !appState.projectRoot || !appState.chapterId) {
-    throw new Error("无法岔开：缺少作品或章节");
+    throw new Error(t("draft.needFork"));
   }
   if (!canStartMoreJobs(1)) {
-    throw new Error(`最多同时 ${MAX_PARALLEL_GEN} 路生成，请等一路完成或取消`);
+    throw new Error(t("draft.maxJobs", { n: MAX_PARALLEL_GEN }));
   }
   const hit = findNodeByBlockKey(ensureBranchDoc(), blockKey);
-  if (!hit) throw new Error("未找到该生成块节点");
+  if (!hit) throw new Error(t("draft.nodeMissing"));
   if (appState.dirty) await saveChapter();
 
   const instr = String((opts && opts.instruction) || "").trim();
@@ -994,8 +996,7 @@ export async function forkFromBlock(blockKey, opts = {}) {
   appState.draftBranchNodeId = hit.node.id;
   appState.draftForkFromVariantId = hit.variant.id;
   appState.draftInstruction =
-    instr ||
-    "从此处岔开续写：承接上文，写出与主线可并行的下一段。禁止复述前文已写句子。";
+    instr || writingT("draft.forkInstr");
   appState.pendingScrollBlockKey = blockKey;
 
   await runWriting(
@@ -1020,14 +1021,14 @@ export async function forkFromBlock(blockKey, opts = {}) {
  */
 export async function polishGenBlock(blockKey, opts = {}) {
   if (!blockKey || !appState.projectRoot || !appState.chapterId) {
-    throw new Error("无法润色：缺少作品或章节");
+    throw new Error(t("draft.needPolish"));
   }
   if (!canStartMoreJobs(1)) {
-    throw new Error(`最多同时 ${MAX_PARALLEL_GEN} 路生成，请等一路完成或取消`);
+    throw new Error(t("draft.maxJobs", { n: MAX_PARALLEL_GEN }));
   }
   const block = (appState.chapterBlocks || []).find((b) => b.key === blockKey);
   if (!block || block.type !== "gen") {
-    throw new Error("未找到该生成块");
+    throw new Error(t("draft.blockMissing"));
   }
   if (appState.dirty) await saveChapter();
 
@@ -1042,7 +1043,7 @@ export async function polishGenBlock(blockKey, opts = {}) {
   appState.pendingScrollBlockKey = blockKey;
   appState.draftForkFromVariantId = "";
   appState.draftInstruction =
-    instr || "润色本段：保持情节与人物不变，理顺语句，增强画面感，不要扩写新情节。";
+    instr || writingT("draft.polishInstr");
 
   await runWriting({
     project_root: appState.projectRoot,
@@ -1060,5 +1061,5 @@ export function switchBlockVariant(nodeId, variantId) {
   if (!nodeId || !variantId) return;
   const doc = ensureBranchDoc();
   applyDocAndProject(switchVariant(doc, nodeId, variantId));
-  appState.statusMessage = "已切换变体";
+  appState.statusMessage = t("draft.switched");
 }

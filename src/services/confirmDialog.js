@@ -4,14 +4,15 @@
  */
 import { reactive } from "vue";
 import { appState } from "../stores/appState.js";
+import { t } from "../i18n/index.js";
 
 export const confirmState = reactive({
   open: false,
   mode: "confirm", // confirm | alert
-  title: "确认",
+  title: t("common.confirm"),
   message: "",
-  confirmText: "确定",
-  cancelText: "取消",
+  confirmText: t("common.ok"),
+  cancelText: t("common.cancel"),
   extraText: "",
   danger: false,
 });
@@ -46,10 +47,10 @@ export function appConfirm(message, opts = {}) {
     pendingResolve = resolve;
     confirmState.open = true;
     confirmState.mode = "confirm";
-    confirmState.title = opts.title || "确认";
+    confirmState.title = opts.title || t("common.confirm");
     confirmState.message = String(message || "");
-    confirmState.confirmText = opts.confirmText || "确定";
-    confirmState.cancelText = opts.cancelText || "取消";
+    confirmState.confirmText = opts.confirmText || t("common.ok");
+    confirmState.cancelText = opts.cancelText || t("common.cancel");
     confirmState.extraText = opts.extraText || "";
     confirmState.danger = !!opts.danger;
   });
@@ -64,9 +65,9 @@ export function appConfirm(message, opts = {}) {
 export function appConfirmDelete(message, opts = {}) {
   if (isSkipDeleteConfirm()) return Promise.resolve(true);
   return appConfirm(message, {
-    title: opts.title || "确认删除",
-    confirmText: opts.confirmText || "删除",
-    cancelText: opts.cancelText || "取消",
+    title: opts.title || t("common.confirmDelete"),
+    confirmText: opts.confirmText || t("common.delete"),
+    cancelText: opts.cancelText || t("common.cancel"),
     danger: opts.danger !== false,
   });
 }
@@ -85,9 +86,9 @@ export function appAlert(message, opts = {}) {
     pendingResolve = () => resolve();
     confirmState.open = true;
     confirmState.mode = "alert";
-    confirmState.title = opts.title || "提示";
+    confirmState.title = opts.title || t("common.hint");
     confirmState.message = String(message || "");
-    confirmState.confirmText = opts.confirmText || "知道了";
+    confirmState.confirmText = opts.confirmText || t("common.gotIt");
     confirmState.cancelText = "";
     confirmState.extraText = "";
     confirmState.danger = false;

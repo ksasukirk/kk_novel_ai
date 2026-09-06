@@ -1131,9 +1131,10 @@ async fn writing_run_cli(
                 });
             }
             Err(e) => {
-                return Err(AppError::msg(format!(
-                    "{e} 若只要旁路生成，请加 --offline。"
-                )));
+                return Err(AppError::t_fmt(
+                    "errors.cliNeedOffline",
+                    &[("e", &e.to_string())],
+                ));
             }
         }
     }
@@ -1165,7 +1166,7 @@ async fn writing_run_cli(
             crate::project::read_chapter(std::path::Path::new(&req.project_root), &req.chapter_id)?;
         let new_content = if apply == "replace" {
             if req.selection.is_empty() {
-                return Err(AppError::msg("replace 需要 --selection"));
+                return Err(AppError::t("errors.replaceNeedsSelectionFlag"));
             }
             content.replacen(&req.selection, &text, 1)
         } else {

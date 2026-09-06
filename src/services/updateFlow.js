@@ -10,6 +10,7 @@ import {
 } from "./appUpdate.js";
 import { appState } from "../stores/appState.js";
 import { isTauriMobile } from "../utils/platform.js";
+import { t } from "../i18n/index.js";
 
 export const updateFlow = reactive({
   open: false,
@@ -58,7 +59,7 @@ async function runStartupUpdateCheck() {
     const r = await checkAppUpdate();
     if (!r || !r.has_update || !r.latest) return;
     if (!r.download_url && !r.api_download_url) {
-      appState.statusMessage = `有新版本 ${r.latest}，可到设置打开 GitHub Release`;
+      appState.statusMessage = t("update.githubHint", { latest: r.latest });
       return;
     }
     updateFlow.info = r;
@@ -78,7 +79,7 @@ export function dismissUpdateFlow() {
   updateFlow.open = false;
   updateFlow.phase = "prompt";
   if (updateFlow.info && updateFlow.info.latest) {
-    appState.statusMessage = `有新版本 ${updateFlow.info.latest}，可到设置下载`;
+    appState.statusMessage = t("update.settingsHint", { latest: updateFlow.info.latest });
   }
 }
 
@@ -90,7 +91,7 @@ export async function confirmUpdateDownloadAndLaunch() {
   updateFlow.received = 0;
   updateFlow.total = 0;
   updateFlow.startedAt = 0;
-  appState.statusMessage = `正在下载 ${info.latest}…`;
+  appState.statusMessage = t("update.downloading", { latest: info.latest });
   try {
     const r = await downloadAppUpdate(info, (p) => {
       updateFlow.received = Number(p.received) || 0;
@@ -100,13 +101,13 @@ export async function confirmUpdateDownloadAndLaunch() {
       }
     });
     const path = String((r && r.path) || "").trim();
-    if (!path) throw new Error("下载完成但没有文件路径");
+    if (!path) throw new Error(t("update.noPath"));
     updateFlow.phase = "launching";
-    appState.statusMessage = "正在启动新版本…";
+    appState.statusMessage = t("update.launching");
     await launchDownloadedUpdate(path);
   } catch (e) {
     updateFlow.phase = "error";
     updateFlow.error = String(e.message || e);
-    appState.statusMessage = `更新失败：${updateFlow.error}`;
+    appState.statusMessage = t("update.failedMsg", { msg: updateFlow.error });
   }
 }

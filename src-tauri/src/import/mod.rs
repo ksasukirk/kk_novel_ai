@@ -44,9 +44,7 @@ impl ApplyMode {
         match s.trim().to_ascii_lowercase().as_str() {
             "none" | "" => Ok(Self::None),
             "auto" => Ok(Self::Auto),
-            other => Err(AppError::msg(format!(
-                "未知 apply 模式: {other}（none|auto）"
-            ))),
+            other => Err(AppError::t_fmt("errors.unknownApplyMode", &[("mode", other)])),
         }
     }
 }
@@ -102,7 +100,7 @@ fn match_fallback_heading(line: &str) -> Option<String> {
 
 /// 流式按行切章：优先 `===标题===`；若全文无此类标记则回退「第N章」
 pub fn parse_txt_chapters(path: &Path) -> AppResult<Vec<ParsedChapter>> {
-    let file = File::open(path).map_err(|e| AppError::msg(format!("打开 TXT 失败: {e}")))?;
+    let file = File::open(path).map_err(|e| AppError::t_fmt("errors.openTxtFailed", &[("e", &e.to_string())]))?;
     let reader = BufReader::new(file);
     let mut chapters: Vec<ParsedChapter> = Vec::new();
     let mut cur_title: Option<String> = None;
@@ -111,7 +109,7 @@ pub fn parse_txt_chapters(path: &Path) -> AppResult<Vec<ParsedChapter>> {
     let mut all_lines: Vec<String> = Vec::new();
 
     for line in reader.lines() {
-        let line = line.map_err(|e| AppError::msg(format!("读 TXT 失败: {e}")))?;
+        let line = line.map_err(|e| AppError::t_fmt("errors.readTxtFailed", &[("e", &e.to_string())]))?;
         all_lines.push(line.clone());
         if let Some(title) = match_heading(&line) {
             saw_eq = true;
@@ -166,19 +164,17 @@ pub fn parse_txt_chapters(path: &Path) -> AppResult<Vec<ParsedChapter>> {
     }
 
     if chapters.is_empty() {
-        return Err(AppError::msg(
-            "未能切出章节：需要 ===标题=== 或「第N章」行首标记",
-        ));
+        return Err(AppError::t("errors.noChapterHeadings"));
     }
     Ok(chapters)
 }
 
 pub fn import_txt(root: &Path, source: &Path, title: &str) -> AppResult<ImportReport> {
     if !source.is_file() {
-        return Err(AppError::msg(format!(
-            "源文件不存在: {}",
-            source.display()
-        )));
+        return Err(AppError::t_fmt(
+            "errors.sourceFileMissing",
+            &[("path", &source.display().to_string())],
+        ));
     }
     let parsed = parse_txt_chapters(source)?;
     let count = parsed.len();
@@ -343,7 +339,7 @@ fn render_lore_extract(
     recent: &str,
     instruction: &str,
 ) -> String {
-    let tpl = include_str!("../../prompts/lore_extract.md");
+    let tpl = crate::prompt_i18n::prompt("lore_extract.md");
     tpl.replace("{{lore}}", lore)
         .replace("{{canon}}", canon)
         .replace("{{outline}}", outline)
@@ -375,9 +371,7 @@ async fn call_lore_extract(
     let user = render_lore_extract(&lore_text, &canon_text, chapter_title, &recent, instruction);
     let model = settings.resolve_analysis_model();
     if model.is_empty() {
-        return Err(AppError::msg(
-            "未配置 analysis_model / model，无法蒸馏知识库",
-        ));
+        return Err(AppError::t("errors.needAnalysisModel"));
     }
     let messages = vec![
         ChatMessage {
@@ -415,7 +409,15 @@ async fn call_lore_extract(
     );
     let cleaned = strip_json_fence(&raw.text);
     serde_json::from_str(&cleaned)
-        .map_err(|e| AppError::msg(format!("lore_extract JSON 解析失败: {e}; 原文前200字: {}", raw.text.chars().take(200).collect::<String>())))
+        .map_err(|e| {
+            AppError::t_fmt(
+                "errors.loreExtractJsonFailed",
+                &[
+                    ("e", &e.to_string()),
+                    ("preview", &raw.text.chars().take(200).collect::<String>()),
+                ],
+            )
+        })
 }
 
 fn merge_entity_into_lore(
@@ -781,7 +783,7 @@ fn merge_pending_json(path: &Path, key: &str, items: &[Value]) -> AppResult<()> 
     };
     let arr = root
         .as_object_mut()
-        .ok_or_else(|| AppError::msg("pending json 根须为对象"))?
+        .ok_or_else(|| AppError::t("errors.pendingJsonRootMustBeObject"))?
         .entry(key.to_string())
         .or_insert_with(|| json!([]));
     if let Some(a) = arr.as_array_mut() {
@@ -802,14 +804,18 @@ pub async fn distill_range(
     instruction: &str,
 ) -> AppResult<DistillReport> {
     if from == 0 || to == 0 || to < from {
-        return Err(AppError::msg("from/to 须为从 1 起的章序，且 to >= from"));
+        return Err(AppError::t("errors.fromToMustBeChapterIndex"));
     }
     let opened = project::open_project(root)?;
     let total_chapters = opened.project.chapters.len();
     if from > total_chapters {
-        return Err(AppError::msg(format!(
-            "from={from} 超出章数 {total_chapters}"
-        )));
+        return Err(AppError::t_fmt(
+            "errors.fromExceedsChapters",
+            &[
+                ("from", &from.to_string()),
+                ("total", &total_chapters.to_string()),
+            ],
+        ));
     }
     let to = to.min(total_chapters);
     let job_id = job_id
@@ -1072,7 +1078,10 @@ pub async fn distill_range(
 pub fn apply_pending_job(root: &Path, job_id: &str) -> AppResult<Value> {
     let job_dir = jobs_dir(root).join(job_id);
     if !job_dir.is_dir() {
-        return Err(AppError::msg(format!("job 不存在: {}", job_dir.display())));
+        return Err(AppError::t_fmt(
+            "errors.jobMissing",
+            &[("path", &job_dir.display().to_string())],
+        ));
     }
     let mut index = AliasIndex::from_lore(&project::list_lore(root)?);
     let mut entity_count = 0usize;

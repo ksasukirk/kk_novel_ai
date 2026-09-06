@@ -2,6 +2,7 @@
  * 角色名索引与正文命中分段
  * 代码路径: kk_novel_ai/src/utils/characterNameIndex.js
  */
+import { compareLocale, t } from "../i18n/index.js";
 
 /** 不作角色名触发的设定标签 */
 const TAG_DENY = new Set([
@@ -77,7 +78,7 @@ export function coalesceCharacters(scoped) {
     for (const row of scoped) push(row, row.scope || "local");
   }
   return [...byTitle.values()].sort((a, b) =>
-    String(a.title).localeCompare(String(b.title), "zh")
+    String(a.title).localeCompare(String(b.title), compareLocale())
   );
 }
 
@@ -111,7 +112,7 @@ export function buildCharacterNameIndex(characters) {
   terms.sort(
     (a, b) =>
       b.term.length - a.term.length ||
-      a.term.localeCompare(b.term, "zh")
+      a.term.localeCompare(b.term, compareLocale())
   );
   return { terms, byId };
 }
@@ -185,7 +186,7 @@ export function highlightNamesHtml(text, terms) {
 export function summaryForCard(entry, maxLen = 180) {
   if (!entry) return "";
   const body = String(entry.content || "").replace(/\s+/g, " ").trim();
-  if (!body) return "暂无设定正文";
+  if (!body) return t("lore.noContent");
   if ([...body].length <= maxLen) return body;
   return [...body].slice(0, maxLen).join("") + "…";
 }

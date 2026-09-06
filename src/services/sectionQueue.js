@@ -16,6 +16,11 @@ import {
   discardJob,
   visibleGenJobs,
 } from "../stores/genJobs.js";
+import { isCancelledMsg, t, tLocale } from "../i18n/index.js";
+
+function writingT(key, values) {
+  return tLocale(appState.settings?.writing_locale || "zh-CN", key, values);
+}
 
 export const MAX_QUEUE_SECTIONS = 8;
 export const MAX_INSTRUCTION_STEPS = 12;
@@ -37,16 +42,16 @@ export const sectionQueueState = reactive({
 export function queueStatusLine() {
   const s = sectionQueueState;
   if (!s.running && s.phase !== "done") return "";
-  const kind = s.mode === "manual" ? "指令队列" : "分节队列";
-  if (s.phase === "planning") return "正在分析需要几节…";
+  const kind = s.mode === "manual" ? t("sectionQ.kindManual") : t("sectionQ.kindPlan");
+  if (s.phase === "planning") return t("sectionQ.planning");
   if (s.phase === "writing") {
     const title = s.sections[s.index - 1]?.title || "";
     const bit = title ? ` · ${title}` : "";
-    return `${kind} ${s.index}/${s.total}${bit}`;
+    return t("sectionQ.writing", { kind, index: s.index, total: s.total, bit });
   }
-  if (s.phase === "done") return `${kind}已写完 ${s.total} 节`;
-  if (s.phase === "cancelled") return `已取消${kind}`;
-  if (s.phase === "error") return s.error || `${kind}失败`;
+  if (s.phase === "done") return t("sectionQ.done", { kind, n: s.total });
+  if (s.phase === "cancelled") return t("sectionQ.cancelled", { kind });
+  if (s.phase === "error") return s.error || t("sectionQ.failed", { kind });
   return "";
 }
 
@@ -73,7 +78,7 @@ function sleep(ms) {
 async function waitForSlot() {
   while (!canStartMoreJobs(1)) {
     if (sectionQueueState.cancelled) {
-      throw new Error("已取消队列");
+      throw new Error(t("sectionQ.cancelledErr"));
     }
     await sleep(350);
   }
@@ -81,7 +86,7 @@ async function waitForSlot() {
 
 function throwIfCancelled() {
   if (sectionQueueState.cancelled) {
-    throw new Error("已取消队列");
+    throw new Error(t("sectionQ.cancelledErr"));
   }
 }
 
@@ -94,8 +99,8 @@ export function parseSectionPlan(text, fallbackInstruction = "") {
   const raw = String(text || "").trim();
   const fallback = [
     {
-      title: "续写",
-      instruction: String(fallbackInstruction || "").trim() || "承接上文续写一节，写完即停。",
+      title: writingT("ai.taskContinue"),
+      instruction: String(fallbackInstruction || "").trim() || writingT("sectionQ.fallbackInstr"),
     },
   ];
   if (!raw) return fallback;
@@ -126,7 +131,7 @@ export function parseSectionPlan(text, fallbackInstruction = "") {
     const title = String(item.title || item.name || "").trim();
     if (!instruction && !title) continue;
     sections.push({
-      title: title || `第${sections.length + 1}节`,
+      title: title || writingT("sectionQ.sectionN", { n: sections.length + 1 }),
       instruction: instruction || title,
     });
   }
@@ -143,15 +148,15 @@ export function normalizeInstructionSteps(steps) {
   for (const raw of list) {
     if (out.length >= MAX_INSTRUCTION_STEPS) break;
     if (typeof raw === "string") {
-      const t = raw.trim();
-      if (!t) continue;
-      out.push({ title: `第${out.length + 1}步`, instruction: t });
+      const step = raw.trim();
+      if (!step) continue;
+      out.push({ title: writingT("sectionQ.stepN", { n: out.length + 1 }), instruction: step });
       continue;
     }
     if (!raw || typeof raw !== "object") continue;
     const instruction = String(raw.instruction || raw.text || "").trim();
     if (!instruction) continue;
-    const title = String(raw.title || "").trim() || `第${out.length + 1}步`;
+    const title = String(raw.title || "").trim() || writingT("sectionQ.stepN", { n: out.length + 1 });
     out.push({ title, instruction });
   }
   return out;
@@ -159,15 +164,15 @@ export function normalizeInstructionSteps(steps) {
 
 function wrapSectionInstruction(userInstr, section, index, total, mode) {
   const user = String(userInstr || "").trim();
-  const title = section.title || `第${index}节`;
-  const tag = mode === "manual" ? "指令队列" : "分节队列";
+  const title = section.title || writingT("sectionQ.sectionN", { n: index });
+  const tag = mode === "manual" ? writingT("sectionQ.kindManual") : writingT("sectionQ.kindPlan");
   const parts = [
-    `【${tag} ${index}/${total} · ${title}】只写本节；须达到或超出规定字数后再停；禁止提前写下一节，禁止复述已写内容。`,
+    writingT("sectionQ.wrap", { tag, index, total, title }),
   ];
   if (mode === "plan" && user) {
-    parts.push(`总指令（全队列共用，本节只兑现其中这一拍）：\n${user}`);
+    parts.push(writingT("sectionQ.sharedInstr", { user }));
   }
-  parts.push(`本节任务：\n${section.instruction}`);
+  parts.push(writingT("sectionQ.sectionTask", { instruction: section.instruction }));
   return parts.join("\n");
 }
 
@@ -211,7 +216,7 @@ async function runQueuedContinues(sections, meta) {
     appState.draftForkFromVariantId = "";
 
     const job = createGenJob({
-      label: `第${i + 1}/${sections.length}节`,
+      label: t("sectionQ.labelSection", { index: i + 1, total: sections.length }),
     });
     try {
       await runWriting(
@@ -230,8 +235,8 @@ async function runQueuedContinues(sections, meta) {
       );
     } catch (e) {
       const msg = String(e.message || e);
-      if (sectionQueueState.cancelled || /取消/.test(msg)) {
-        throw new Error("已取消队列");
+      if (sectionQueueState.cancelled || isCancelledMsg(msg)) {
+        throw new Error(t("sectionQ.cancelledErr"));
       }
       throw e;
     }
@@ -244,13 +249,13 @@ async function runQueuedContinues(sections, meta) {
 
 function assertCanStartQueue() {
   if (!appState.projectRoot || !appState.chapterId) {
-    throw new Error("请先打开作品并选择章节");
+    throw new Error(t("outlineQ.needOpen"));
   }
   if (sectionQueueState.running) {
-    throw new Error("队列已在进行中");
+    throw new Error(t("sectionQ.alreadyRunning"));
   }
   if (visibleGenJobs.value.length) {
-    throw new Error("请先等当前草稿写完或取消，再开队列");
+    throw new Error(t("sectionQ.waitDraft"));
   }
 }
 
@@ -262,14 +267,14 @@ export async function runInstructionQueue(opts = {}) {
   assertCanStartQueue();
   const sections = normalizeInstructionSteps(opts.steps);
   if (!sections.length) {
-    throw new Error("请至少填写一条指令");
+    throw new Error(t("sectionQ.needStep"));
   }
 
   resetQueue();
   sectionQueueState.running = true;
   sectionQueueState.mode = "manual";
   sectionQueueState.phase = "writing";
-  appState.statusMessage = `指令队列 ${sections.length} 步，开始生成…`;
+  appState.statusMessage = t("sectionQ.startManual", { n: sections.length });
 
   try {
     if (appState.dirty) await saveChapter();
@@ -278,15 +283,15 @@ export async function runInstructionQueue(opts = {}) {
     sectionQueueState.running = false;
     appState.statusMessage =
       sections.length > 1
-        ? `指令队列已写完 ${sections.length} 步`
-        : "生成已写入并保存";
+        ? t("sectionQ.doneManual", { n: sections.length })
+        : t("draft.writeSaved");
   } catch (e) {
     const msg = String(e.message || e);
-    const cancelled = sectionQueueState.cancelled || /取消/.test(msg);
+    const cancelled = sectionQueueState.cancelled || isCancelledMsg(msg);
     sectionQueueState.running = false;
     sectionQueueState.phase = cancelled ? "cancelled" : "error";
     sectionQueueState.error = cancelled ? "" : msg;
-    appState.statusMessage = cancelled ? "已取消指令队列" : msg;
+    appState.statusMessage = cancelled ? t("sectionQ.cancelledManual") : msg;
     if (!cancelled) throw e;
   }
 }
@@ -305,7 +310,7 @@ export async function runSectionQueue(opts = {}) {
   sectionQueueState.running = true;
   sectionQueueState.mode = "plan";
   sectionQueueState.phase = "planning";
-  appState.statusMessage = "正在分析需要几节…";
+  appState.statusMessage = t("sectionQ.planning");
 
   try {
     if (appState.dirty) await saveChapter();
@@ -323,7 +328,7 @@ export async function runSectionQueue(opts = {}) {
     appState.draftBranchNodeId = "";
     appState.draftForkFromVariantId = "";
 
-    const planJob = createGenJob({ label: "分节规划" });
+    const planJob = createGenJob({ label: t("sectionQ.labelPlan") });
     planJob.draftPlacement = "";
     let planResult;
     try {
@@ -339,7 +344,7 @@ export async function runSectionQueue(opts = {}) {
           "continue",
           ""
         ),
-        { job: planJob, label: "分节规划" }
+        { job: planJob, label: t("sectionQ.labelPlan") }
       );
     } finally {
       discardJob(planJob);
@@ -366,29 +371,29 @@ export async function runSectionQueue(opts = {}) {
 
     appState.statusMessage =
       sections.length > 1
-        ? `计划 ${sections.length} 节，等待确认…`
-        : "计划 1 节，开始续写";
+        ? t("sectionQ.planWait", { n: sections.length })
+        : t("sectionQ.planOne");
 
     if (sections.length > 1) {
       const titles = sections
-        .map((s, i) => `${i + 1}. ${s.title || `第${i + 1}节`}`)
+        .map((s, i) => `${i + 1}. ${s.title || writingT("sectionQ.sectionN", { n: i + 1 })}`)
         .join("\n");
       const reason = sectionQueueState.reason
-        ? `\n原因：${sectionQueueState.reason}`
+        ? t("sectionQ.reason", { reason: sectionQueueState.reason })
         : "";
       const ok = await appConfirm(
-        `自动分节计划了 ${sections.length} 节，确认后会连续生成并写入：\n${titles}${reason}\n\n取消则只保留计划、不生成。`,
+        t("sectionQ.confirmBody", { n: sections.length, titles, reason }),
         {
-          title: "确认多节生成",
-          confirmText: "开始生成",
-          cancelText: "取消",
+          title: t("sectionQ.confirmTitle"),
+          confirmText: t("sectionQ.startGen"),
+          cancelText: t("common.cancel"),
         }
       );
       throwIfCancelled();
       if (!ok) {
         sectionQueueState.phase = "cancelled";
         sectionQueueState.running = false;
-        appState.statusMessage = `已取消多节生成（计划 ${sections.length} 节）`;
+        appState.statusMessage = t("sectionQ.cancelledMulti", { n: sections.length });
         return;
       }
     }
@@ -399,15 +404,15 @@ export async function runSectionQueue(opts = {}) {
     sectionQueueState.running = false;
     appState.statusMessage =
       sections.length > 1
-        ? `分节队列已写完 ${sections.length} 节`
-        : "生成已写入并保存";
+        ? t("sectionQ.donePlan", { n: sections.length })
+        : t("draft.writeSaved");
   } catch (e) {
     const msg = String(e.message || e);
-    const cancelled = sectionQueueState.cancelled || /取消/.test(msg);
+    const cancelled = sectionQueueState.cancelled || isCancelledMsg(msg);
     sectionQueueState.running = false;
     sectionQueueState.phase = cancelled ? "cancelled" : "error";
     sectionQueueState.error = cancelled ? "" : msg;
-    appState.statusMessage = cancelled ? "已取消分节队列" : msg;
+    appState.statusMessage = cancelled ? t("sectionQ.cancelledPlan") : msg;
     if (!cancelled) throw e;
   }
 }

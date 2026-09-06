@@ -3,6 +3,7 @@
  * 代码路径: kk_novel_ai/src/stores/appState.js
  */
 import { reactive } from "vue";
+import { t } from "../i18n/index.js";
 
 export const appState = reactive({
   activeNav: "project",
@@ -92,7 +93,7 @@ export const appState = reactive({
   castRevision: 0,
   /** 自动同步总谱后 +1，总谱页 / 大纲导图可 watch 刷新 */
   storyRevision: 0,
-  statusMessage: "就绪",
+  statusMessage: t("common.ready"),
   /** DeepSeek 高峰时段（由 settings_get / 生成启动时更新） */
   deepseekPeakNow: false,
   deepseekPeakNotice: "",

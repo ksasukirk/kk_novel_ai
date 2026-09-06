@@ -14,6 +14,7 @@ import {
   notifyDeepseekPeakIfNeeded,
 } from "../utils/deepseekPricing.js";
 import { toastWarning } from "./toast.js";
+import { isCancelledMsg, t } from "../i18n/index.js";
 import {
   activeJobCount,
   appendJobDelta,
@@ -119,22 +120,22 @@ export async function startGuiBridge() {
     if (metaOnly) {
       appState.statusMessage =
         task === "outline_to_beats" || task === "split_beats"
-          ? "正在拆分节拍…"
+          ? t("gui.splitBeats")
           : task === "outline_to_chapters" || task === "split_chapters"
-            ? "正在拆成章节…"
+            ? t("gui.splitChapters")
             : task === "outline_to_mindmap" || task === "mindmap_outline"
-              ? "正在整理思维导图…"
+              ? t("gui.mindmap")
               : task === "chapter_summary" || task === "summarize"
-                ? "正在生成章节总结…"
+                ? t("gui.chapterSummary")
               : task === "story_sync" || task === "sync_story"
-                ? "正在同步总谱…"
+                ? t("gui.syncStory")
               : task === "beats_to_storyboard" || task === "storyboard_from_beats"
-                ? "正在生成分镜…"
+                ? t("gui.storyboard")
               : task === "content_to_image_prompt" || task === "image_prompt"
-                ? "正在写绘图提示词…"
-            : "后台处理中…";
+                ? t("gui.imagePrompt")
+            : t("gui.background");
     } else {
-      resetGenProgress("CLI 生成中…");
+      resetGenProgress(t("gui.cliGenerating"));
       try {
         createGenJob({ label: task });
       } catch (e) {
@@ -200,7 +201,7 @@ export async function startGuiBridge() {
     syncGeneratingFromJobs();
     const peakSuffix = deepseekGeneratingStatusSuffix(appState.settings || {});
     if (peakSuffix && !muteLlmStream(p.task)) {
-      appState.statusMessage = `生成中${peakSuffix}…`;
+      appState.statusMessage = t("status.generatingPeak", { suffix: peakSuffix });
     }
   });
 
@@ -229,7 +230,11 @@ export async function startGuiBridge() {
         true,
         false
       );
-      appState.statusMessage = `生成中… ${n} 字 · ${appState.genProgressPct}%${deepseekGeneratingStatusSuffix(appState.settings || {})}`;
+      appState.statusMessage = t("status.generatingChars", {
+        n,
+        pct: appState.genProgressPct,
+        suffix: deepseekGeneratingStatusSuffix(appState.settings || {}),
+      });
     }
   });
 
@@ -242,13 +247,13 @@ export async function startGuiBridge() {
       if (bgJob) discardJob(bgJob);
       syncGeneratingFromJobs();
       if (p.task === "outline_to_beats" || p.task === "split_beats") {
-        appState.statusMessage = "节拍拆分完成（结果未写入正文，请在总谱确认 beats）";
+        appState.statusMessage = t("gui.beatsDone");
       } else if (p.task === "outline_to_chapters" || p.task === "split_chapters") {
-        appState.statusMessage = "拆章完成（结果未写入正文，请在按纲生成面板确认）";
+        appState.statusMessage = t("gui.chaptersDone");
       } else if (p.task === "outline_to_mindmap" || p.task === "mindmap_outline") {
-        appState.statusMessage = "思维导图已整理";
+        appState.statusMessage = t("gui.mindmapDone");
       } else if (p.task === "chapter_summary" || p.task === "summarize") {
-        appState.statusMessage = "章节总结已写入记忆快照";
+        appState.statusMessage = t("gui.summaryDone");
       }
       return;
     }
@@ -301,15 +306,17 @@ export async function startGuiBridge() {
     const rawLen = finalLen || streamedLen;
     const model = p.model_used || "?";
     if (p.truncated) {
-      appState.statusMessage = `生成完成（检测到疑似复读，已保留全文未截断；模型 ${model}）`;
+      appState.statusMessage = t("gui.doneRepeat", { model });
     } else if (!finalLen && rawLen > 0) {
-      appState.statusMessage = "生成完成，但未拿到正文。";
+      appState.statusMessage = t("gui.doneEmpty");
     } else if ((job && job.lastIncomplete) || (!job && appState.lastIncomplete)) {
-      appState.statusMessage = `生成完成，但正文疑似半截（可提高 max_tokens 后重试；模型 ${model}）`;
+      appState.statusMessage = t("gui.doneTrunc", { model });
     } else if (activeJobCount() > 0) {
-      appState.statusMessage = `一路已完成，仍有 ${activeJobCount()} 路生成中`;
+      appState.statusMessage = t("gui.doneStill", { n: activeJobCount() });
     } else {
-      appState.statusMessage = `生成完成${p.model_used ? ` · ${p.model_used}` : ""}`;
+      appState.statusMessage = p.model_used
+        ? t("gui.doneModel", { model: p.model_used })
+        : t("gui.done");
     }
 
     syncGeneratingFromJobs();
@@ -329,8 +336,8 @@ export async function startGuiBridge() {
     }
     const rid = p.request_id || "";
     const job = rid ? findJobByRequestId(rid) || bindJobRequestId(rid) : null;
-    const err = p.error || "生成失败";
-    const cancelled = /取消/.test(err);
+    const err = p.error || t("status.failed");
+    const cancelled = isCancelledMsg(err);
     if (job) {
       finishJobError(job, err, cancelled);
       if (job.draftPlacement === "editor") {
@@ -350,8 +357,8 @@ export async function startGuiBridge() {
     syncGeneratingFromJobs();
     appState.statusMessage = cancelled
       ? activeJobCount() > 0
-        ? `已取消一路，仍有 ${activeJobCount()} 路`
-        : "已取消生成"
+        ? t("gui.cancelledOne", { n: activeJobCount() })
+        : t("status.cancelled")
       : err;
   });
 
@@ -366,7 +373,7 @@ export async function startGuiBridge() {
       if (typeof p.content === "string") {
         applyChapterPayload(p.content, p.blocks);
         appState.dirty = !p.saved;
-        appState.statusMessage = p.saved ? "章节已由 CLI 写入" : "章节已更新（未保存）";
+        appState.statusMessage = p.saved ? t("gui.cliSaved") : t("gui.cliUpdated");
       }
     };
 
@@ -377,7 +384,7 @@ export async function startGuiBridge() {
         chapter_id: p.chapter_id || appState.chapterId,
         root: p.root || appState.projectRoot,
       };
-      appState.statusMessage = "外部写入与本地未保存编辑冲突，请选择";
+      appState.statusMessage = t("gui.conflict");
       return;
     }
 
@@ -395,9 +402,9 @@ export function resolveExternalConflict(keepLocal) {
     appState.chapterContent = c.content;
     applyChapterPayload(c.content, c.blocks);
     appState.dirty = !c.saved;
-    appState.statusMessage = "已接受外部覆盖";
+    appState.statusMessage = t("gui.acceptedExternal");
   } else {
-    appState.statusMessage = "已保留本地编辑";
+    appState.statusMessage = t("gui.keptLocal");
   }
   appState.externalConflict = null;
 }
@@ -405,7 +412,7 @@ export function resolveExternalConflict(keepLocal) {
 /** 兼容旧调用：不再清空其它路预览 */
 export function beginLocalGeneration() {
   activeRequestId = "";
-  resetGenProgress("生成中…");
+  resetGenProgress(t("status.generating"));
 }
 
 export function endLocalGeneration() {

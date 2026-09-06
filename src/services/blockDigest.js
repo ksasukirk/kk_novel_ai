@@ -6,6 +6,7 @@ import { invoke } from "./tauri.js";
 import { appState } from "../stores/appState.js";
 import { saveChapter } from "./projectClient.js";
 import { sanitizeBlockDigest } from "../utils/blockDigestSanitize.js";
+import { t } from "../i18n/index.js";
 
 const inFlightKeys = new Set();
 
@@ -50,7 +51,7 @@ export async function runBlockDigest(opts) {
 
   inFlightKeys.add(blockKey);
   const prevStatus = appState.statusMessage;
-  appState.statusMessage = "正在提炼本章记忆…";
+  appState.statusMessage = t("digest.extracting");
   try {
     const result = await invoke("writing_run", {
       request: {
@@ -71,13 +72,13 @@ export async function runBlockDigest(opts) {
       } catch {
         /* 正文已在，摘要落盘失败不阻断 */
       }
-      appState.statusMessage = "块记忆已更新";
+      appState.statusMessage = t("digest.updated");
     } else {
-      appState.statusMessage = prevStatus || "块摘要为空，续写仍可用";
+      appState.statusMessage = prevStatus || t("digest.empty");
     }
     return digest || null;
   } catch (e) {
-    appState.statusMessage = `块摘要失败，续写仍可用：${e.message || e}`;
+    appState.statusMessage = t("digest.failed", { msg: e.message || e });
     return null;
   } finally {
     inFlightKeys.delete(blockKey);
@@ -108,7 +109,7 @@ export async function runBlockDigestAndWait(opts, waitOpts = {}) {
   );
   const result = await Promise.race([p, timer]);
   if (result === "__timeout__") {
-    appState.statusMessage = "块摘要超时，继续下一节拍";
+    appState.statusMessage = t("digest.timeout");
     return null;
   }
   return result;
@@ -153,10 +154,10 @@ export async function saveBlockDigestManual(opts) {
       applyDigestToBlock(blockKey, serverSummary);
     }
     await saveChapter();
-    appState.statusMessage = "本段记忆已保存";
+    appState.statusMessage = t("digest.saved");
     return serverSummary;
   } catch (e) {
-    appState.statusMessage = `本段记忆保存失败：${e.message || e}`;
+    appState.statusMessage = t("digest.saveFailed", { msg: e.message || e });
     throw e;
   }
 }

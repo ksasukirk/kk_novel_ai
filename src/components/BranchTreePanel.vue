@@ -5,6 +5,7 @@
 <script setup>
 import { computed } from "vue";
 import { appState } from "../stores/appState.js";
+import { t } from "../i18n/index.js";
 import { buildBranchMindTree, activatePathToNode, findNodeById } from "../utils/branchModel.js";
 import { switchBlockVariant } from "../services/draftAccept.js";
 import { applyBranchDoc } from "../services/projectClient.js";
@@ -24,7 +25,7 @@ const emit = defineEmits(["select-block"]);
 const chapterTitle = computed(() => {
   const list = (appState.project && appState.project.chapters) || [];
   const ch = list.find((c) => c.id === appState.chapterId);
-  return (ch && ch.title) || "本章";
+  return (ch && ch.title) || t("editor.thisChapter");
 });
 
 const tree = computed(() => {
@@ -94,8 +95,8 @@ function onSelect(n) {
 <template>
   <div class="branch-panel">
     <div class="branch-panel-head">
-      <span class="branch-panel-title">分支图</span>
-      <span class="muted tip">点击变体切换 · 仅激活路径写入正文</span>
+      <span class="branch-panel-title">{{ $t("editor.branchGraph") }}</span>
+      <span class="muted tip">{{ $t("editor.branchGraphTip") }}</span>
     </div>
     <MindMapBoard :tree="tree" :height="height" @select="onSelect" />
   </div>

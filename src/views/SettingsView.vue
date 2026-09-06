@@ -8,12 +8,14 @@ import { appState } from "../stores/appState.js";
 import { loadSettings, saveSettings, refreshHealth, listModels } from "../services/llmClient.js";
 import { invoke } from "../services/tauri.js";
 import CapsuleSwitch from "../components/CapsuleSwitch.vue";
+import { applyUiLocale, t, UI_LOCALES } from "../i18n/index.js";
 import {
   EDITOR_FONT_PRESETS,
   EDITOR_FONT_SIZES,
   DEFAULT_EDITOR_FONT_SIZE,
   presetIdFromSettings,
   applyEditorTypography,
+  fontPresetLabel,
 } from "../utils/editorTypography.js";
 import { isMobileUx } from "../utils/platform.js";
 import { useToastError } from "../services/toast.js";
@@ -106,6 +108,8 @@ onMounted(async () => {
       image_base_url: "",
       image_model: "",
       image_size: "1024x1024",
+      ui_locale: "zh-CN",
+      writing_locale: "zh-CN",
       ...s,
       api_key: "",
       image_api_key: "",
@@ -159,6 +163,13 @@ onMounted(async () => {
     if (!form.value.image_size) {
       form.value.image_size = "1024x1024";
     }
+    if (form.value.ui_locale !== "en" && form.value.ui_locale !== "ja") {
+      form.value.ui_locale = "zh-CN";
+    }
+    if (form.value.writing_locale !== "en" && form.value.writing_locale !== "ja") {
+      form.value.writing_locale = "zh-CN";
+    }
+    applyUiLocale(form.value.ui_locale);
     form.value.base_url = normalizeBaseUrl(form.value.base_url);
     applyEditorTypography(form.value);
     try {
@@ -234,7 +245,7 @@ function syncMaxFromTarget() {
 
 function scheduleSave() {
   if (saveTimer) clearTimeout(saveTimer);
-  message.value = "正在保存…";
+  message.value = t("settings.saving");
   saveTimer = setTimeout(() => {
     saveTimer = null;
     void persistSettings();
@@ -271,7 +282,7 @@ async function persistSettings(opts = {}) {
     }
     form.value.api_key = "";
     form.value.image_api_key = "";
-    if (!silent) message.value = "已自动保存";
+    if (!silent) message.value = t("settings.saved");
   } catch (e) {
     if (seq !== saveSeq) return;
     error.value = String(e.message || e);
@@ -322,7 +333,10 @@ function applyDeepseekPreset(variant) {
   form.value.price_output_per_1m = ref.out;
   form.value.llm_timeout_secs = Math.max(600, Number(form.value.llm_timeout_secs) || 600);
   form.value.context_budget = Math.max(12000, Number(form.value.context_budget) || 24000);
-  message.value = `已套用 DeepSeek ${isPro ? "Pro" : "Flash"} 预设（${peak ? "高峰" : "空闲"}价）`;
+  message.value = t("settings.appliedDeepseek", {
+    name: isPro ? "Pro" : "Flash",
+    period: peak ? t("settings.peakWord") : t("settings.idleWord"),
+  });
 }
 
 function applyLocalPreset() {
@@ -333,14 +347,14 @@ function applyLocalPreset() {
   form.value.price_input_per_1m = 0;
   form.value.price_output_per_1m = 0;
   form.value.disable_thinking = null;
-  message.value = "已套用本地 LM Studio 预设";
+  message.value = t("settings.appliedLocal");
 }
 
 function refreshDeepseekPrices() {
   if (!form.value) return;
   const u = String(form.value.base_url || "").toLowerCase();
   if (!u.includes("deepseek.com") && !String(form.value.api_provider || "").startsWith("deepseek")) {
-    message.value = "当前非 DeepSeek 接入，未改单价";
+    message.value = t("settings.notDeepseek");
     return;
   }
   const isPro =
@@ -351,10 +365,19 @@ function refreshDeepseekPrices() {
   form.value.price_cache_hit_per_1m = ref.hit;
   form.value.price_input_per_1m = ref.miss;
   form.value.price_output_per_1m = ref.out;
-  message.value = `已按${peak ? "高峰" : "空闲"}时段刷新 DeepSeek 官方单价`;
+  message.value = t("settings.refreshedPrices", {
+    period: peak ? t("settings.peakWord") : t("settings.idleWord"),
+  });
 }
 
 const deepseekHintPeak = computed(() => resolveDeepseekPeak());
+
+const pickSlotLabel = computed(() => {
+  if (pickTarget.value === "model") return t("settings.slotWriting");
+  if (pickTarget.value === "analysis_model") return t("settings.slotAnalysis");
+  if (pickTarget.value === "writing_pro_model") return t("settings.slotPro");
+  return t("settings.slotEmbedding");
+});
 
 const updatePct = computed(() => {
   const t = Number(updateProgress.value.total) || 0;
@@ -387,9 +410,9 @@ async function onCheckUpdate() {
     updateInfo.value = r;
     if (r && r.current) appVersion.value = String(r.current);
     if (r && r.has_update) {
-      message.value = `发现新版本 ${r.latest}`;
+      message.value = t("settings.foundVersion", { latest: r.latest });
     } else {
-      message.value = "已是最新版本";
+      message.value = t("settings.upToDate");
     }
   } catch (e) {
     error.value = String(e.message || e);
@@ -401,11 +424,11 @@ async function onCheckUpdate() {
 async function onDownloadUpdate() {
   const info = updateInfo.value;
   if (!info || !info.download_url) {
-    error.value = "没有可下载的 Windows 安装包";
+    error.value = t("settings.noWinPkg");
     return;
   }
   error.value = "";
-  message.value = "正在下载更新…";
+  message.value = t("settings.downloading");
   updateDownloading.value = true;
   updateProgress.value = { received: 0, total: 0 };
   updateStartedAt.value = 0;
@@ -421,10 +444,10 @@ async function onDownloadUpdate() {
     });
     downloadedPath.value = String((r && r.path) || "");
     if (!downloadedPath.value) {
-      message.value = "下载完成";
+      message.value = t("settings.downloadDone");
       return;
     }
-    message.value = "正在启动新版本…";
+    message.value = t("settings.launching");
     await launchDownloadedUpdate(downloadedPath.value);
   } catch (e) {
     error.value = String(e.message || e);
@@ -452,13 +475,13 @@ async function onRebuildRag() {
   error.value = "";
   message.value = "";
   if (!appState.projectRoot) {
-    error.value = "请先打开作品再重建索引";
+    error.value = t("settings.needProjectRag");
     return;
   }
   try {
-    message.value = "正在重建 embedding 索引…";
+    message.value = t("settings.rebuildingRag");
     const r = await invoke("rag_rebuild", { root: appState.projectRoot });
-    message.value = `索引完成，条目约 ${r.indexed || 0}`;
+    message.value = t("settings.ragDone", { n: r.indexed || 0 });
   } catch (e) {
     error.value = String(e.message || e);
   }
@@ -467,28 +490,44 @@ async function onRebuildRag() {
 
 <template>
   <section class="panel" v-if="form">
-    <h1 class="panel-heading">设置</h1>
+    <h1 class="panel-heading">{{ $t("settings.title") }}</h1>
     <p class="muted">
       <template v-if="mobileUx">
-        手机端请填写局域网或公网 OpenAI 兼容 API（不能使用 127.0.0.1 / localhost，那会指向手机自身）。
-        例：http://192.168.1.8:1234/v1 或 https://api.example.com/v1。局域网 HTTP 仅建议在可信网络使用。
+        {{ $t("settings.introMobile") }}
       </template>
       <template v-else>
-        对接 LM Studio Local Server（默认 http://127.0.0.1:1234/v1）。写作 / 分析 / Embedding 分槽。
+        {{ $t("settings.introDesktop") }}
       </template>
-      参数修改后会自动保存。
+      {{ $t("settings.autoSave") }}
     </p>
 
-    <h2 class="panel-sub">关于</h2>
-    <p>Kk Novel Ai {{ appVersion || "未知" }}</p>
+    <h2 class="panel-sub">{{ $t("locale.ui") }} / {{ $t("locale.writing") }}</h2>
+    <p class="muted">{{ $t("locale.uiHint") }} {{ $t("locale.writingHint") }}</p>
+    <div class="grid2">
+      <div class="field">
+        <label class="field-label">{{ $t("locale.ui") }}</label>
+        <select v-model="form.ui_locale" @change="applyUiLocale(form.ui_locale)">
+          <option v-for="loc in UI_LOCALES" :key="'ui-' + loc.id" :value="loc.id">{{ loc.native }}</option>
+        </select>
+      </div>
+      <div class="field">
+        <label class="field-label">{{ $t("locale.writing") }}</label>
+        <select v-model="form.writing_locale">
+          <option v-for="loc in UI_LOCALES" :key="'w-' + loc.id" :value="loc.id">{{ loc.native }}</option>
+        </select>
+      </div>
+    </div>
+
+    <h2 class="panel-sub">{{ $t("settings.about") }}</h2>
+    <p>{{ $t("settings.version", { version: appVersion || $t("common.unknown") }) }}</p>
     <p class="muted about-github">
-      GitHub：
+      {{ $t("settings.githubLabel") }}
       <a :href="githubUrl" target="_blank" rel="noopener" @click="onOpenGithub">{{ githubUrl }}</a>
     </p>
-    <p class="muted">确认更新后会下载到临时目录并自动启动新程序。</p>
+    <p class="muted">{{ $t("settings.updateHint") }}</p>
     <div class="actions version-actions">
       <button type="button" class="app-btn" :disabled="updateChecking || updateDownloading" @click="onCheckUpdate">
-        {{ updateChecking ? "检查中…" : "检查更新" }}
+        {{ updateChecking ? $t("settings.checking") : $t("settings.checkUpdate") }}
       </button>
       <button
         v-if="updateInfo && updateInfo.has_update && updateInfo.download_url && !mobileUx"
@@ -497,7 +536,11 @@ async function onRebuildRag() {
         :disabled="updateDownloading"
         @click="onDownloadUpdate"
       >
-        {{ updateDownloading ? `下载中 ${updatePct}%` : `下载并启动 ${updateInfo.latest}` }}
+        {{
+          updateDownloading
+            ? $t("settings.downloadingPct", { pct: updatePct })
+            : $t("settings.downloadLaunch", { latest: updateInfo.latest })
+        }}
       </button>
       <button
         v-if="downloadedPath"
@@ -505,7 +548,7 @@ async function onRebuildRag() {
         class="app-btn"
         @click="onRevealUpdate"
       >
-        打开所在文件夹
+        {{ $t("settings.openFolder") }}
       </button>
       <a
         v-if="updateInfo && updateInfo.has_update && updateInfo.html_url"
@@ -513,46 +556,55 @@ async function onRebuildRag() {
         :href="updateInfo.html_url"
         target="_blank"
         rel="noopener"
-      >打开 GitHub Release</a>
+      >{{ $t("settings.openRelease") }}</a>
     </div>
     <p v-if="updateInfo && updateInfo.has_update && updateInfo.download_url && !mobileUx" class="muted">
-      应用内下载若连不上 GitHub，可用浏览器打开上面的 Release 页面，或直接打开：{{ updateInfo.download_url }}
+      {{ $t("settings.githubFallback", { url: updateInfo.download_url }) }}
     </p>
     <p v-if="updateDownloading" class="muted">
-      已下载 {{ updateReceivedMb }} / {{ updateTotalMb }} MB（{{ updatePct }}%），平均 {{ updateSpeedMbs }} MB/s
+      {{
+        $t("settings.downloadProgress", {
+          a: updateReceivedMb,
+          b: updateTotalMb,
+          pct: updatePct,
+          speed: updateSpeedMbs,
+        })
+      }}
     </p>
     <p v-if="updateInfo && updateInfo.has_update && updateInfo.notes" class="muted version-notes">
       {{ String(updateInfo.notes).slice(0, 400) }}
     </p>
 
-    <h2 class="panel-sub">API 接入预设</h2>
+    <h2 class="panel-sub">{{ $t("settings.presetTitle") }}</h2>
     <p class="muted preset-hint">
-      DeepSeek 官方 Base URL 为 <code>https://api.deepseek.com</code>（不要加 /v1）。
-      上下文硬盘缓存默认开启，命中输入约未命中的 1/30；续写时稳定设定放前、易变指令放后可提高命中率。
-      详见
-      <a href="https://api-docs.deepseek.com/zh-cn/guides/kv_cache/" target="_blank" rel="noopener">缓存文档</a>
-      与
-      <a href="https://api-docs.deepseek.com/zh-cn/quick_start/pricing" target="_blank" rel="noopener">价格表</a>。
-      空闲时段价格为高峰的一半。高峰：北京时间周一至周五 9:00–12:00、14:00–18:00。
-      当前推断计费时段：<strong>{{ deepseekHintPeak ? "高峰（×2）" : "空闲（半价）" }}</strong>。
+      {{ $t("settings.presetHintUrl") }}
+      <code>https://api.deepseek.com</code>
+      {{ $t("settings.presetHintNoV1") }}
+      {{ $t("settings.presetHintCache") }}
+      {{ $t("settings.presetHintSee") }}
+      <a href="https://api-docs.deepseek.com/zh-cn/guides/kv_cache/" target="_blank" rel="noopener">{{ $t("settings.cacheDoc") }}</a>
+      {{ $t("settings.presetHintAnd") }}
+      <a href="https://api-docs.deepseek.com/zh-cn/quick_start/pricing" target="_blank" rel="noopener">{{ $t("settings.priceDoc") }}</a>
+      {{ $t("settings.presetHintHours") }}
+      {{ $t("settings.currentTier") }}<strong>{{ deepseekHintPeak ? $t("settings.peak") : $t("settings.idle") }}</strong>{{ $t("settings.currentTierEnd") }}
     </p>
     <div class="preset-actions">
       <button type="button" class="app-btn app-btn-primary" @click="applyDeepseekPreset('deepseek_flash')">
-        DeepSeek Flash（性价比最高）
+        {{ $t("settings.flash") }}
       </button>
       <button type="button" class="app-btn" @click="applyDeepseekPreset('deepseek_pro')">
-        DeepSeek Pro（质量优先）
+        {{ $t("settings.pro") }}
       </button>
       <button type="button" class="app-btn" @click="applyLocalPreset">
-        本地 LM Studio
+        {{ $t("settings.localLm") }}
       </button>
       <button type="button" class="app-btn app-btn-info" @click="refreshDeepseekPrices">
-        刷新 DeepSeek 单价
+        {{ $t("settings.refreshPrices") }}
       </button>
     </div>
     <div class="grid2">
       <div class="field">
-        <label class="field-label">api_provider（记录用）</label>
+        <label class="field-label">{{ $t("settings.apiProvider") }}</label>
         <select v-model="form.api_provider">
           <option value="local">local</option>
           <option value="deepseek_flash">deepseek_flash</option>
@@ -563,23 +615,23 @@ async function onRebuildRag() {
       <div class="field">
         <label class="field-label">deepseek_pricing_tier</label>
         <select v-model="form.deepseek_pricing_tier">
-          <option value="auto">auto（按北京时间推断）</option>
-          <option value="idle">idle（空闲半价）</option>
-          <option value="peak">peak（高峰）</option>
+          <option value="auto">{{ $t("settings.tierAuto") }}</option>
+          <option value="idle">{{ $t("settings.tierIdle") }}</option>
+          <option value="peak">{{ $t("settings.tierPeak") }}</option>
         </select>
       </div>
     </div>
 
-    <h2 class="panel-sub">写作区外观</h2>
+    <h2 class="panel-sub">{{ $t("settings.appearance") }}</h2>
     <div class="grid2">
       <div class="field">
-        <label class="field-label">字体（默认黑体）</label>
+        <label class="field-label">{{ $t("settings.font") }}</label>
         <select v-model="form.editor_font_family" @change="onFontPreview">
-          <option v-for="p in fontPresets" :key="p.id" :value="p.id">{{ p.label }}</option>
+          <option v-for="p in fontPresets" :key="p.id" :value="p.id">{{ fontPresetLabel(p) }}</option>
         </select>
       </div>
       <div class="field">
-        <label class="field-label">分析页每页条数（作品 / 章节 / 记录，默认 10）</label>
+        <label class="field-label">{{ $t("settings.pageSize") }}</label>
         <input
           v-model.number="form.analytics_page_size"
           type="number"
@@ -589,7 +641,7 @@ async function onRebuildRag() {
         />
       </div>
       <div class="field">
-        <label class="field-label">字号（px）</label>
+        <label class="field-label">{{ $t("settings.fontSize") }}</label>
         <select v-model.number="form.editor_font_size" @change="onFontPreview">
           <option v-for="n in fontSizes" :key="n" :value="n">{{ n }}</option>
         </select>
@@ -602,7 +654,7 @@ async function onRebuildRag() {
         fontSize: form.editor_font_size + 'px',
       }"
     >
-      预览：娜娜在雨棚下写字 —— The quick brown fox 0123456789
+      {{ $t("settings.preview") }}
     </p>
 
     <div class="field">
@@ -610,7 +662,7 @@ async function onRebuildRag() {
       <input
         v-model="form.base_url"
         type="text"
-        :placeholder="mobileUx ? 'http://192.168.x.x:1234/v1 或 https://…/v1' : 'http://127.0.0.1:1234/v1'"
+        :placeholder="mobileUx ? $t('settings.baseUrlPhMobile') : $t('settings.baseUrlPhDesktop')"
       />
     </div>
     <div class="field">
@@ -620,78 +672,78 @@ async function onRebuildRag() {
         type="password"
         autocomplete="new-password"
         spellcheck="false"
-        :placeholder="apiKeyConfigured ? '已保存，重新输入以覆盖（不可查看）' : '输入 API Key'"
+        :placeholder="apiKeyConfigured ? $t('settings.apiKeyPhSaved') : $t('settings.apiKeyPhNew')"
       />
       <p class="muted api-key-hint">
         {{
           apiKeyConfigured
-            ? "当前已配置密钥，输入框不会回显明文；重新填写后自动覆盖保存。"
-            : "填写后自动保存，界面不可再查看明文。"
+            ? $t("settings.apiKeyHintSaved")
+            : $t("settings.apiKeyHintNew")
         }}
       </p>
     </div>
     <div class="field">
-      <label class="field-label">写作模型（续写 / 润色 / 章纲扩展）</label>
-      <input v-model="form.model" type="text" placeholder="从下方列表选择或手填" @focus="pickTarget = 'model'" />
+      <label class="field-label">{{ $t("settings.writingModel") }}</label>
+      <input v-model="form.model" type="text" :placeholder="$t('settings.modelPh')" @focus="pickTarget = 'model'" />
     </div>
     <div class="field">
-      <label class="field-label">分析模型（摘要 / 一致性，空则回退写作模型）</label>
+      <label class="field-label">{{ $t("settings.analysisModel") }}</label>
       <input
         v-model="form.analysis_model"
         type="text"
-        placeholder="可选"
+        :placeholder="$t('settings.optional')"
         @focus="pickTarget = 'analysis_model'"
       />
     </div>
     <div class="field">
-      <label class="field-label">Embedding 模型（RAG，空则仅关键词召回）</label>
+      <label class="field-label">{{ $t("settings.embeddingModel") }}</label>
       <input
         v-model="form.embedding_model"
         type="text"
-        placeholder="如 text-embedding-nomic-embed-text-v1.5"
+        :placeholder="$t('settings.embeddingPh')"
         @focus="pickTarget = 'embedding_model'"
       />
     </div>
 
-    <h2 class="panel-sub">图像生成</h2>
-    <p class="muted">与写作 API 分开。OpenAI 兼容口：POST {base}/images/generations。本机 Comfy 以后再接。</p>
+    <h2 class="panel-sub">{{ $t("settings.imageTitle") }}</h2>
+    <p class="muted">{{ $t("settings.imageIntro", { base: "{base}" }) }}</p>
     <div class="field">
-      <label class="field-label">图像供应商</label>
+      <label class="field-label">{{ $t("settings.imageProvider") }}</label>
       <select v-model="form.image_provider">
-        <option value="openai_compat">OpenAI 兼容（文生图）</option>
+        <option value="openai_compat">{{ $t("settings.imageProviderOpenai") }}</option>
       </select>
     </div>
     <div class="field">
-      <label class="field-label">图像 Base URL</label>
+      <label class="field-label">{{ $t("settings.imageBaseUrl") }}</label>
       <input
         v-model="form.image_base_url"
         type="text"
-        placeholder="https://api.openai.com/v1 或兼容网关 …/v1"
+        :placeholder="$t('settings.imageBaseUrlPh')"
       />
     </div>
     <div class="field">
-      <label class="field-label">图像 API Key</label>
+      <label class="field-label">{{ $t("settings.imageApiKey") }}</label>
       <input
         v-model="imageApiKeyDraft"
         type="password"
         autocomplete="new-password"
         spellcheck="false"
-        :placeholder="imageApiKeyConfigured ? '已保存，重新输入以覆盖（不可查看）' : '输入图像 API Key'"
+        :placeholder="imageApiKeyConfigured ? $t('settings.apiKeyPhSaved') : $t('settings.imageApiKeyPhNew')"
       />
     </div>
     <div class="grid2">
       <div class="field">
-        <label class="field-label">图像模型</label>
-        <input v-model="form.image_model" type="text" placeholder="如 dall-e-3 / flux" />
+        <label class="field-label">{{ $t("settings.imageModel") }}</label>
+        <input v-model="form.image_model" type="text" :placeholder="$t('settings.imageModelPh')" />
       </div>
       <div class="field">
-        <label class="field-label">尺寸</label>
+        <label class="field-label">{{ $t("settings.imageSize") }}</label>
         <input v-model="form.image_size" type="text" placeholder="1024x1024" />
       </div>
     </div>
     <div class="grid2">
       <div class="field">
-        <label class="field-label">temperature（写作）</label>
+        <label class="field-label">{{ $t("settings.temperature") }}</label>
         <input v-model.number="form.temperature" type="number" step="0.1" />
       </div>
       <div class="field">
@@ -699,7 +751,7 @@ async function onRebuildRag() {
         <input v-model.number="form.analysis_temperature" type="number" step="0.1" />
       </div>
       <div class="field">
-        <label class="field-label">规定字数（每章至少达到；允许超出）</label>
+        <label class="field-label">{{ $t("settings.targetChars") }}</label>
         <input
           v-model.number="form.writing_target_chars"
           type="number"
@@ -709,19 +761,19 @@ async function onRebuildRag() {
         />
       </div>
       <div class="field">
-        <label class="field-label">max_tokens（自动 = 规定字数×1.8，供超出用）</label>
+        <label class="field-label">{{ $t("settings.maxTokens") }}</label>
         <input v-model.number="form.max_tokens" type="number" min="256" readonly class="readonly-num" />
       </div>
       <div class="field">
-        <label class="field-label">frequency_penalty（抑复读，建议 0.4～0.8）</label>
+        <label class="field-label">{{ $t("settings.frequencyPenalty") }}</label>
         <input v-model.number="form.frequency_penalty" type="number" step="0.05" min="0" max="2" />
       </div>
       <div class="field">
-        <label class="field-label">presence_penalty（鼓励新内容，建议 0.1～0.4）</label>
+        <label class="field-label">{{ $t("settings.presencePenalty") }}</label>
         <input v-model.number="form.presence_penalty" type="number" step="0.05" min="0" max="2" />
       </div>
       <div class="field">
-        <label class="field-label">llm_timeout_secs（大模型建议 600+）</label>
+        <label class="field-label">{{ $t("settings.llmTimeout") }}</label>
         <input v-model.number="form.llm_timeout_secs" type="number" min="60" />
       </div>
       <div class="field">
@@ -733,94 +785,94 @@ async function onRebuildRag() {
         <input v-model.number="form.recent_window_chars" type="number" />
       </div>
       <div class="field">
-        <label class="field-label">price_input_per_1m（元/百万输入·缓存未命中）</label>
+        <label class="field-label">{{ $t("settings.priceInput") }}</label>
         <input v-model.number="form.price_input_per_1m" type="number" step="0.01" min="0" />
       </div>
       <div class="field">
-        <label class="field-label">price_cache_hit_per_1m（元/百万输入·缓存命中）</label>
+        <label class="field-label">{{ $t("settings.priceCacheHit") }}</label>
         <input v-model.number="form.price_cache_hit_per_1m" type="number" step="0.01" min="0" />
       </div>
       <div class="field">
-        <label class="field-label">price_output_per_1m（元/百万输出 token）</label>
+        <label class="field-label">{{ $t("settings.priceOutput") }}</label>
         <input v-model.number="form.price_output_per_1m" type="number" step="0.01" min="0" />
       </div>
       <div class="field">
-        <label class="field-label">writing_pro_model（长续写强模型，如 deepseek-v4-pro）</label>
+        <label class="field-label">{{ $t("settings.writingProModel") }}</label>
         <input
           v-model="form.writing_pro_model"
           type="text"
-          placeholder="空则 DeepSeek flash 自动推断 pro"
+          :placeholder="$t('settings.writingProPh')"
           @focus="pickTarget = 'writing_pro_model'"
         />
       </div>
       <div class="field capsule-switch-row">
         <CapsuleSwitch
           v-model="form.writing_retry_on_loop"
-          label="writing_retry_on_loop（复读截断后自动重试）"
+          :label="$t('settings.retryOnLoop')"
         />
       </div>
       <div class="field capsule-switch-row">
         <CapsuleSwitch
           v-model="form.writing_model_fallback"
-          label="writing_model_fallback（指定模型失败回退默认写作模型）"
+          :label="$t('settings.modelFallback')"
         />
       </div>
       <div class="field capsule-switch-row">
         <CapsuleSwitch
           v-model="form.writing_route_pro_on_continue"
-          label="writing_route_pro_on_continue（续写自动走强模型）"
+          :label="$t('settings.routePro')"
         />
       </div>
       <div class="field capsule-switch-row">
         <CapsuleSwitch
           v-model="form.writing_auto_digest"
-          label="writing_auto_digest（生成写入后自动提炼块记忆，供下轮续写）"
+          :label="$t('settings.autoDigest')"
         />
       </div>
       <div class="field capsule-switch-row">
         <CapsuleSwitch
           v-model="form.writing_auto_cast"
-          label="writing_auto_cast（生成写入后自动把新人物加入本篇角色，默认开）"
+          :label="$t('settings.autoCast')"
         />
       </div>
       <div class="field capsule-switch-row">
         <CapsuleSwitch
           v-model="form.writing_auto_story_sync"
-          label="writing_auto_story_sync（生成写入后自动同步故事线/时间线/关系/Canon，默认开；旧稿可在总谱页一键按正文重建）"
+          :label="$t('settings.autoStorySync')"
         />
       </div>
       <div class="field capsule-switch-row">
         <CapsuleSwitch
           v-model="form.writing_strip_rhetoric"
-          label="writing_strip_rhetoric（定稿清洗「不是A是B」否定对照口癖，默认开）"
+          :label="$t('settings.stripRhetoric')"
         />
       </div>
       <div class="field capsule-switch-row">
         <CapsuleSwitch
           v-model="form.skip_delete_confirm"
-          label="skip_delete_confirm（删除不需确认，默认开；关掉后所有删除会弹窗）"
+          :label="$t('settings.skipDeleteConfirm')"
         />
       </div>
       <div class="field capsule-switch-row">
         <CapsuleSwitch
           v-model="form.writing_cache_friendly_prompt"
-          label="writing_cache_friendly_prompt（续写 prompt 易变字段置后，利于 DeepSeek 前缀缓存）"
+          :label="$t('settings.cacheFriendly')"
         />
       </div>
       <div class="field capsule-switch-row">
         <CapsuleSwitch
           v-model="form.disable_thinking"
-          label="disable_thinking（商汤 / DeepSeek 等推理模建议开，避免 content 为空）"
+          :label="$t('settings.disableThinking')"
         />
       </div>
     </div>
 
     <div class="actions">
-      <button type="button" class="app-btn app-btn-info" @click="onHealth">检测连接 / 刷新模型</button>
-      <button type="button" class="app-btn app-btn-warning" @click="onRebuildRag">重建 RAG 索引</button>
+      <button type="button" class="app-btn app-btn-info" @click="onHealth">{{ $t("settings.detectRefresh") }}</button>
+      <button type="button" class="app-btn app-btn-warning" @click="onRebuildRag">{{ $t("settings.rebuildRag") }}</button>
     </div>
 
-    <p class="muted">点击模型填入：{{ pickTarget === "model" ? "写作" : pickTarget === "analysis_model" ? "分析" : pickTarget === "writing_pro_model" ? "续写强模型" : "Embedding" }} 槽</p>
+    <p class="muted">{{ $t("settings.pickHint", { slot: pickSlotLabel }) }}</p>
     <p class="muted">{{ message }}</p>
     <div v-if="models.length" class="model-list">
       <button

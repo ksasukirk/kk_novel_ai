@@ -14,6 +14,7 @@ import CastSidePanel from "../components/CastSidePanel.vue";
 import { buildNovelMindTree } from "../utils/mindmapLayout.js";
 import { appConfirm, appConfirmDelete } from "../services/confirmDialog.js";
 import { useToastError } from "../services/toast.js";
+import { t } from "../i18n/index.js";
 import { outlineQueueState } from "../services/outlineQueue.js";
 import { sectionQueueState } from "../services/sectionQueue.js";
 import {
@@ -57,7 +58,7 @@ const currentChapter = computed(() =>
 
 const mindTree = computed(() =>
   buildNovelMindTree({
-    title: (appState.project && appState.project.title) || "作品",
+    title: (appState.project && appState.project.title) || t("outline.workDefault"),
     volumes: volumes.value,
     chapters: chapters.value,
     plot: plot.value,
@@ -162,7 +163,7 @@ async function onResetBeatProgress() {
   try {
     await project.resetBeatProgress(appState.chapterId);
     await loadBeatProgress();
-    message.value = "节拍进度已重置";
+    message.value = t("story.beatReset");
   } catch (e) {
     error.value = String(e.message || e);
   }
@@ -173,17 +174,17 @@ async function onSkipCurrentBeat() {
   if (!id || !appState.chapterId) return;
   try {
     beatProgress.value = await project.skipBeatProgress(appState.chapterId, id);
-    message.value = "已跳过当前节拍";
+    message.value = t("story.beatSkipped");
   } catch (e) {
     error.value = String(e.message || e);
   }
 }
 
 function beatStatusLabel(st) {
-  if (st === "in_progress") return "进行中";
-  if (st === "completed") return "已完成";
-  if (st === "skipped") return "已跳过";
-  return "待写";
+  if (st === "in_progress") return t("story.beatInProgress");
+  if (st === "completed") return t("editor.done");
+  if (st === "skipped") return t("story.beatSkippedStatus");
+  return t("editor.pending");
 }
 
 const chapterShots = computed(() => {
@@ -209,7 +210,7 @@ function ensureBoardChapter() {
 function addShot() {
   const ch = ensureBoardChapter();
   if (!ch) {
-    error.value = "请先选择章节";
+    error.value = t("story.needChapter");
     return;
   }
   const beats = (currentChapter.value && currentChapter.value.beats) || [];
@@ -281,7 +282,7 @@ async function onSaveStoryboard() {
   try {
     await story.saveStoryboard(storyboard.value);
     noteBlockSaved("storyboard", storyboard.value);
-    message.value = "分镜表已保存";
+    message.value = t("story.boardSaved");
   } catch (e) {
     error.value = String(e.message || e);
   }
@@ -289,7 +290,7 @@ async function onSaveStoryboard() {
 
 async function onGenerateStoryboard() {
   if (!appState.chapterId) {
-    error.value = "请先选择章节";
+    error.value = t("story.needChapter");
     return;
   }
   boardBusy.value = true;
@@ -324,7 +325,7 @@ async function onGenerateStoryboard() {
     });
     await story.saveStoryboard(storyboard.value);
     noteBlockSaved("storyboard", storyboard.value);
-    message.value = `已生成 ${ch.shots.length} 镜`;
+    message.value = t("story.shotsGenerated", { n: ch.shots.length });
   } catch (e) {
     error.value = String(e.message || e);
   } finally {
@@ -339,7 +340,7 @@ async function onGenerateShotImage(shot) {
     const drafted = await promptFromShot(shot, loreItems.value, storyboard.value);
     const { openImagePromptDialog } = await import("../services/illustration.js");
     const confirmed = await openImagePromptDialog({
-      title: "生成本镜图像",
+      title: t("story.genShotTitle"),
       prompt: drafted.prompt,
       negative: drafted.negative || storyboard.value.negative || "",
       caption: drafted.caption,
@@ -364,7 +365,7 @@ async function onGenerateShotImage(shot) {
     noteBlockSaved("storyboard", storyboard.value);
     shotThumbs.value = { ...shotThumbs.value, [shot.image.rel]: "" };
     await refreshShotThumbs();
-    message.value = "本镜图像已生成";
+    message.value = t("story.shotImageDone");
   } catch (e) {
     error.value = String(e.message || e);
   } finally {
@@ -387,7 +388,7 @@ async function onInsertShotIntoChapter(shot) {
     const genBlocks = (appState.chapterBlocks || []).filter((b) => b.type === "gen");
     const genKey = genBlocks.length ? genBlocks[genBlocks.length - 1].key : "";
     const illus = createIllustrationBlock({
-      caption: shot.visual ? String(shot.visual).slice(0, 40) : "分镜插图",
+      caption: shot.visual ? String(shot.visual).slice(0, 40) : t("story.shotCaption"),
       rel,
       prompt: (shot.image && shot.image.prompt) || "",
       negative: (shot.image && shot.image.negative) || "",
@@ -396,7 +397,7 @@ async function onInsertShotIntoChapter(shot) {
       source: { kind: "shot", block_key: genKey, shot_id: shot.id },
     });
     await persistIllustrationAfterGen(genKey, illus);
-    message.value = "已插入本章";
+    message.value = t("story.inserted");
   } catch (e) {
     error.value = String(e.message || e);
   }
@@ -482,7 +483,7 @@ function onCastSelect(item) {
     selectedNode.value = {
       id: `char:${item.id}`,
       label: item.title,
-      meta: "角色",
+      meta: t("common.character"),
     };
   }
 }
@@ -494,7 +495,7 @@ function onGraphSelect(n) {
   selectedNode.value = {
     id: `char:${n.id}`,
     label: n.label,
-    meta: "角色",
+    meta: t("common.character"),
   };
 }
 
@@ -574,7 +575,7 @@ function addArc() {
   plot.value.arcs.push({
     id: story.newId(),
     kind: "main",
-    title: "新弧",
+    title: t("story.newArc"),
     goal: "",
     status: "active",
     progress_note: "",
@@ -585,7 +586,7 @@ function addArc() {
 function addPromise() {
   plot.value.promises.push({
     id: story.newId(),
-    text: "新承诺",
+    text: t("story.newPromise"),
     status: "open",
     planted_chapter_id: appState.chapterId || null,
     arc_id: null,
@@ -596,7 +597,7 @@ async function onSavePlot() {
   try {
     await story.savePlot(plot.value);
     noteBlockSaved("plot", plot.value);
-    message.value = "故事线已保存";
+    message.value = t("story.plotSaved");
   } catch (e) {
     error.value = String(e.message || e);
   }
@@ -606,7 +607,7 @@ function addEvent() {
   timeline.value.events.push({
     id: story.newId(),
     story_time: "",
-    title: "新事件",
+    title: t("story.newEvent"),
     summary: "",
     location: "",
     chapter_ids: appState.chapterId ? [appState.chapterId] : [],
@@ -618,7 +619,7 @@ async function onSaveTimeline() {
   try {
     await story.saveTimeline(timeline.value);
     noteBlockSaved("timeline", timeline.value);
-    message.value = "时间线已保存";
+    message.value = t("story.timelineSaved");
   } catch (e) {
     error.value = String(e.message || e);
   }
@@ -627,7 +628,7 @@ async function onSaveTimeline() {
 function addFact() {
   canon.value.facts.push({
     id: story.newId(),
-    text: "新事实",
+    text: t("story.newFact"),
     locked: false,
     evidence_chapter_ids: [],
     related_lore_ids: [],
@@ -639,7 +640,7 @@ async function onSaveCanon() {
   try {
     await story.saveCanon(canon.value);
     noteBlockSaved("canon", canon.value);
-    message.value = "Canon 已保存";
+    message.value = t("story.canonSaved");
   } catch (e) {
     error.value = String(e.message || e);
   }
@@ -663,7 +664,7 @@ async function onSaveRelations() {
   try {
     await story.saveRelations(relations.value);
     noteBlockSaved("relations", relations.value);
-    message.value = "关系已保存（已同步 lore.links）";
+    message.value = t("story.relationsSaved");
     await refreshAll();
   } catch (e) {
     error.value = String(e.message || e);
@@ -690,7 +691,7 @@ function parseBeats(text) {
 
 async function onSaveFocus() {
   if (!appState.chapterId) {
-    error.value = "请先选择章节";
+    error.value = t("story.needChapter");
     return;
   }
   try {
@@ -710,7 +711,7 @@ async function onSaveFocus() {
     });
     noteBlockSaved("focus", focusDraft.value);
     loadedSnap.focusChapterId = appState.chapterId;
-    message.value = "本章焦点/节拍已保存";
+    message.value = t("story.focusSaved");
   } catch (e) {
     error.value = String(e.message || e);
   }
@@ -718,8 +719,8 @@ async function onSaveFocus() {
 
 async function removeAt(arr, idx) {
   if (
-    !(await appConfirmDelete("删除这一项？", {
-      title: "删除条目",
+    !(await appConfirmDelete(t("story.deleteItemQ"), {
+      title: t("story.deleteItemTitle"),
     }))
   ) {
     return;
@@ -740,26 +741,29 @@ async function onRebuildStory() {
   if (rebuildBusy.value || rebuildBlocked.value) return;
   error.value = "";
   message.value = "";
-  const ok = await appConfirm(
-    "将按现有章节正文重新生成故事线、时间线、关系和未锁定 Canon。已锁定的 Canon 会保留。章节正文、本章焦点和节拍不会改写。此操作会先清空未锁定总谱再逐章调用 AI，可能较久且消耗额度。",
-    {
-      title: "按正文重建总谱",
-      confirmText: "开始重建",
-      cancelText: "取消",
-      danger: true,
-    }
-  );
+  const ok = await appConfirm(t("story.rebuildConfirm"), {
+    title: t("story.rebuildConfirmTitle"),
+    confirmText: t("story.rebuildStart"),
+    cancelText: t("common.cancel"),
+    danger: true,
+  });
   if (!ok) return;
   try {
     if (appState.dirty) await project.saveChapter();
     const r = await rebuildStoryFromExistingWork();
     await refreshAll();
     if (r && r.cancelled) {
-      message.value = `已取消。成功 ${r.ok} 章` + (r.failed && r.failed.length ? `，失败 ${r.failed.length} 章` : "");
+      message.value =
+        r.failed && r.failed.length
+          ? t("story.rebuildCancelledFail", { ok: r.ok, n: r.failed.length })
+          : t("story.rebuildCancelledOk", { ok: r.ok });
     } else if (r && r.failed && r.failed.length) {
-      message.value = `已重建 ${r.ok} 章，失败：${r.failed.join("、")}`;
+      message.value = t("story.rebuildPartial", {
+        ok: r.ok,
+        failed: r.failed.join(t("common.listSep")),
+      });
     } else {
-      message.value = `已按正文重建总谱（${(r && r.ok) || 0} 章）`;
+      message.value = t("story.rebuildDone", { n: (r && r.ok) || 0 });
     }
   } catch (e) {
     error.value = String((e && e.message) || e);
@@ -785,7 +789,7 @@ function onMapSelect(n) {
 <template>
   <section class="panel story-panel" :class="{ 'story-panel-embed': embedded }">
     <div v-if="!embedded" class="story-head">
-      <h1 class="panel-heading">总谱</h1>
+      <h1 class="panel-heading">{{ $t("story.title") }}</h1>
       <div v-if="appState.projectRoot" class="story-head-actions">
         <button
           v-if="rebuildBusy"
@@ -793,24 +797,24 @@ function onMapSelect(n) {
           class="app-btn"
           @click="onCancelRebuild"
         >
-          取消重建
+          {{ $t("story.cancelRebuild") }}
         </button>
         <button
           type="button"
           class="app-btn app-btn-primary"
           :disabled="rebuildBusy || rebuildBlocked"
-          title="按已有章节正文重新提取故事线、时间线、关系、未锁定 Canon；不改正文"
+          :title="$t('story.rebuildHint')"
           @click="onRebuildStory"
         >
-          {{ rebuildBusy ? "正在重建…" : "AI 按正文重建总谱" }}
+          {{ rebuildBusy ? $t("story.rebuilding") : $t("story.rebuild") }}
         </button>
       </div>
     </div>
     <p v-if="rebuildBusy" class="muted rebuild-progress">
-      正在按正文重建总谱 {{ storyRebuildState.index }}/{{ storyRebuildState.total }}
+      {{ $t("story.rebuildProgress", { index: storyRebuildState.index, total: storyRebuildState.total }) }}
       <span v-if="storyRebuildState.chapterTitle"> · {{ storyRebuildState.chapterTitle }}</span>
     </p>
-    <p v-if="!appState.projectRoot" class="muted">请先打开作品。</p>
+    <p v-if="!appState.projectRoot" class="muted">{{ $t("story.needProject") }}</p>
     <template v-else>
       <div class="story-layout">
         <div class="story-main">
@@ -818,14 +822,14 @@ function onMapSelect(n) {
             <div class="subtabs-chips">
               <button
                 v-for="t in [
-                  { id: 'map', label: '思维导图' },
-                  { id: 'plot', label: '故事线' },
-                  { id: 'focus', label: '本章焦点' },
-                  { id: 'timeline', label: '时间线' },
-                  { id: 'canon', label: 'Canon' },
-                  { id: 'relations', label: '关系' },
-                  { id: 'beats', label: '节拍' },
-                  { id: 'board', label: '分镜' },
+                  { id: 'map', label: $t('story.tabMap') },
+                  { id: 'plot', label: $t('story.tabPlot') },
+                  { id: 'focus', label: $t('story.tabFocus') },
+                  { id: 'timeline', label: $t('story.tabTimeline') },
+                  { id: 'canon', label: $t('story.tabCanon') },
+                  { id: 'relations', label: $t('story.tabRelations') },
+                  { id: 'beats', label: $t('story.tabBeats') },
+                  { id: 'board', label: $t('story.tabBoard') },
                 ]"
                 :key="t.id"
                 type="button"
@@ -843,16 +847,16 @@ function onMapSelect(n) {
                 class="app-btn"
                 @click="onCancelRebuild"
               >
-                取消重建
+                {{ $t("story.cancelRebuild") }}
               </button>
               <button
                 type="button"
                 class="app-btn app-btn-primary"
                 :disabled="rebuildBusy || rebuildBlocked"
-                title="按已有章节正文重新提取故事线、时间线、关系、未锁定 Canon；不改正文"
+                :title="$t('story.rebuildHint')"
                 @click="onRebuildStory"
               >
-                {{ rebuildBusy ? "正在重建…" : "重建总谱" }}
+                {{ rebuildBusy ? $t("story.rebuilding") : $t("story.rebuildShort") }}
               </button>
             </div>
           </div>
@@ -860,26 +864,24 @@ function onMapSelect(n) {
 
           <div class="story-scroll" :class="{ 'story-scroll-fill': tab === 'relations' }">
             <div v-if="tab === 'map'" class="block">
-              <p class="muted map-hint">
-                导图含：大纲、角色、故事线、时间线、Canon、关系。旧稿可点上方「AI 按正文重建总谱」。右侧可添加/删除角色；下方表单 Tab 可编辑。
-              </p>
+              <p class="muted map-hint">{{ $t("story.mapHint") }}</p>
               <MindMapBoard :tree="mindTree" :height="480" @select="onMapSelect" />
               <p v-if="selectedNode" class="muted select-hint">
-                选中：{{ selectedNode.label }}
+                {{ $t("story.selected", { label: selectedNode.label }) }}
                 <span v-if="selectedNode.meta"> — {{ selectedNode.meta }}</span>
               </p>
             </div>
 
             <div v-if="tab === 'plot'" class="block">
               <div class="row-actions">
-                <button type="button" class="app-btn" @click="addArc">加弧</button>
-                <button type="button" class="app-btn" @click="addPromise">加承诺</button>
-                <button type="button" class="app-btn app-btn-primary" @click="onSavePlot">保存故事线</button>
+                <button type="button" class="app-btn" @click="addArc">{{ $t("story.addArc") }}</button>
+                <button type="button" class="app-btn" @click="addPromise">{{ $t("story.addPromise") }}</button>
+                <button type="button" class="app-btn app-btn-primary" @click="onSavePlot">{{ $t("story.savePlot") }}</button>
               </div>
-              <h3 class="sub">故事弧</h3>
+              <h3 class="sub">{{ $t("story.arcs") }}</h3>
               <div v-for="(a, i) in plot.arcs" :key="a.id" class="card">
                 <div class="grid2">
-                  <input v-model="a.title" placeholder="标题" />
+                  <input v-model="a.title" :placeholder="$t('story.phTitle')" />
                   <select v-model="a.kind">
                     <option value="main">main</option>
                     <option value="sub">sub</option>
@@ -893,11 +895,11 @@ function onMapSelect(n) {
                   </select>
                   <input v-model="a.id" class="muted-id" readonly />
                 </div>
-                <input v-model="a.goal" placeholder="目标" />
-                <textarea v-model="a.progress_note" rows="2" placeholder="进度备注" />
-                <button type="button" class="app-btn" @click="removeAt(plot.arcs, i)">删除</button>
+                <input v-model="a.goal" :placeholder="$t('story.phGoal')" />
+                <textarea v-model="a.progress_note" rows="2" :placeholder="$t('story.phProgress')" />
+                <button type="button" class="app-btn" @click="removeAt(plot.arcs, i)">{{ $t("common.delete") }}</button>
               </div>
-              <h3 class="sub">承诺 / 伏笔</h3>
+              <h3 class="sub">{{ $t("story.promises") }}</h3>
               <div v-for="(p, i) in plot.promises" :key="p.id" class="card">
                 <textarea v-model="p.text" rows="2" />
                 <select v-model="p.status">
@@ -905,42 +907,42 @@ function onMapSelect(n) {
                   <option value="paid">paid</option>
                   <option value="broken">broken</option>
                 </select>
-                <button type="button" class="app-btn" @click="removeAt(plot.promises, i)">删除</button>
+                <button type="button" class="app-btn" @click="removeAt(plot.promises, i)">{{ $t("common.delete") }}</button>
               </div>
             </div>
 
             <div v-if="tab === 'focus' || tab === 'beats'" class="block">
-              <p class="muted">当前章：{{ currentChapter?.title || "未选" }}</p>
+              <p class="muted">{{ $t("story.currentChapter", { title: currentChapter?.title || $t("story.noChapter") }) }}</p>
               <div class="field">
                 <label class="field-label">POV lore id</label>
                 <select v-model="focusDraft.pov_lore_id">
-                  <option value="">（无）</option>
+                  <option value="">{{ $t("common.none") }}</option>
                   <option v-for="l in loreItems" :key="l.id" :value="l.id">{{ l.title }} ({{ l.id.slice(0, 8) }})</option>
                 </select>
               </div>
               <div class="field">
-                <label class="field-label">焦点弧 id（逗号分隔）</label>
+                <label class="field-label">{{ $t("story.focusArcIds") }}</label>
                 <input v-model="focusDraft.focus_arc_ids" type="text" />
-                <p class="hint muted">可选：{{ (plot.arcs || []).map((a) => a.id.slice(0, 8) + ':' + a.title).join(' · ') }}</p>
+                <p class="hint muted">{{ $t("story.optional", { text: (plot.arcs || []).map((a) => a.id.slice(0, 8) + ':' + a.title).join(' · ') }) }}</p>
               </div>
               <div class="field">
-                <label class="field-label">必达</label>
+                <label class="field-label">{{ $t("story.mustDo") }}</label>
                 <textarea v-model="focusDraft.must_do" rows="2" />
               </div>
               <div class="field">
-                <label class="field-label">禁止</label>
+                <label class="field-label">{{ $t("story.mustNot") }}</label>
                 <textarea v-model="focusDraft.must_not" rows="2" />
               </div>
               <div class="field">
-                <label class="field-label">读者已知</label>
+                <label class="field-label">{{ $t("story.readerKnows") }}</label>
                 <textarea v-model="focusDraft.reader_knows" rows="2" />
               </div>
               <div class="field">
-                <label class="field-label">角色已知</label>
+                <label class="field-label">{{ $t("story.characterKnows") }}</label>
                 <textarea v-model="focusDraft.character_knows" rows="2" />
               </div>
               <div class="field">
-                <label class="field-label">节拍（每行 title|purpose|conflict|emotion|location）</label>
+                <label class="field-label">{{ $t("story.beatsFormat") }}</label>
                 <textarea v-model="focusDraft.beatsText" rows="6" />
                 <ul v-if="beatProgressRows.length" class="beat-progress-list">
                   <li
@@ -955,46 +957,46 @@ function onMapSelect(n) {
                   </li>
                 </ul>
                 <div v-if="beatProgressRows.length" class="row-actions beat-progress-actions">
-                  <button type="button" class="app-btn" @click="onResetBeatProgress">重置进度</button>
-                  <button type="button" class="app-btn" @click="onSkipCurrentBeat">跳过当前节拍</button>
+                  <button type="button" class="app-btn" @click="onResetBeatProgress">{{ $t("story.resetProgress") }}</button>
+                  <button type="button" class="app-btn" @click="onSkipCurrentBeat">{{ $t("story.skipBeat") }}</button>
                 </div>
               </div>
-              <button type="button" class="app-btn app-btn-primary" @click="onSaveFocus">保存本章焦点</button>
+              <button type="button" class="app-btn app-btn-primary" @click="onSaveFocus">{{ $t("story.saveFocus") }}</button>
             </div>
 
             <div v-if="tab === 'board'" class="block">
-              <p class="muted">当前章：{{ currentChapter?.title || "未选" }}。分镜不随「按正文重建总谱」改写。</p>
+              <p class="muted">{{ $t("story.boardHint", { title: currentChapter?.title || $t("story.noChapter") }) }}</p>
               <div class="field">
-                <label class="field-label">全书画风锁</label>
-                <input v-model="storyboard.style_prefix" type="text" placeholder="如 cinematic still, muted colors" />
+                <label class="field-label">{{ $t("story.styleLock") }}</label>
+                <input v-model="storyboard.style_prefix" type="text" :placeholder="$t('story.stylePh')" />
               </div>
               <div class="field">
-                <label class="field-label">默认负向提示</label>
+                <label class="field-label">{{ $t("story.defaultNeg") }}</label>
                 <input v-model="storyboard.negative" type="text" placeholder="text, watermark, extra fingers" />
               </div>
               <div class="row-actions">
-                <button type="button" class="app-btn" :disabled="boardBusy" @click="addShot">加一镜</button>
+                <button type="button" class="app-btn" :disabled="boardBusy" @click="addShot">{{ $t("story.addShot") }}</button>
                 <button type="button" class="app-btn" :disabled="boardBusy || !appState.chapterId" @click="onGenerateStoryboard">
-                  {{ boardBusy ? "处理中…" : "按节拍生成分镜" }}
+                  {{ boardBusy ? $t("common.processing") : $t("story.genFromBeats") }}
                 </button>
-                <button type="button" class="app-btn app-btn-primary" @click="onSaveStoryboard">保存分镜</button>
+                <button type="button" class="app-btn app-btn-primary" @click="onSaveStoryboard">{{ $t("story.saveBoard") }}</button>
               </div>
               <p v-if="imageGenState.message" class="muted">{{ imageGenState.message }}</p>
               <div v-for="(s, i) in chapterShots" :key="s.id" class="card board-shot">
                 <div class="grid2">
-                  <input v-model.number="s.seq" type="number" min="1" title="序" />
+                  <input v-model.number="s.seq" type="number" min="1" :title="$t('story.seq')" />
                   <select v-model="s.beat_id">
-                    <option value="">（无节拍）</option>
+                    <option value="">{{ $t("story.noBeat") }}</option>
                     <option v-for="b in (currentChapter && currentChapter.beats) || []" :key="b.id" :value="b.id">
                       {{ b.title || b.purpose || b.id.slice(0, 8) }}
                     </option>
                   </select>
                 </div>
-                <input v-model="s.location" placeholder="地点" />
-                <textarea v-model="s.visual" rows="2" placeholder="画面" />
-                <textarea v-model="s.dialogue" rows="2" placeholder="对白要点" />
-                <input v-model="s.mood" placeholder="氛围" />
-                <p class="hint muted">人物</p>
+                <input v-model="s.location" :placeholder="$t('story.phLocation')" />
+                <textarea v-model="s.visual" rows="2" :placeholder="$t('story.phVisual')" />
+                <textarea v-model="s.dialogue" rows="2" :placeholder="$t('story.phDialogue')" />
+                <input v-model="s.mood" :placeholder="$t('story.phMood')" />
+                <p class="hint muted">{{ $t("story.people") }}</p>
                 <div class="tag-row">
                   <button
                     v-for="l in loreItems.filter((x) => x.kind === 'character')"
@@ -1008,7 +1010,7 @@ function onMapSelect(n) {
                   </button>
                 </div>
                 <p v-if="(s.character_lore_ids || []).length" class="hint muted">
-                  已选：{{ (s.character_lore_ids || []).map(loreTitle).join("、") }}
+                  {{ $t("story.selectedChars", { names: (s.character_lore_ids || []).map(loreTitle).join($t("common.listSep")) }) }}
                 </p>
                 <img
                   v-if="s.image && s.image.rel && shotThumbs[s.image.rel]"
@@ -1017,56 +1019,56 @@ function onMapSelect(n) {
                   alt=""
                 />
                 <div class="row-actions">
-                  <button type="button" class="app-btn" :disabled="boardBusy" @click="moveShot(i, -1)">上移</button>
-                  <button type="button" class="app-btn" :disabled="boardBusy" @click="moveShot(i, 1)">下移</button>
-                  <button type="button" class="app-btn" :disabled="boardBusy" @click="onGenerateShotImage(s)">生成本镜图</button>
-                  <button type="button" class="app-btn" :disabled="boardBusy" @click="onInsertShotIntoChapter(s)">插入本章</button>
-                  <button type="button" class="app-btn" @click="removeShot(i)">删除</button>
+                  <button type="button" class="app-btn" :disabled="boardBusy" @click="moveShot(i, -1)">{{ $t("common.up") }}</button>
+                  <button type="button" class="app-btn" :disabled="boardBusy" @click="moveShot(i, 1)">{{ $t("common.down") }}</button>
+                  <button type="button" class="app-btn" :disabled="boardBusy" @click="onGenerateShotImage(s)">{{ $t("story.genShotImage") }}</button>
+                  <button type="button" class="app-btn" :disabled="boardBusy" @click="onInsertShotIntoChapter(s)">{{ $t("story.insertChapter") }}</button>
+                  <button type="button" class="app-btn" @click="removeShot(i)">{{ $t("common.delete") }}</button>
                 </div>
               </div>
             </div>
 
             <div v-if="tab === 'timeline'" class="block">
               <div class="field">
-                <label class="field-label">纪年说明</label>
+                <label class="field-label">{{ $t("story.calendarNote") }}</label>
                 <input v-model="timeline.calendar_note" type="text" />
               </div>
               <div class="row-actions">
-                <button type="button" class="app-btn" @click="addEvent">加事件</button>
-                <button type="button" class="app-btn app-btn-primary" @click="onSaveTimeline">保存时间线</button>
+                <button type="button" class="app-btn" @click="addEvent">{{ $t("story.addEvent") }}</button>
+                <button type="button" class="app-btn app-btn-primary" @click="onSaveTimeline">{{ $t("story.saveTimeline") }}</button>
               </div>
               <div class="tl-rail">
                 <div v-for="(ev, i) in timelineSorted" :key="ev.id" class="tl-item">
                   <div class="tl-dot" />
                   <div class="tl-card card">
                     <div class="grid2">
-                      <input v-model="ev.story_time" placeholder="故事日 Y1-冬-03" />
-                      <input v-model="ev.title" placeholder="标题" />
+                      <input v-model="ev.story_time" :placeholder="$t('story.phStoryDay')" />
+                      <input v-model="ev.title" :placeholder="$t('story.phTitle')" />
                     </div>
-                    <textarea v-model="ev.summary" rows="2" placeholder="摘要" />
-                    <input v-model="ev.location" placeholder="地点" />
+                    <textarea v-model="ev.summary" rows="2" :placeholder="$t('story.phSummary')" />
+                    <input v-model="ev.location" :placeholder="$t('story.phLocation')" />
                     <button
                       type="button"
                       class="app-btn"
                       @click="removeAt(timeline.events, timeline.events.findIndex((x) => x.id === ev.id))"
                     >
-                      删除
+                      {{ $t("common.delete") }}
                     </button>
                   </div>
                 </div>
               </div>
-              <div v-if="!timelineSorted.length" class="muted">暂无事件，点「加事件」开始。</div>
+              <div v-if="!timelineSorted.length" class="muted">{{ $t("story.timelineEmpty") }}</div>
             </div>
 
             <div v-if="tab === 'canon'" class="block">
               <div class="row-actions">
-                <button type="button" class="app-btn" @click="addFact">加事实</button>
-                <button type="button" class="app-btn app-btn-primary" @click="onSaveCanon">保存 Canon</button>
+                <button type="button" class="app-btn" @click="addFact">{{ $t("story.addFact") }}</button>
+                <button type="button" class="app-btn app-btn-primary" @click="onSaveCanon">{{ $t("story.saveCanon") }}</button>
               </div>
               <div v-for="(f, i) in canon.facts" :key="f.id" class="card">
                 <textarea v-model="f.text" rows="2" />
-                <CapsuleSwitch v-model="f.locked" label="锁定（续写不可违背）" />
-                <button type="button" class="app-btn" @click="removeAt(canon.facts, i)">删除</button>
+                <CapsuleSwitch v-model="f.locked" :label="$t('story.lockCanon')" />
+                <button type="button" class="app-btn" @click="removeAt(canon.facts, i)">{{ $t("common.delete") }}</button>
               </div>
             </div>
 
@@ -1078,12 +1080,12 @@ function onMapSelect(n) {
                 @select="onGraphSelect"
               >
                 <template #toolbar>
-                  <button type="button" class="app-btn" @click="addEdge">加边</button>
-                  <button type="button" class="app-btn app-btn-primary" @click="onSaveRelations">保存关系</button>
+                  <button type="button" class="app-btn" @click="addEdge">{{ $t("story.addEdge") }}</button>
+                  <button type="button" class="app-btn app-btn-primary" @click="onSaveRelations">{{ $t("story.saveRelations") }}</button>
                 </template>
               </RelationForceGraph>
               <p v-if="selectedNode" class="muted select-hint">
-                选中：{{ selectedNode.label }}
+                {{ $t("story.selected", { label: selectedNode.label }) }}
                 <span v-if="selectedNode.meta"> — {{ selectedNode.meta }}</span>
               </p>
               <div class="edge-list">
@@ -1099,7 +1101,7 @@ function onMapSelect(n) {
                     <input v-model="e.label" placeholder="label" />
                     <input v-model.number="e.strength" type="number" min="1" max="5" />
                   </div>
-                  <button type="button" class="app-btn" @click="removeAt(relations.edges, i)">删除</button>
+                  <button type="button" class="app-btn" @click="removeAt(relations.edges, i)">{{ $t("common.delete") }}</button>
                 </div>
               </div>
             </div>

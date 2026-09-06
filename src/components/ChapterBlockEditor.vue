@@ -49,6 +49,11 @@ import {
 import CharacterHoverCard from "./CharacterHoverCard.vue";
 import EditorDraftPreview from "./EditorDraftPreview.vue";
 import { useToastError } from "../services/toast.js";
+import { t, tLocale } from "../i18n/index.js";
+
+function writingT(key, values) {
+  return tLocale(appState.settings?.writing_locale || "zh-CN", key, values);
+}
 
 const props = defineProps({
   readonly: { type: Boolean, default: false },
@@ -137,7 +142,9 @@ function mirrorHtml(block, index) {
 /** 整块总结标题：生成块优先指令，否则取正文开头 */
 function blockSummaryLabel(block, index) {
   if (isIllustrationBlock(block)) {
-    return block.caption ? `插图 · ${block.caption}` : "插图";
+    return block.caption
+      ? t("editor.illusNamed", { caption: block.caption })
+      : t("editor.illus");
   }
   if (block.type === "gen") {
     const instr = String(block.instruction || "").trim();
@@ -337,8 +344,8 @@ async function onDeleteBlock(block) {
   if (!block?.key || blockBusy(block)) return;
   if (isIllustrationBlock(block)) {
     if (
-      !(await appConfirmDelete("删除这张插图？正文不会改。", {
-        title: "删除插图",
+      !(await appConfirmDelete(t("editor.deleteIllusQ"), {
+        title: t("editor.deleteIllusTitle"),
       }))
     ) {
       return;
@@ -351,8 +358,8 @@ async function onDeleteBlock(block) {
     return;
   }
   if (
-    !(await appConfirmDelete("删除这一段生成内容？", {
-      title: "删除生成块",
+    !(await appConfirmDelete(t("editor.deleteBlockQ"), {
+      title: t("editor.deleteBlockTitle"),
     }))
   ) {
     return;
@@ -432,8 +439,8 @@ function openActionPopup(mode, block, ev) {
   actionPopup.blockKey = block.key;
   actionPopup.instruction =
     mode === "polish"
-      ? "删尽「不是…是…」否定对照，保持情节，提升画面感"
-      : block.instruction || "保持人物与文风，推进同一情节，不要复述前文";
+      ? writingT("writingSys.polishDefault")
+      : block.instruction || writingT("writingSys.rewriteDefault");
   actionPopup.x = x;
   actionPopup.y = y;
   nextTick(() => {
@@ -574,7 +581,7 @@ async function confirmActionPopup() {
 
 function cancelActionPopup() {
   closeActionPopup();
-  appState.statusMessage = "已取消";
+  appState.statusMessage = t("editor.cancelled");
 }
 
 const actionPopupBackdrop = createBackdropDismiss(cancelActionPopup);
@@ -604,7 +611,7 @@ function blockCopyableText(block) {
 
 async function copyTextToClipboard(text) {
   const value = String(text || "");
-  if (!value) throw new Error("没有可复制的内容");
+  if (!value) throw new Error(t("editor.nothingToCopy"));
   if (navigator.clipboard && navigator.clipboard.writeText) {
     await navigator.clipboard.writeText(value);
     return;
@@ -618,7 +625,7 @@ async function copyTextToClipboard(text) {
   ta.select();
   const ok = document.execCommand("copy");
   document.body.removeChild(ta);
-  if (!ok) throw new Error("复制失败");
+  if (!ok) throw new Error(t("editor.copyFailed"));
 }
 
 async function onCopyInstruction(block) {
@@ -633,7 +640,7 @@ async function onCopyInstruction(block) {
       if (copiedInstrKey.value === block.key) copiedInstrKey.value = "";
     }, 1600);
     appState.statusMessage =
-      payload.kind === "instruction" ? "生成指令已复制" : "块来源条目已复制";
+      payload.kind === "instruction" ? t("editor.copiedInstruction") : t("editor.copiedSources");
   } catch (e) {
     blockError.value = String(e.message || e);
   }
@@ -772,7 +779,7 @@ defineExpose({
           <div
             v-if="nodeVariantsFor(block).length"
             class="block-variants"
-            title="切换本段变体"
+            :title="$t('editor.switchVariant')"
           >
             <button
               v-for="(v, vi) in nodeVariantsFor(block)"
@@ -783,7 +790,7 @@ defineExpose({
               :disabled="readonly || blockBusy(block)"
               @click.stop="onSwitchVariant(block, v.id)"
             >
-              {{ v.label || `变体${vi + 1}` }}
+              {{ v.label || $t("editor.variantN", { n: vi + 1 }) }}
             </button>
           </div>
           <button
@@ -795,13 +802,13 @@ defineExpose({
               polishingKey === block.key ||
               rewritingKey === block.key
             "
-            title="完全按本块创作指令从零重写一版，不覆盖当前变体；不参照旧正文"
+            :title="$t('editor.variantFromScratch')"
             @click.stop="onGenerateVariant(block, 1)"
           >
             {{
               draftJobsForBlock(block).some((j) => j.draftBranchMode === "variant")
-                ? `生成中(${draftJobsForBlock(block).length})`
-                : "生成变体"
+                ? $t("editor.generatingCount", { n: draftJobsForBlock(block).length })
+                : $t("editor.genVariant")
             }}
           </button>
           <button
@@ -813,10 +820,10 @@ defineExpose({
               polishingKey === block.key ||
               rewritingKey === block.key
             "
-            :title="`同时按本块指令从零重写 2 版（上限 ${MAX_PARALLEL_GEN} 路）`"
+            :title="$t('editor.parallelX2Title', { n: MAX_PARALLEL_GEN })"
             @click.stop="onGenerateVariant(block, 2)"
           >
-            并发生成×2
+            {{ $t("editor.parallelX2") }}
           </button>
           <button
             type="button"
@@ -827,10 +834,10 @@ defineExpose({
               polishingKey === block.key ||
               rewritingKey === block.key
             "
-            title="从当前变体岔开写下一节"
+            :title="$t('editor.forkNextTitle')"
             @click.stop="onForkBranch(block)"
           >
-            从此岔开
+            {{ $t("editor.forkNext") }}
           </button>
           <button
             type="button"
@@ -838,16 +845,16 @@ defineExpose({
             :disabled="!blockCopyableText(block).text"
             :title="
               blockCopyableText(block).text ||
-              '无生成指令，也无章纲/设定等来源'
+              $t('editor.noCopyHint')
             "
             @click.stop="onCopyInstruction(block)"
           >
             {{
               copiedInstrKey === block.key
-                ? "已复制"
+                ? $t("common.copied")
                 : blockInstructionText(block)
-                  ? "复制指令"
-                  : "复制条目"
+                  ? $t("editor.copyInstruction")
+                  : $t("editor.copySources")
             }}
           </button>
           <button
@@ -861,7 +868,7 @@ defineExpose({
             "
             @click.stop="onPolishClick(block, $event)"
           >
-            {{ polishingKey === block.key ? "润色中…" : "润色" }}
+            {{ polishingKey === block.key ? $t("editor.polishing") : $t("ai.taskPolish") }}
           </button>
           <button
             type="button"
@@ -874,7 +881,7 @@ defineExpose({
             "
             @click.stop="onRewriteClick(block, $event)"
           >
-            {{ rewritingKey === block.key ? "生成中…" : "重新生成" }}
+            {{ rewritingKey === block.key ? $t("common.generating") : $t("editor.rewrite") }}
           </button>
           <button
             type="button"
@@ -886,7 +893,7 @@ defineExpose({
             "
             @click.stop="onIllustrate(block)"
           >
-            {{ illustratingKey === block.key ? "配图中…" : "配图" }}
+            {{ illustratingKey === block.key ? $t("editor.illustrating") : $t("editor.illustrate") }}
           </button>
           <button
             type="button"
@@ -894,7 +901,7 @@ defineExpose({
             :disabled="readonly || blockBusy(block)"
             @click.stop="onDeleteBlock(block)"
           >
-            删除
+            {{ $t("common.delete") }}
           </button>
         </div>
         <div v-else-if="isIllustrationBlock(block)" class="block-sticky-actions">
@@ -904,7 +911,7 @@ defineExpose({
             :disabled="readonly || illustratingKey === block.key || imageGenState.busy"
             @click.stop="onRegenIllustration(block)"
           >
-            {{ illustratingKey === block.key ? "生成中…" : "重生成" }}
+            {{ illustratingKey === block.key ? $t("common.generating") : $t("editor.regen") }}
           </button>
           <button
             type="button"
@@ -912,7 +919,7 @@ defineExpose({
             :disabled="readonly || blockBusy(block)"
             @click.stop="onDeleteBlock(block)"
           >
-            删除
+            {{ $t("common.delete") }}
           </button>
         </div>
       </div>
@@ -928,11 +935,11 @@ defineExpose({
         <img
           v-if="block.rel && illusUrls[block.rel]"
           :src="illusUrls[block.rel]"
-          :alt="block.caption || '插图'"
+          :alt="block.caption || $t('editor.illus')"
         />
-        <p v-else class="muted">{{ block.rel ? "正在载入插图…" : "尚未出图" }}</p>
+        <p v-else class="muted">{{ block.rel ? $t("editor.loadingIllus") : $t("editor.noIllus") }}</p>
         <figcaption v-if="block.caption">{{ block.caption }}</figcaption>
-        <p v-if="illusStale[block.key]" class="illus-stale">正文已改，图可能不符</p>
+        <p v-if="illusStale[block.key]" class="illus-stale">{{ $t("editor.illusStale") }}</p>
       </figure>
 
       <div
@@ -954,7 +961,7 @@ defineExpose({
           :class="{ ghosting: readonly && ghostBlockIndex === index && ghostText }"
           :value="displayText(block, index)"
           :readonly="readonly"
-          :placeholder="index === 0 ? '在此写作…（Ctrl+K 行内生成）' : ''"
+          :placeholder="index === 0 ? $t('editor.writePh') : ''"
           rows="2"
           spellcheck="false"
           @input="onInput(index, $event)"
@@ -976,14 +983,14 @@ defineExpose({
         class="block-sources"
         :title="blockSourceLine(block)"
       >
-        来源：{{ blockSourceLine(block) }}
+        {{ $t("editor.sourcePrefix", { text: blockSourceLine(block) }) }}
       </div>
 
       <div
         v-if="block.type === 'gen' && !hideBodyForAnchoredDraft(block)"
         class="block-digest"
       >
-        <div class="block-digest-title">本段记忆</div>
+        <div class="block-digest-title">{{ $t("editor.digestTitle") }}</div>
         <textarea
           :ref="(el) => setDigestRef(el, index)"
           class="block-digest-body"
@@ -994,7 +1001,7 @@ defineExpose({
               : block.digest || ''
           "
           :placeholder="
-            digestingKey === block.key ? '提炼中…' : '本段记忆（可编辑，失焦保存）'
+            digestingKey === block.key ? $t('editor.digesting') : $t('editor.digestPh')
           "
           :readonly="
             readonly ||
@@ -1015,7 +1022,7 @@ defineExpose({
             :disabled="blockBusy(block) || digestingKey === block.key"
             @click="onRedigestBlock(block)"
           >
-            {{ digestingKey === block.key ? "提炼中…" : "重提炼" }}
+            {{ digestingKey === block.key ? $t("editor.digesting") : $t("editor.redigest") }}
           </button>
           <button
             type="button"
@@ -1023,7 +1030,7 @@ defineExpose({
             :disabled="blockBusy(block)"
             @click="onDeleteBlock(block)"
           >
-            删除
+            {{ $t("common.delete") }}
           </button>
         </div>
       </div>
@@ -1044,26 +1051,26 @@ defineExpose({
           aria-modal="true"
         >
           <div class="block-action-pop-title">
-            {{ actionPopup.mode === "polish" ? "润色指令" : "重新生成指令" }}
+            {{ actionPopup.mode === "polish" ? $t("editor.polishInstr") : $t("editor.rewriteInstr") }}
           </div>
           <textarea
             id="block-action-instr"
             v-model="actionPopup.instruction"
             class="block-action-pop-input"
             rows="4"
-            placeholder="输入本轮要求…"
+            :placeholder="$t('editor.roundReqPh')"
             @keydown.enter.ctrl.prevent="confirmActionPopup"
           />
           <div class="block-action-pop-actions">
             <button type="button" class="app-btn" @click="cancelActionPopup">
-              取消
+              {{ $t("common.cancel") }}
             </button>
             <button
               type="button"
               class="app-btn app-btn-primary"
               @click="confirmActionPopup"
             >
-              {{ actionPopup.mode === "polish" ? "开始润色" : "开始重写" }}
+              {{ actionPopup.mode === "polish" ? $t("editor.startPolish") : $t("editor.startRewrite") }}
             </button>
           </div>
         </div>

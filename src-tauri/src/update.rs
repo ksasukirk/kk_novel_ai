@@ -76,11 +76,15 @@ fn is_github_api_asset(url: &str) -> bool {
 
 fn map_download_err(err: reqwest::Error, url: &str) -> AppError {
     if err.is_connect() || err.is_timeout() || err.is_request() {
-        AppError::msg(format!(
-            "连不上下载地址。检查更新走 api.github.com，安装包实际在 github.com / release-assets.githubusercontent.com，国内常被拦。请开代理后重试，或用浏览器打开 GitHub Release 页面下载。({url}: {err})"
-        ))
+        AppError::t_fmt(
+            "errors.updateBlockedByNetwork",
+            &[("url", url), ("err", &err.to_string())],
+        )
     } else {
-        AppError::msg(format!("下载失败 ({url}): {err}"))
+        AppError::t_fmt(
+            "errors.downloadFailedUrl",
+            &[("url", url), ("err", &err.to_string())],
+        )
     }
 }
 
@@ -116,9 +120,10 @@ pub async fn check_update() -> AppResult<Value> {
     }
     if !status.is_success() {
         let body = resp.text().await.unwrap_or_default();
-        return Err(AppError::msg(format!(
-            "GitHub Release 查询失败 HTTP {status}: {body}"
-        )));
+        return Err(AppError::t_fmt(
+            "errors.githubReleaseQueryFailed",
+            &[("status", &status.to_string()), ("body", &body)],
+        ));
     }
     let rel: GhRelease = resp.json().await?;
     let latest = rel
@@ -168,7 +173,7 @@ pub async fn download_update(
     #[cfg(target_os = "android")]
     {
         let _ = (app, download_url, asset_name, latest, api_download_url);
-        return Err(AppError::msg("Android 请打开 GitHub Release 下载 APK"));
+        return Err(AppError::t("errors.androidOpenGithubApk"));
     }
     #[cfg(not(target_os = "android"))]
     {
@@ -191,7 +196,7 @@ async fn download_update_inner(
         }
     }
     if urls.is_empty() {
-        return Err(AppError::msg("没有可下载的 Windows 安装包地址"));
+        return Err(AppError::t("errors.noWindowsInstallerUrl"));
     }
     let dest = download_dest(&asset_name, &latest);
     let client = http_client()?;
@@ -209,10 +214,16 @@ async fn download_update_inner(
                     resp = Some(r);
                     break;
                 }
-                last_err = Some(AppError::msg(format!("下载失败 HTTP {} ({url})", r.status())));
+                last_err = Some(AppError::t_fmt(
+                    "errors.downloadFailedHttp",
+                    &[("status", &r.status().to_string()), ("url", url)],
+                ));
             }
             Ok(r) => {
-                last_err = Some(AppError::msg(format!("下载失败 HTTP {} ({url})", r.status())));
+                last_err = Some(AppError::t_fmt(
+                    "errors.downloadFailedHttp",
+                    &[("status", &r.status().to_string()), ("url", url)],
+                ));
             }
             Err(e) => {
                 last_err = Some(map_download_err(e, url));
@@ -222,7 +233,7 @@ async fn download_update_inner(
     let resp = match resp {
         Some(r) => r,
         None => {
-            return Err(last_err.unwrap_or_else(|| AppError::msg("下载失败")));
+            return Err(last_err.unwrap_or_else(|| AppError::t("errors.downloadFailed")));
         }
     };
     let total = resp.content_length().unwrap_or(0);
@@ -264,12 +275,12 @@ async fn download_update_inner(
 pub fn launch_and_quit(app: AppHandle, path: String) -> AppResult<Value> {
     let p = PathBuf::from(path.trim());
     if !p.exists() {
-        return Err(AppError::msg("更新文件不存在，无法启动"));
+        return Err(AppError::t("errors.updateFileMissing"));
     }
     #[cfg(target_os = "android")]
     {
         let _ = (app, p);
-        return Err(AppError::msg("Android 请打开 GitHub Release 下载 APK"));
+        return Err(AppError::t("errors.androidOpenGithubApk"));
     }
     #[cfg(not(target_os = "android"))]
     {
@@ -278,7 +289,7 @@ pub fn launch_and_quit(app: AppHandle, path: String) -> AppResult<Value> {
             std::process::Command::new("cmd")
                 .args(["/C", "start", "", &p.to_string_lossy()])
                 .spawn()
-                .map_err(|e| AppError::msg(format!("无法启动新版本: {e}")))?;
+                .map_err(|e| AppError::t_fmt("errors.cannotLaunchNewVersion", &[("e", &e.to_string())]))?;
         }
         #[cfg(not(target_os = "windows"))]
         {
@@ -287,7 +298,7 @@ pub fn launch_and_quit(app: AppHandle, path: String) -> AppResult<Value> {
                 .stdout(std::process::Stdio::null())
                 .stderr(std::process::Stdio::null())
                 .spawn()
-                .map_err(|e| AppError::msg(format!("无法启动新版本: {e}")))?;
+                .map_err(|e| AppError::t_fmt("errors.cannotLaunchNewVersion", &[("e", &e.to_string())]))?;
         }
         app.exit(0);
         Ok(json!({ "ok": true }))
@@ -298,20 +309,20 @@ pub fn launch_and_quit(app: AppHandle, path: String) -> AppResult<Value> {
 pub fn reveal_path(path: String) -> AppResult<Value> {
     let p = PathBuf::from(path.trim());
     if !p.exists() {
-        return Err(AppError::msg("文件不存在"));
+        return Err(AppError::t("errors.fileMissing"));
     }
     #[cfg(target_os = "windows")]
     {
         std::process::Command::new("explorer")
             .arg(format!("/select,{}", p.display()))
             .spawn()
-            .map_err(|e| AppError::msg(format!("无法打开资源管理器: {e}")))?;
+            .map_err(|e| AppError::t_fmt("errors.cannotOpenExplorer", &[("e", &e.to_string())]))?;
         return Ok(json!({ "ok": true }));
     }
     #[cfg(not(target_os = "windows"))]
     {
         let _ = p;
-        Err(AppError::msg("当前平台请手动打开下载目录"))
+        Err(AppError::t("errors.platformOpenDownloadDir"))
     }
 }
 
@@ -321,18 +332,18 @@ pub fn open_external_url(url: String) -> AppResult<Value> {
     let home = github_repo_url();
     let ok = url == home || url.starts_with(&format!("{home}/"));
     if !ok {
-        return Err(AppError::msg("不允许打开该地址"));
+        return Err(AppError::t("errors.urlNotAllowed"));
     }
     #[cfg(target_os = "android")]
     {
-        return Err(AppError::msg("请在系统浏览器中打开该链接"));
+        return Err(AppError::t("errors.openUrlInBrowser"));
     }
     #[cfg(target_os = "windows")]
     {
         std::process::Command::new("cmd")
             .args(["/C", "start", "", &url])
             .spawn()
-            .map_err(|e| AppError::msg(format!("无法打开浏览器: {e}")))?;
+            .map_err(|e| AppError::t_fmt("errors.cannotOpenBrowser", &[("e", &e.to_string())]))?;
         return Ok(json!({ "ok": true }));
     }
     #[cfg(target_os = "macos")]
@@ -340,7 +351,7 @@ pub fn open_external_url(url: String) -> AppResult<Value> {
         std::process::Command::new("open")
             .arg(&url)
             .spawn()
-            .map_err(|e| AppError::msg(format!("无法打开浏览器: {e}")))?;
+            .map_err(|e| AppError::t_fmt("errors.cannotOpenBrowser", &[("e", &e.to_string())]))?;
         return Ok(json!({ "ok": true }));
     }
     #[cfg(all(unix, not(target_os = "macos"), not(target_os = "android")))]
@@ -348,7 +359,7 @@ pub fn open_external_url(url: String) -> AppResult<Value> {
         std::process::Command::new("xdg-open")
             .arg(&url)
             .spawn()
-            .map_err(|e| AppError::msg(format!("无法打开浏览器: {e}")))?;
+            .map_err(|e| AppError::t_fmt("errors.cannotOpenBrowser", &[("e", &e.to_string())]))?;
         return Ok(json!({ "ok": true }));
     }
     #[cfg(not(any(
@@ -358,7 +369,7 @@ pub fn open_external_url(url: String) -> AppResult<Value> {
         all(unix, not(target_os = "macos"), not(target_os = "android"))
     )))]
     {
-        Err(AppError::msg("当前平台请手动打开该地址"))
+        Err(AppError::t("errors.platformOpenUrl"))
     }
 }
 

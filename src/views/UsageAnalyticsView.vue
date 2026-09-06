@@ -17,6 +17,7 @@ import CapsuleSwitch from "../components/CapsuleSwitch.vue";
 import UsageTrendChart from "../components/analytics/UsageTrendChart.vue";
 import UsageBarChart from "../components/analytics/UsageBarChart.vue";
 import { useToastError } from "../services/toast.js";
+import { compareLocale, t } from "../i18n/index.js";
 import {
   bucketCacheRate,
   bucketTotalTokens,
@@ -75,7 +76,7 @@ function paginate(rows, page) {
 }
 
 const dataSourceLabel = computed(() =>
-  showAllProjects.value ? "全部作品（全局履历聚合）" : "仅当前作品"
+  showAllProjects.value ? t("analytics.srcAll") : t("analytics.srcCurrent")
 );
 
 const sourceLogs = computed(() => {
@@ -122,7 +123,7 @@ function normPath(p) {
 
 function resolveProjectTitle(root) {
   const r = String(root || "");
-  if (!r || r === "(none)") return "未关联作品";
+  if (!r || r === "(none)") return t("analytics.unlinked");
   const catalog = Array.isArray(appState.analyticsProjects) ? appState.analyticsProjects : [];
   const cat = catalog.find((p) => normPath(p.root) === normPath(r));
   if (cat && cat.title) return cat.title;
@@ -226,7 +227,7 @@ const projectRows = computed(() => {
   rows.sort((a, b) => {
     const ts = String(b.lastTs || "").localeCompare(String(a.lastTs || ""));
     if (ts) return ts;
-    return String(a.title || "").localeCompare(String(b.title || ""), "zh");
+    return String(a.title || "").localeCompare(String(b.title || ""), compareLocale());
   });
   return rows;
 });
@@ -532,38 +533,38 @@ watch(logPageInfo, (info) => {
     <!-- 单次生成详情 -->
     <template v-if="viewMode === 'log' && selectedLog">
       <div class="detail-top">
-        <button type="button" class="app-btn back-btn" @click="backOne">返回章节</button>
-        <h1 class="panel-heading detail-heading">生成详情</h1>
+        <button type="button" class="app-btn back-btn" @click="backOne">{{ $t("analytics.backChapter") }}</button>
+        <h1 class="panel-heading detail-heading">{{ $t("analytics.genDetail") }}</h1>
       </div>
 
       <div class="meta-card">
         <div class="meta-row">
-          <span class="meta-label">时间</span>
+          <span class="meta-label">{{ $t("analytics.time") }}</span>
           <span>{{ shortTs(selectedLog.ts) }}</span>
         </div>
         <div class="meta-row">
-          <span class="meta-label">任务</span>
+          <span class="meta-label">{{ $t("analytics.task") }}</span>
           <span>{{ selectedLog.task || "—" }}</span>
         </div>
         <div class="meta-row">
-          <span class="meta-label">模型</span>
+          <span class="meta-label">{{ $t("analytics.model") }}</span>
           <span>{{ selectedLog.model_used || "—" }}</span>
         </div>
         <div class="meta-row">
-          <span class="meta-label">章节</span>
+          <span class="meta-label">{{ $t("analytics.chapter") }}</span>
           <span class="mono">{{ selectedLog.chapter_id || "—" }}</span>
         </div>
         <div class="meta-row">
-          <span class="meta-label">作品</span>
+          <span class="meta-label">{{ $t("analytics.work") }}</span>
           <span class="mono path">{{ selectedLog.project_root || "—" }}</span>
         </div>
         <div class="meta-row">
-          <span class="meta-label">花费</span>
+          <span class="meta-label">{{ $t("analytics.cost") }}</span>
           <span>{{ formatCost(selectedLog.cost_cny) || "—" }}</span>
         </div>
       </div>
 
-      <h2 class="section-title">Token</h2>
+      <h2 class="section-title">{{ $t("analytics.token") }}</h2>
       <div class="meta-card" v-if="selectedLog.usage">
         <div class="meta-row">
           <span class="meta-label">prompt</span>
@@ -578,30 +579,30 @@ watch(logPageInfo, (info) => {
           <span>{{ usageTotalTokens(selectedLog.usage) }}</span>
         </div>
         <div class="meta-row">
-          <span class="meta-label">来源</span>
-          <span>{{ selectedLog.usage.source === "api" ? "api" : "估算" }}</span>
+          <span class="meta-label">{{ $t("analytics.source") }}</span>
+          <span>{{ selectedLog.usage.source === "api" ? "api" : $t("analytics.sourceEst") }}</span>
         </div>
         <div class="meta-row" v-if="formatCacheHit(selectedLog.usage)">
-          <span class="meta-label">缓存</span>
+          <span class="meta-label">{{ $t("analytics.cache") }}</span>
           <span>{{ formatCacheHit(selectedLog.usage) }}</span>
         </div>
       </div>
 
-      <h2 class="section-title">预览</h2>
-      <pre class="preview">{{ selectedLog.preview || selectedLog.final_text || "（无）" }}</pre>
+      <h2 class="section-title">{{ $t("analytics.preview") }}</h2>
+      <pre class="preview">{{ selectedLog.preview || selectedLog.final_text || $t("common.none") }}</pre>
 
       <details v-if="selectedLog.raw_text" class="raw-details">
-        <summary>原始全文</summary>
+        <summary>{{ $t("analytics.rawFull") }}</summary>
         <pre class="preview">{{ selectedLog.raw_text }}</pre>
       </details>
 
       <details v-if="formatMessages(selectedLog)" class="raw-details">
-        <summary>指令 / 消息</summary>
+        <summary>{{ $t("analytics.messages") }}</summary>
         <pre class="preview">{{ formatMessages(selectedLog) }}</pre>
       </details>
 
       <template v-if="contextItems.length">
-        <h2 class="section-title">上下文来源</h2>
+        <h2 class="section-title">{{ $t("analytics.contextSrc") }}</h2>
         <ul class="ctx-list">
           <li v-for="(it, i) in contextItems" :key="i">
             <strong>{{ it.kind || "item" }}</strong>
@@ -615,25 +616,29 @@ watch(logPageInfo, (info) => {
     <!-- 章节详情：该章各次生成 -->
     <template v-else-if="viewMode === 'chapter'">
       <div class="detail-top">
-        <button type="button" class="app-btn back-btn" @click="backOne">返回作品</button>
+        <button type="button" class="app-btn back-btn" @click="backOne">{{ $t("analytics.backWork") }}</button>
         <h1 class="panel-heading detail-heading">
-          章节 · {{ selectedChapter ? selectedChapter.label : selectedChapterId }}
+          {{ $t("analytics.chapterHead", { label: selectedChapter ? selectedChapter.label : selectedChapterId }) }}
         </h1>
       </div>
       <p class="muted intro">
-        {{ resolveProjectTitle(selectedRoot) }} · 本章整体
-        {{ selectedChapter ? formatCost(selectedChapter.cost) : "" }}
-        · {{ selectedChapter ? selectedChapter.calls : 0 }} 次
+        {{
+          $t("analytics.chapterIntro", {
+            title: resolveProjectTitle(selectedRoot),
+            cost: selectedChapter ? formatCost(selectedChapter.cost) : "",
+            n: selectedChapter ? selectedChapter.calls : 0,
+          })
+        }}
       </p>
 
       <div class="summary-grid kpi-grid" v-if="selectedChapter">
         <div class="sum-card">
-          <div class="sum-label">本章花费</div>
+          <div class="sum-label">{{ $t("analytics.chapterCost") }}</div>
           <div class="sum-main">{{ formatCost(selectedChapter.cost) || "¥0" }}</div>
-          <div class="muted">{{ selectedChapter.tokens }} tok · {{ selectedChapter.calls }} 次</div>
+          <div class="muted">{{ $t("analytics.tokCalls", { tokens: selectedChapter.tokens, n: selectedChapter.calls }) }}</div>
         </div>
         <div class="sum-card">
-          <div class="sum-label">缓存命中</div>
+          <div class="sum-label">{{ $t("analytics.cacheHit") }}</div>
           <div class="sum-main">
             {{ selectedChapter.hitRate != null ? selectedChapter.hitRate + "%" : "—" }}
           </div>
@@ -641,8 +646,7 @@ watch(logPageInfo, (info) => {
       </div>
 
       <p class="muted list-count">
-        共 {{ chapterLogs.length }} 次生成 · 第 {{ logPageInfo.page }}/{{ logPageInfo.pages }} 页（每页
-        {{ pageSize }}）
+        {{ $t("analytics.logCount", { n: chapterLogs.length, page: logPageInfo.page, pages: logPageInfo.pages, size: pageSize }) }}
       </p>
       <button
         v-for="item in pagedChapterLogs"
@@ -657,12 +661,12 @@ watch(logPageInfo, (info) => {
           <span class="ts">{{ shortTs(item.ts) }}</span>
         </div>
         <div class="log-row-stats muted">
-          prompt/comp {{ rowTokens(item) }}
-          · 命中 {{ rowCache(item) }}
+          {{ $t("analytics.promptComp", { tokens: rowTokens(item) }) }}
+          {{ $t("analytics.hitLabel", { rate: rowCache(item) }) }}
           <template v-if="item.cost_cny != null"> · {{ formatCost(item.cost_cny) }}</template>
           <template v-if="item.usage"> · {{ formatTokens(item.usage) }}</template>
         </div>
-        <div class="log-row-preview">{{ item.preview || "（无预览）" }}</div>
+        <div class="log-row-preview">{{ item.preview || $t("analytics.noPreview") }}</div>
       </button>
       <div v-if="chapterLogs.length" class="pager">
         <button
@@ -671,7 +675,7 @@ watch(logPageInfo, (info) => {
           :disabled="logPageInfo.page <= 1"
           @click="logPage = logPageInfo.page - 1"
         >
-          上一页
+          {{ $t("common.prev") }}
         </button>
         <span class="muted">{{ logPageInfo.page }} / {{ logPageInfo.pages }}</span>
         <button
@@ -680,16 +684,16 @@ watch(logPageInfo, (info) => {
           :disabled="logPageInfo.page >= logPageInfo.pages"
           @click="logPage = logPageInfo.page + 1"
         >
-          下一页
+          {{ $t("common.next") }}
         </button>
       </div>
-      <p v-if="!chapterLogs.length" class="muted empty">本章暂无履历（或被筛选过滤）。</p>
+      <p v-if="!chapterLogs.length" class="muted empty">{{ $t("analytics.emptyChapter") }}</p>
     </template>
 
     <!-- 作品详情：按章节整体 -->
     <template v-else-if="viewMode === 'project'">
       <div class="detail-top">
-        <button type="button" class="app-btn back-btn" @click="backOne">返回作品列表</button>
+        <button type="button" class="app-btn back-btn" @click="backOne">{{ $t("analytics.backList") }}</button>
         <h1 class="panel-heading detail-heading">
           {{ selectedProject ? selectedProject.title : resolveProjectTitle(selectedRoot) }}
         </h1>
@@ -698,31 +702,36 @@ watch(logPageInfo, (info) => {
 
       <div class="summary-grid kpi-grid" v-if="selectedProject">
         <div class="sum-card">
-          <div class="sum-label">作品整体花费</div>
+          <div class="sum-label">{{ $t("analytics.workCost") }}</div>
           <div class="sum-main">{{ formatCost(selectedProject.cost) || "¥0" }}</div>
           <div class="muted">
-            {{ selectedProject.tokens }} tok · {{ selectedProject.calls }} 次 ·
-            {{ selectedProject.chapterCount }} 章有记录
+            {{
+              $t("analytics.workTokCalls", {
+                tokens: selectedProject.tokens,
+                n: selectedProject.calls,
+                chapters: selectedProject.chapterCount,
+              })
+            }}
           </div>
         </div>
         <div class="sum-card">
-          <div class="sum-label">缓存命中</div>
+          <div class="sum-label">{{ $t("analytics.cacheHit") }}</div>
           <div class="sum-main">
             {{ selectedProject.hitRate != null ? selectedProject.hitRate + "%" : "—" }}
           </div>
-          <div class="muted">最近 {{ shortTs(selectedProject.lastTs) || "—" }}</div>
+          <div class="muted">{{ $t("analytics.recent", { ts: shortTs(selectedProject.lastTs) || "—" }) }}</div>
         </div>
       </div>
 
       <div class="metric-toggle">
-        <span class="muted">图表指标</span>
+        <span class="muted">{{ $t("analytics.chartMetric") }}</span>
         <button
           type="button"
           class="chip"
           :class="{ active: chartMetric === 'cost' }"
           @click="chartMetric = 'cost'"
         >
-          花费
+          {{ $t("analytics.cost") }}
         </button>
         <button
           type="button"
@@ -730,7 +739,7 @@ watch(logPageInfo, (info) => {
           :class="{ active: chartMetric === 'tokens' }"
           @click="chartMetric = 'tokens'"
         >
-          Token
+          {{ $t("analytics.token") }}
         </button>
       </div>
 
@@ -738,23 +747,22 @@ watch(logPageInfo, (info) => {
         :series="dailySeries"
         :metric="chartMetric"
         :estimate="false"
-        title="本作品近 14 天"
-        subtitle="按该作品履历按日汇总"
+        :title="$t('analytics.trendWork')"
+        :subtitle="$t('analytics.trendWorkSub')"
       />
 
       <div class="charts-row" v-if="chapterBars.length">
         <UsageBarChart
           :rows="chapterBars"
           :metric="chartMetric === 'tokens' ? 'tokens' : 'cost'"
-          title="按章节"
+          :title="$t('analytics.byChapter')"
         />
-        <UsageBarChart :rows="taskBars" metric="calls" title="按任务（次数）" />
+        <UsageBarChart :rows="taskBars" metric="calls" :title="$t('analytics.byTaskCalls')" />
       </div>
 
-      <h2 class="section-title">章节（点击进入该章记录）</h2>
+      <h2 class="section-title">{{ $t("analytics.chaptersClick") }}</h2>
       <p class="muted list-count">
-        共 {{ chapterRows.length }} 个章节维度 · 第 {{ chapterPageInfo.page }}/{{ chapterPageInfo.pages }} 页（每页
-        {{ pageSize }}）
+        {{ $t("analytics.chapterCount", { n: chapterRows.length, page: chapterPageInfo.page, pages: chapterPageInfo.pages, size: pageSize }) }}
       </p>
       <button
         v-for="ch in pagedChapterRows"
@@ -768,8 +776,8 @@ watch(logPageInfo, (info) => {
           <span class="ts">{{ shortTs(ch.lastTs) }}</span>
         </div>
         <div class="log-row-stats muted">
-          {{ ch.calls }} 次 · {{ ch.tokens }} tok
-          <template v-if="ch.hitRate != null"> · 缓存 {{ ch.hitRate }}%</template>
+          {{ $t("analytics.callsTok", { n: ch.calls, tokens: ch.tokens }) }}
+          <template v-if="ch.hitRate != null">{{ $t("analytics.cachePct", { pct: ch.hitRate }) }}</template>
           · {{ formatCost(ch.cost) || "¥0" }}
         </div>
       </button>
@@ -780,7 +788,7 @@ watch(logPageInfo, (info) => {
           :disabled="chapterPageInfo.page <= 1"
           @click="chapterPage = chapterPageInfo.page - 1"
         >
-          上一页
+          {{ $t("common.prev") }}
         </button>
         <span class="muted">{{ chapterPageInfo.page }} / {{ chapterPageInfo.pages }}</span>
         <button
@@ -789,34 +797,33 @@ watch(logPageInfo, (info) => {
           :disabled="chapterPageInfo.page >= chapterPageInfo.pages"
           @click="chapterPage = chapterPageInfo.page + 1"
         >
-          下一页
+          {{ $t("common.next") }}
         </button>
       </div>
-      <p v-if="!chapterRows.length" class="muted empty">该作品暂无章节履历。</p>
+      <p v-if="!chapterRows.length" class="muted empty">{{ $t("analytics.emptyWorkLogs") }}</p>
     </template>
 
     <!-- 列表：作品整体 -->
     <template v-else>
-      <h1 class="panel-heading">分析</h1>
+      <h1 class="panel-heading">{{ $t("analytics.title") }}</h1>
       <p class="muted intro">
-        列表按<strong>作品整体</strong>汇总；进入作品后再看各章节。数据源：{{ dataSourceLabel }}。
+        {{ $t("analytics.introBefore") }}<strong>{{ $t("analytics.introStrong") }}</strong>{{ $t("analytics.introAfter", { source: dataSourceLabel }) }}
       </p>
 
       <div class="balance-bar">
         <div class="balance-main">
           <template v-if="balance && balance.ok">
-            <span class="sum-label">DeepSeek 余额</span>
+            <span class="sum-label">{{ $t("analytics.dsBalance") }}</span>
             <div class="sum-main">
               {{ balance.currency || "CNY" }} {{ formatBalanceNum(balance.total) }}
             </div>
             <div class="muted">
-              赠送 {{ formatBalanceNum(balance.granted) }} · 充值
-              {{ formatBalanceNum(balance.topped_up) }}
+              {{ $t("analytics.grantedTopup", { granted: formatBalanceNum(balance.granted), topup: formatBalanceNum(balance.topped_up) }) }}
             </div>
           </template>
           <template v-else>
-            <span class="sum-label">账户余额</span>
-            <div class="muted">{{ (balance && balance.reason) || "加载中或暂不可用" }}</div>
+            <span class="sum-label">{{ $t("analytics.acctBalance") }}</span>
+            <div class="muted">{{ (balance && balance.reason) || $t("analytics.balanceWait") }}</div>
           </template>
         </div>
         <button
@@ -825,37 +832,36 @@ watch(logPageInfo, (info) => {
           :disabled="loading"
           @click="refreshAll"
         >
-          {{ loading ? "刷新中…" : "刷新" }}
+          {{ loading ? $t("analytics.refreshing") : $t("common.refresh") }}
         </button>
       </div>
 
       <div class="summary-grid kpi-grid">
         <div class="sum-card" :class="{ estimate: kpi.mode === 'estimate' }">
           <div class="sum-label">
-            {{ kpi.mode === "estimate" ? "单次续写约算" : "当前范围合计" }}
-            <span v-if="kpi.mode === 'estimate'" class="badge-est">估算 · 非实测</span>
+            {{ kpi.mode === "estimate" ? $t("analytics.estOnce") : $t("analytics.rangeSum") }}
+            <span v-if="kpi.mode === 'estimate'" class="badge-est">{{ $t("analytics.estBadge") }}</span>
           </div>
           <div class="sum-main">{{ formatCost(kpi.cost) || "¥0" }}</div>
           <div class="muted">
             <template v-if="kpi.mode === 'estimate'">
-              ≈ {{ kpi.tokens }} tok（prompt {{ estimate.perCall.prompt }} / out
-              {{ estimate.perCall.completion }}）
+              {{ $t("analytics.estTok", { tokens: kpi.tokens, prompt: estimate.perCall.prompt, completion: estimate.perCall.completion }) }}
             </template>
             <template v-else>
-              {{ kpi.tokens }} tok · {{ kpi.calls }} 次 · {{ projectRows.length }} 部作品
-              <template v-if="kpi.hitRate != null"> · 缓存 {{ kpi.hitRate }}%</template>
+              {{ $t("analytics.realTok", { tokens: kpi.tokens, n: kpi.calls, works: projectRows.length }) }}
+              <template v-if="kpi.hitRate != null">{{ $t("analytics.cachePct", { pct: kpi.hitRate }) }}</template>
             </template>
           </div>
         </div>
         <div class="sum-card" v-if="globalSummary">
-          <div class="sum-label">本应用全局累计</div>
+          <div class="sum-label">{{ $t("analytics.appTotal") }}</div>
           <div class="sum-main">{{ formatCost(globalSummary.cost) || "¥0" }}</div>
-          <div class="muted">{{ globalSummary.tokens }} tok · {{ globalSummary.calls }} 次</div>
+          <div class="muted">{{ $t("analytics.tokCalls", { tokens: globalSummary.tokens, n: globalSummary.calls }) }}</div>
         </div>
         <div class="sum-card" v-if="projectSummary">
-          <div class="sum-label">当前打开作品（账本）</div>
+          <div class="sum-label">{{ $t("analytics.openWorkLedger") }}</div>
           <div class="sum-main">{{ formatCost(projectSummary.cost) || "¥0" }}</div>
-          <div class="muted">{{ projectSummary.tokens }} tok · {{ projectSummary.calls }} 次</div>
+          <div class="muted">{{ $t("analytics.tokCalls", { tokens: projectSummary.tokens, n: projectSummary.calls }) }}</div>
         </div>
       </div>
 
@@ -863,24 +869,24 @@ watch(logPageInfo, (info) => {
 
       <div v-if="kpi.mode === 'estimate'" class="scenario-row">
         <div class="sum-card estimate">
-          <div class="sum-label">约 10 次续写</div>
+          <div class="sum-label">{{ $t("analytics.scen10") }}</div>
           <div class="sum-main">{{ formatCost(estimate.scenarios.x10.cost) }}</div>
         </div>
         <div class="sum-card estimate">
-          <div class="sum-label">约 50 次续写</div>
+          <div class="sum-label">{{ $t("analytics.scen50") }}</div>
           <div class="sum-main">{{ formatCost(estimate.scenarios.x50.cost) }}</div>
         </div>
       </div>
 
       <div class="metric-toggle">
-        <span class="muted">图表指标</span>
+        <span class="muted">{{ $t("analytics.chartMetric") }}</span>
         <button
           type="button"
           class="chip"
           :class="{ active: chartMetric === 'cost' }"
           @click="chartMetric = 'cost'"
         >
-          花费
+          {{ $t("analytics.cost") }}
         </button>
         <button
           type="button"
@@ -888,7 +894,7 @@ watch(logPageInfo, (info) => {
           :class="{ active: chartMetric === 'tokens' }"
           @click="chartMetric = 'tokens'"
         >
-          Token
+          {{ $t("analytics.token") }}
         </button>
       </div>
 
@@ -896,11 +902,11 @@ watch(logPageInfo, (info) => {
         :series="dailySeries"
         :metric="chartMetric"
         :estimate="!hasRealData"
-        :title="hasRealData ? '近 14 天趋势' : '配置情景示意'"
+        :title="hasRealData ? $t('analytics.trend14') : $t('analytics.trendEst')"
         :subtitle="
           hasRealData
-            ? '按已加载履历按日汇总'
-            : '假设每天 3 次续写的累计花费/token（非实测）'
+            ? $t('analytics.trend14Sub')
+            : $t('analytics.trendEstSub')
         "
       />
 
@@ -908,21 +914,21 @@ watch(logPageInfo, (info) => {
         <UsageBarChart
           :rows="modelBars"
           :metric="chartMetric === 'tokens' ? 'tokens' : 'cost'"
-          title="按模型"
+          :title="$t('analytics.byModel')"
         />
-        <UsageBarChart :rows="taskBars" metric="calls" title="按任务（次数）" />
+        <UsageBarChart :rows="taskBars" metric="calls" :title="$t('analytics.byTaskCalls')" />
       </div>
 
       <div v-if="byModelRows.length && hasRealData" class="model-table-wrap">
-        <h2 class="section-title">账本 · 按模型</h2>
+        <h2 class="section-title">{{ $t("analytics.ledgerByModel") }}</h2>
         <table class="model-table">
           <thead>
             <tr>
-              <th>模型</th>
-              <th>调用</th>
-              <th>token</th>
-              <th>缓存</th>
-              <th>花费</th>
+              <th>{{ $t("analytics.colModel") }}</th>
+              <th>{{ $t("analytics.colCalls") }}</th>
+              <th>{{ $t("analytics.colToken") }}</th>
+              <th>{{ $t("analytics.colCache") }}</th>
+              <th>{{ $t("analytics.colCost") }}</th>
             </tr>
           </thead>
           <tbody>
@@ -938,27 +944,26 @@ watch(logPageInfo, (info) => {
       </div>
 
       <div class="toolbar">
-        <CapsuleSwitch v-model="showAllProjects" label="包含其他作品" />
+        <CapsuleSwitch v-model="showAllProjects" :label="$t('analytics.includeOthers')" />
         <label class="filter-field">
-          <span class="muted">任务</span>
+          <span class="muted">{{ $t("analytics.task") }}</span>
           <select v-model="filterTask">
-            <option value="">全部</option>
-            <option v-for="t in taskOptions" :key="t" :value="t">{{ t }}</option>
+            <option value="">{{ $t("common.all") }}</option>
+            <option v-for="taskOpt in taskOptions" :key="taskOpt" :value="taskOpt">{{ taskOpt }}</option>
           </select>
         </label>
         <label class="filter-field">
-          <span class="muted">模型</span>
+          <span class="muted">{{ $t("analytics.model") }}</span>
           <select v-model="filterModel">
-            <option value="">全部</option>
+            <option value="">{{ $t("common.all") }}</option>
             <option v-for="m in modelOptions" :key="m" :value="m">{{ m }}</option>
           </select>
         </label>
       </div>
 
-      <h2 class="section-title">作品（整体统计）</h2>
+      <h2 class="section-title">{{ $t("analytics.worksOverall") }}</h2>
       <p class="muted list-count">
-        共 {{ projectRows.length }} 部 · 第 {{ projectPageInfo.page }}/{{ projectPageInfo.pages }} 页（每页
-        {{ pageSize }}）
+        {{ $t("analytics.workCount", { n: projectRows.length, page: projectPageInfo.page, pages: projectPageInfo.pages, size: pageSize }) }}
       </p>
 
       <button
@@ -973,8 +978,8 @@ watch(logPageInfo, (info) => {
           <span class="ts">{{ shortTs(row.lastTs) }}</span>
         </div>
         <div class="log-row-stats muted">
-          {{ row.calls }} 次 · {{ row.tokens }} tok · {{ row.chapterCount }} 章
-          <template v-if="row.hitRate != null"> · 缓存 {{ row.hitRate }}%</template>
+          {{ $t("analytics.workRow", { n: row.calls, tokens: row.tokens, chapters: row.chapterCount }) }}
+          <template v-if="row.hitRate != null">{{ $t("analytics.cachePct", { pct: row.hitRate }) }}</template>
           · {{ formatCost(row.cost) || "¥0" }}
         </div>
         <div class="log-row-preview mono path">{{ row.root }}</div>
@@ -987,7 +992,7 @@ watch(logPageInfo, (info) => {
           :disabled="projectPageInfo.page <= 1"
           @click="listPage = projectPageInfo.page - 1"
         >
-          上一页
+          {{ $t("common.prev") }}
         </button>
         <span class="muted">{{ projectPageInfo.page }} / {{ projectPageInfo.pages }}</span>
         <button
@@ -996,17 +1001,17 @@ watch(logPageInfo, (info) => {
           :disabled="projectPageInfo.page >= projectPageInfo.pages"
           @click="listPage = projectPageInfo.page + 1"
         >
-          下一页
+          {{ $t("common.next") }}
         </button>
       </div>
 
       <p v-if="!loading && !projectRows.length" class="muted empty">
         {{
           showAllProjects
-            ? "未在 novels 目录 / 最近列表发现作品；上方为按当前配置的约算。"
+            ? $t("analytics.emptyAll")
             : appState.projectRoot
-              ? "当前作品暂无条目；上方为配置约算。"
-              : "请先打开作品，或勾选「包含其他作品」。"
+              ? $t("analytics.emptyCurrent")
+              : $t("analytics.emptyNeed")
         }}
       </p>
     </template>

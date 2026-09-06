@@ -2,6 +2,7 @@
  * 大纲页导图：本地拆全书大纲 / 拆章纲要点 / 按结构或缓存选树
  * 代码路径: kk_novel_ai/src/utils/outlineMindTree.js
  */
+import { t } from "../i18n/index.js";
 
 /**
  * 已拆出实质章纲（不是默认空第一章）
@@ -58,13 +59,13 @@ export function parseChapterPoints(summary) {
 }
 
 function trimLabel(s, n = 24) {
-  const t = String(s || "").replace(/\s+/g, " ").trim();
-  if (t.length <= n) return t;
-  return `${t.slice(0, n - 1)}…`;
+  const text = String(s || "").replace(/\s+/g, " ").trim();
+  if (text.length <= n) return text;
+  return `${text.slice(0, n - 1)}…`;
 }
 
 function node(id, label, kind, meta, children = []) {
-  return { id, label: trimLabel(label) || "节点", kind, meta: String(meta || ""), children };
+  return { id, label: trimLabel(label) || t("mindmap.node"), kind, meta: String(meta || ""), children };
 }
 
 /**
@@ -73,9 +74,10 @@ function node(id, label, kind, meta, children = []) {
  * @param {string} [title]
  * @returns {{ tree: object, thin: boolean }}
  */
-export function parseBookOutlineLocal(text, title = "作品") {
+export function parseBookOutlineLocal(text, title = "") {
   const raw = String(text || "").trim();
-  const root = node("root", title || "作品", "root", "情节导图", []);
+  const rootLabel = title || t("outline.workDefault");
+  const root = node("root", rootLabel, "root", t("mindmap.plotMap"), []);
   if (!raw) return { tree: root, thin: true };
 
   const chapterChunks = splitByChapterHeadings(raw);
@@ -122,7 +124,7 @@ export function parseBookOutlineLocal(text, title = "作品") {
   }
 
   root.children = [
-    node("local:hint", "点「整理成导图」用 AI 拆树", "point", raw.slice(0, 80)),
+    node("local:hint", t("outline.organizeHint"), "point", raw.slice(0, 80)),
   ];
   return { tree: root, thin: true };
 }
@@ -133,7 +135,7 @@ function splitByChapterHeadings(raw) {
   if (parts.length < 2) return [];
   return parts.map((block, i) => {
     const nl = block.indexOf("\n");
-    const title = (nl >= 0 ? block.slice(0, nl) : block).trim() || `第${i + 1}章`;
+    const title = (nl >= 0 ? block.slice(0, nl) : block).trim() || t("editor.chapterN", { n: i + 1 });
     const body = (nl >= 0 ? block.slice(nl + 1) : "").trim();
     return { title, body };
   });
@@ -175,7 +177,7 @@ function toMindNode(n, fallbackId, depth = 0) {
     : [];
   return {
     id,
-    label: trimLabel(n.label || n.title || "节点"),
+    label: trimLabel(n.label || n.title || t("mindmap.node")),
     kind: String(n.kind || "point"),
     meta: String(n.summary || n.meta || ""),
     children,
@@ -187,12 +189,12 @@ function toMindNode(n, fallbackId, depth = 0) {
  * @param {object | null} saved
  * @param {string} [title]
  */
-export function mindNodeFromSaved(saved, title = "作品") {
+export function mindNodeFromSaved(saved, title = "") {
   if (!saved || typeof saved !== "object") return null;
   const root = saved.root || saved;
   const mapped = toMindNode(root, "root");
   if (!mapped) return null;
-  if (!mapped.label) mapped.label = title || "作品";
+  if (!mapped.label) mapped.label = title || t("outline.workDefault");
   mapped.kind = mapped.kind || "root";
   return mapped;
 }
@@ -240,7 +242,7 @@ export function buildOutlinePageTree({
   prefer = "auto",
   buildStructureTree,
 }) {
-  const title = (project && project.title) || "作品";
+  const title = (project && project.title) || t("outline.workDefault");
   const structured = hasStructuredOutline(project);
   const saved = mindNodeFromSaved(project && project.outline_mindmap, title);
   const book = String((project && project.book_outline) || "").trim();

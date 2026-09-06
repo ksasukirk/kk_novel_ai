@@ -9,6 +9,7 @@ import * as project from "../services/projectClient.js";
 import CapsuleSwitch from "./CapsuleSwitch.vue";
 import { appConfirmDelete } from "../services/confirmDialog.js";
 import { useToastError } from "../services/toast.js";
+import { compareLocale, t } from "../i18n/index.js";
 
 const emit = defineEmits(["changed", "select"]);
 
@@ -31,7 +32,7 @@ const characters = computed(() => {
     }
   }
   return [...byTitle.values()].sort((a, b) =>
-    String(a.title).localeCompare(String(b.title), "zh")
+    String(a.title).localeCompare(String(b.title), compareLocale())
   );
 });
 
@@ -76,11 +77,11 @@ defineExpose({ refresh });
 async function addCharacter() {
   const title = newName.value.trim();
   if (!title) {
-    error.value = "先填角色名";
+    error.value = t("cast.needName");
     return;
   }
   if (!appState.projectRoot) {
-    error.value = "请先打开作品";
+    error.value = t("cast.needProject");
     return;
   }
   busy.value = true;
@@ -96,7 +97,7 @@ async function addCharacter() {
       id: "",
       kind: "character",
       title,
-      content: `${title}（待补设定）`,
+      content: t("cast.pending", { title }),
       keywords: [title],
       links: [],
       attrs: {},
@@ -116,10 +117,10 @@ async function addCharacter() {
 
 async function removeCharacter(item) {
   if (!item || !item._root || !item.id) return;
-  const where = item.scope === "global" ? "全局角色仓" : "本篇设定";
+  const where = item.scope === "global" ? t("cast.whereGlobal") : t("cast.whereLocal");
   if (
-    !(await appConfirmDelete(`从${where}删除「${item.title}」？`, {
-      title: "删除角色",
+    !(await appConfirmDelete(t("cast.deleteQ", { where, title: item.title }), {
+      title: t("cast.deleteTitle"),
     }))
   ) {
     return;
@@ -145,24 +146,24 @@ function onSelect(item) {
 <template>
   <aside class="cast-panel">
     <div class="cast-head">
-      <h2 class="cast-title">角色</h2>
+      <h2 class="cast-title">{{ $t("cast.title") }}</h2>
     </div>
 
     <div class="cast-add">
       <input
         v-model="newName"
         type="text"
-        placeholder="角色名"
+        :placeholder="$t('cast.namePh')"
         @keydown.enter.prevent="addCharacter"
       />
-      <CapsuleSwitch v-model="writeGlobal" label="全局仓" />
+      <CapsuleSwitch v-model="writeGlobal" :label="$t('cast.globalStore')" />
       <button
         type="button"
         class="app-btn app-btn-primary"
         :disabled="busy"
         @click="addCharacter"
       >
-        添加
+        {{ $t("common.add") }}
       </button>
     </div>
 
@@ -176,7 +177,7 @@ function onSelect(item) {
         <div class="cast-meta">
           <strong>{{ item.title }}</strong>
           <span class="chip kind-tag" :class="item.scope === 'global' ? 'chip-global' : 'chip-active'">
-            {{ item.scope === "global" ? "全局" : "本篇" }}
+            {{ item.scope === "global" ? $t("common.global") : $t("common.local") }}
           </span>
           <p class="snippet">
             {{ (item.content || "").slice(0, 48)
@@ -189,10 +190,10 @@ function onSelect(item) {
           :disabled="busy"
           @click.stop="removeCharacter(item)"
         >
-          删除
+          {{ $t("common.delete") }}
         </button>
       </div>
-      <p v-if="!characters.length" class="muted empty">还没有角色，上面填名字添加。</p>
+      <p v-if="!characters.length" class="muted empty">{{ $t("cast.empty") }}</p>
     </div>
 
   </aside>

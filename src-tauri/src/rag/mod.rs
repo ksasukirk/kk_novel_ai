@@ -17,7 +17,9 @@ fn db_path(root: &Path) -> std::path::PathBuf {
 
 fn open_db(root: &Path) -> AppResult<Connection> {
     let path = db_path(root);
-    let conn = Connection::open(&path).map_err(|e| AppError::msg(format!("打开 embeddings.sqlite 失败: {e}")))?;
+    let conn = Connection::open(&path).map_err(|e| {
+        AppError::t_fmt("errors.openEmbeddingsSqliteFailed", &[("e", &e.to_string())])
+    })?;
     conn.execute_batch(
         "CREATE TABLE IF NOT EXISTS embeddings (
             id TEXT PRIMARY KEY,
@@ -28,7 +30,7 @@ fn open_db(root: &Path) -> AppResult<Connection> {
             updated_at TEXT NOT NULL
         );",
     )
-    .map_err(|e| AppError::msg(format!("初始化 embeddings 表失败: {e}")))?;
+    .map_err(|e| AppError::t_fmt("errors.initEmbeddingsTableFailed", &[("e", &e.to_string())]))?;
     Ok(conn)
 }
 
@@ -91,7 +93,7 @@ fn upsert_row(conn: &Connection, id: &str, kind: &str, text: &str, vector: &[f32
         ),
         params![id, kind, text, vector.len() as i64, blob, now],
     )
-    .map_err(|e| AppError::msg(format!("写入 embedding 失败: {e}")))?;
+    .map_err(|e| AppError::t_fmt("errors.writeEmbeddingFailed", &[("e", &e.to_string())]))?;
     Ok(())
 }
 
@@ -102,7 +104,7 @@ pub async fn embed_text(
 ) -> AppResult<Vec<Vec<f32>>> {
     let model = settings
         .resolve_embedding_model()
-        .ok_or_else(|| AppError::msg("未配置 embedding_model"))?;
+        .ok_or_else(|| AppError::t("errors.embeddingModelNotSet"))?;
     client.embed(settings, model, texts).await
 }
 
@@ -183,14 +185,14 @@ pub async fn query_semantic_scores(
         .prepare(&format!(
             "SELECT id, vector FROM {TABLE} WHERE kind = 'lore'"
         ))
-        .map_err(|e| AppError::msg(format!("查询 embedding 失败: {e}")))?;
+        .map_err(|e| AppError::t_fmt("errors.queryEmbeddingFailed", &[("e", &e.to_string())]))?;
     let rows = stmt
         .query_map([], |row| {
             let id: String = row.get(0)?;
             let blob: Vec<u8> = row.get(1)?;
             Ok((id, blob))
         })
-        .map_err(|e| AppError::msg(format!("读取 embedding 失败: {e}")))?;
+        .map_err(|e| AppError::t_fmt("errors.readEmbeddingFailed", &[("e", &e.to_string())]))?;
     for row in rows.flatten() {
         let (id, blob) = row;
         let lore_id = id.strip_prefix("lore:").unwrap_or(&id).to_string();
@@ -209,7 +211,7 @@ pub async fn rebuild_index(
     root: &Path,
 ) -> AppResult<usize> {
     if settings.resolve_embedding_model().is_none() {
-        return Err(AppError::msg("请先在设置中配置 embedding_model"));
+        return Err(AppError::t("errors.needEmbeddingModelInSettings"));
     }
     let path = db_path(root);
     if path.exists() {

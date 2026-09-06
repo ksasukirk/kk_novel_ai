@@ -62,27 +62,27 @@ impl WritingTask {
             "outline_to_mindmap" | "mindmap_outline" => Ok(Self::OutlineToMindmap),
             "beats_to_storyboard" | "storyboard_from_beats" => Ok(Self::BeatsToStoryboard),
             "content_to_image_prompt" | "image_prompt" => Ok(Self::ContentToImagePrompt),
-            _ => Err(AppError::msg(format!("未知写作任务: {s}"))),
+            _ => Err(AppError::t_fmt("errors.unknownWritingTask", &[("task", s)])),
         }
     }
 
     fn template(&self) -> &'static str {
         match self {
-            Self::Continue => include_str!("../../prompts/continue_chapter.md"),
-            Self::SameSlotVariant => include_str!("../../prompts/same_slot_variant.md"),
-            Self::Polish => include_str!("../../prompts/polish.md"),
-            Self::Outline => include_str!("../../prompts/outline_expand.md"),
-            Self::Consistency => include_str!("../../prompts/consistency_check.md"),
-            Self::ChapterSummary => include_str!("../../prompts/chapter_summary.md"),
-            Self::StorySync => include_str!("../../prompts/story_sync.md"),
-            Self::BlockDigest => include_str!("../../prompts/block_digest.md"),
-            Self::CastExtract => include_str!("../../prompts/cast_extract.md"),
-            Self::SectionPlan => include_str!("../../prompts/section_plan.md"),
-            Self::OutlineToBeats => include_str!("../../prompts/outline_to_beats.md"),
-            Self::OutlineToChapters => include_str!("../../prompts/outline_to_chapters.md"),
-            Self::OutlineToMindmap => include_str!("../../prompts/outline_to_mindmap.md"),
-            Self::BeatsToStoryboard => include_str!("../../prompts/beats_to_storyboard.md"),
-            Self::ContentToImagePrompt => include_str!("../../prompts/content_to_image_prompt.md"),
+            Self::Continue => crate::prompt_i18n::prompt("continue_chapter.md"),
+            Self::SameSlotVariant => crate::prompt_i18n::prompt("same_slot_variant.md"),
+            Self::Polish => crate::prompt_i18n::prompt("polish.md"),
+            Self::Outline => crate::prompt_i18n::prompt("outline_expand.md"),
+            Self::Consistency => crate::prompt_i18n::prompt("consistency_check.md"),
+            Self::ChapterSummary => crate::prompt_i18n::prompt("chapter_summary.md"),
+            Self::StorySync => crate::prompt_i18n::prompt("story_sync.md"),
+            Self::BlockDigest => crate::prompt_i18n::prompt("block_digest.md"),
+            Self::CastExtract => crate::prompt_i18n::prompt("cast_extract.md"),
+            Self::SectionPlan => crate::prompt_i18n::prompt("section_plan.md"),
+            Self::OutlineToBeats => crate::prompt_i18n::prompt("outline_to_beats.md"),
+            Self::OutlineToChapters => crate::prompt_i18n::prompt("outline_to_chapters.md"),
+            Self::OutlineToMindmap => crate::prompt_i18n::prompt("outline_to_mindmap.md"),
+            Self::BeatsToStoryboard => crate::prompt_i18n::prompt("beats_to_storyboard.md"),
+            Self::ContentToImagePrompt => crate::prompt_i18n::prompt("content_to_image_prompt.md"),
         }
     }
 
@@ -542,6 +542,14 @@ fn lore_to_text(entries: &[&LoreEntry]) -> String {
         .join("\n")
 }
 
+/// 长全书大纲拆章：按 prompt 字数抬高 max_tokens，避免 JSON 被截断。
+fn outline_split_max_tokens(prompt_chars: u32, current: u32) -> u32 {
+    let estimated = ((prompt_chars as f64 / 1.5 * 0.9).ceil() as u32)
+        .max(2048)
+        .min(16384);
+    current.max(estimated).clamp(1024, 16384)
+}
+
 fn resolve_writing_options(
     settings: &AppSettings,
     task: &WritingTask,
@@ -580,7 +588,7 @@ fn resolve_writing_options(
         WritingTask::OutlineToMindmap | WritingTask::OutlineToChapters
     ) {
         req.max_tokens
-            .or(Some(settings.max_tokens.min(4096).max(1024)))
+            .or(Some(settings.max_tokens.min(8192).max(2048)))
     } else if analysis {
         req.max_tokens
             .or(Some(settings.max_tokens.min(2048).max(512)))
@@ -1158,7 +1166,7 @@ pub fn assemble_messages_with_scores(
 
     let tpl = match task {
         WritingTask::Continue if settings.writing_cache_friendly_prompt => {
-            include_str!("../../prompts/continue_chapter_cache.md")
+            crate::prompt_i18n::prompt("continue_chapter_cache.md")
         }
         _ => task.template(),
     };
@@ -1439,6 +1447,19 @@ pub async fn run_writing(
         .map(|(_, c)| c.chars().count())
         .unwrap_or(0);
     let mut options = resolve_writing_options(settings, &task, req, chapter_chars);
+    if matches!(
+        task,
+        WritingTask::OutlineToChapters | WritingTask::OutlineToMindmap
+    ) {
+        let prompt_chars: u32 = messages
+            .iter()
+            .map(|m| m.content.chars().count() as u32)
+            .fold(0u32, |a, b| a.saturating_add(b));
+        options.max_tokens = Some(outline_split_max_tokens(
+            prompt_chars,
+            options.max_tokens.unwrap_or(1024),
+        ));
+    }
     let cancel = cancel.unwrap_or_else(|| Arc::new(AtomicBool::new(false)));
 
     let primary_model = options
@@ -1473,10 +1494,15 @@ pub async fn run_writing(
             .chat_stream(settings, &messages, &options, cancel.clone(), &mut on_delta)
             .await
             .map_err(|e2| {
-                AppError::msg(format!(
-                    "主模型 `{primary_model}` 探测失败：{}；回退 `{fb_model}` 亦失败：{e2}",
-                    probe_err.unwrap_or_else(|| "unknown".into())
-                ))
+                AppError::t_fmt(
+                    "errors.primaryProbeAndFallbackFailed",
+                    &[
+                        ("primary", &primary_model),
+                        ("probe", &probe_err.unwrap_or_else(|| "unknown".into())),
+                        ("fallback", &fb_model),
+                        ("e", &e2.to_string()),
+                    ],
+                )
             })?;
         (r, fb_model, Some(primary_model))
     } else {
@@ -1496,9 +1522,15 @@ pub async fn run_writing(
                         .chat_stream(settings, &messages, &options, cancel.clone(), &mut on_delta)
                         .await
                         .map_err(|e2| {
-                            AppError::msg(format!(
-                                "主模型 `{primary_model}` 失败：{e}；回退 `{fb_model}` 亦失败：{e2}"
-                            ))
+                            AppError::t_fmt(
+                                "errors.primaryAndFallbackFailed",
+                                &[
+                                    ("primary", &primary_model),
+                                    ("e", &e.to_string()),
+                                    ("fallback", &fb_model),
+                                    ("e2", &e2.to_string()),
+                                ],
+                            )
                         })?;
                     (r, fb_model, Some(primary_model))
                 } else {
@@ -1663,7 +1695,7 @@ pub async fn run_writing(
             };
             let fill_ctx = build_length_fill_context(settings, req);
             let fill_user = render_template(
-                include_str!("../../prompts/length_fill.md"),
+                crate::prompt_i18n::prompt("length_fill.md"),
                 &[
                     ("min_chars", &min_chars.to_string()),
                     ("have_chars", &have.to_string()),
@@ -1887,7 +1919,7 @@ pub fn beat_progress_get(root: &Path, chapter_id: &str) -> AppResult<project::Ch
         .chapters
         .iter()
         .find(|c| c.id == chapter_id)
-        .ok_or_else(|| AppError::msg("章节不存在"))?;
+        .ok_or_else(|| AppError::t("errors.chapterMissing"))?;
     let stored = project::load_beat_progress(root, chapter_id)?;
     Ok(beat_engine::load_or_init_progress(&chapter.beats, stored))
 }
@@ -1904,7 +1936,7 @@ pub fn beat_progress_advance(
         .chapters
         .iter()
         .find(|c| c.id == chapter_id)
-        .ok_or_else(|| AppError::msg("章节不存在"))?
+        .ok_or_else(|| AppError::t("errors.chapterMissing"))?
         .clone();
     let mut progress = project::load_beat_progress(root, chapter_id)?;
     progress = beat_engine::load_or_init_progress(&chapter.beats, progress);
@@ -1928,7 +1960,7 @@ pub fn beat_progress_skip(
         .chapters
         .iter()
         .find(|c| c.id == chapter_id)
-        .ok_or_else(|| AppError::msg("章节不存在"))?
+        .ok_or_else(|| AppError::t("errors.chapterMissing"))?
         .clone();
     let mut progress = project::load_beat_progress(root, chapter_id)?;
     progress = beat_engine::load_or_init_progress(&chapter.beats, progress);
@@ -1961,5 +1993,27 @@ fn resolve_fallback_model(
         None
     } else {
         Some(candidate)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::outline_split_max_tokens;
+
+    #[test]
+    fn split_tokens_floor_on_short_prompt() {
+        assert_eq!(outline_split_max_tokens(100, 1024), 2048);
+    }
+
+    #[test]
+    fn split_tokens_grows_with_long_outline() {
+        let n = outline_split_max_tokens(12_000, 3240);
+        assert!(n >= 7200, "got {n}");
+        assert!(n <= 16384);
+    }
+
+    #[test]
+    fn split_tokens_keeps_higher_request() {
+        assert_eq!(outline_split_max_tokens(100, 9000), 9000);
     }
 }

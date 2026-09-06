@@ -14,6 +14,29 @@ import {
   illustrationToInlineEntry,
   inlineEntryToBlock,
 } from "./genBlock.js";
+import { t, tLocale } from "../i18n/index.js";
+
+const VARIANT_LOCALES = ["zh-CN", "en", "ja"];
+
+function variantLabelN(n) {
+  return t("draft.variantN", { n });
+}
+
+function parseVariantIndex(label) {
+  const s = String(label || "").trim();
+  if (!s) return 0;
+  for (const loc of VARIANT_LOCALES) {
+    const sample = tLocale(loc, "draft.variantN", { n: "0" });
+    const prefix = sample.replace(/0\s*$/, "").trimEnd();
+    if (prefix && (s.startsWith(prefix) || s.startsWith(prefix.trimEnd()))) {
+      const rest = s.slice(prefix.length).trim();
+      const m = /^(\d+)$/.exec(rest);
+      if (m) return Number(m[1]) || 0;
+    }
+  }
+  const m = /^(?:变体|Variant|バリアント)\s*(\d+)$/iu.exec(s);
+  return m ? Number(m[1]) || 0 : 0;
+}
 
 function nextPlainKey() {
   return `b-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
@@ -74,7 +97,7 @@ export function migrateBlocksToBranchDoc(raw) {
     const nodeId = cryptoRandomId();
     const variant = variantFromGenBlock(b, {
       id: variantId,
-      label: "变体1",
+      label: t("draft.variant1"),
     });
     doc.nodes.push({
       id: nodeId,
@@ -180,7 +203,7 @@ function normalizeVariant(v, index = 0) {
   return {
     id: String(v.id || cryptoRandomId()),
     key: String(v.key || nextPlainKey()),
-    label: rawLabel || `变体${index + 1}`,
+    label: rawLabel || variantLabelN(index + 1),
     text,
     instruction: String(v.instruction || ""),
     task: String(v.task || ""),
@@ -213,14 +236,13 @@ export function nextUniqueVariantLabel(variants, preferred = "") {
 
   let max = 0;
   for (const label of used) {
-    const m = /^变体\s*(\d+)$/u.exec(label);
-    if (m) max = Math.max(max, Number(m[1]) || 0);
+    max = Math.max(max, parseVariantIndex(label));
   }
   let n = Math.max(max + 1, list.length + 1, 1);
-  let label = `变体${n}`;
+  let label = variantLabelN(n);
   while (used.has(label)) {
     n += 1;
-    label = `变体${n}`;
+    label = variantLabelN(n);
   }
   return label;
 }
@@ -230,18 +252,18 @@ export function dedupeVariantLabels(variants) {
   const list = Array.isArray(variants) ? variants : [];
   const used = new Set();
   for (const v of list) {
-    let label = String(v?.label || "").trim() || "变体1";
+    let label = String(v?.label || "").trim() || t("draft.variant1");
     if (!used.has(label)) {
       v.label = label;
       used.add(label);
       continue;
     }
-    const m = /^变体\s*(\d+)$/u.exec(label);
-    let n = m ? Number(m[1]) + 1 : list.indexOf(v) + 1;
-    let next = `变体${n}`;
+    const parsed = parseVariantIndex(label);
+    let n = parsed ? parsed + 1 : list.indexOf(v) + 1;
+    let next = variantLabelN(n);
     while (used.has(next)) {
       n += 1;
-      next = `变体${n}`;
+      next = variantLabelN(n);
     }
     v.label = next;
     used.add(next);
@@ -470,7 +492,7 @@ export function forkChild(doc, parentNodeId, fromVariantId, firstVariant) {
     return { doc: d, node: null, variant: null };
   }
   const v = normalizeVariant(
-    { ...firstVariant, label: firstVariant?.label || "变体1" },
+    { ...firstVariant, label: firstVariant?.label || t("draft.variant1") },
     0
   );
   const node = {
@@ -495,7 +517,7 @@ export function forkChild(doc, parentNodeId, fromVariantId, firstVariant) {
 export function appendOnActivePath(doc, firstVariant) {
   const d = normalizeBranchDoc(doc);
   const v = normalizeVariant(
-    { ...firstVariant, label: firstVariant?.label || "变体1" },
+    { ...firstVariant, label: firstVariant?.label || t("draft.variant1") },
     0
   );
   const node = {
@@ -725,7 +747,7 @@ export function branchTocTree(doc) {
         key: v.key,
         nodeId: node.id,
         variantId: v.id,
-        label: v.label || `变体${i + 1}`,
+        label: v.label || variantLabelN(i + 1),
         genIndex: sectionGen,
         active: v.id === node.activeVariantId,
         depth: depth + 1,
@@ -751,10 +773,13 @@ export function branchTocTree(doc) {
           variantId: kv?.id,
           parentVariantId: v.id,
           parentNodeId: node.id,
-          label: `${v.label || "变体"} → ${blockTocLabel(
-            { type: "gen", instruction: kv?.instruction, text: kv?.text },
-            genIndex
-          )}`,
+          label: t("draft.variantArrow", {
+            title: v.label || t("draft.variant"),
+            msg: blockTocLabel(
+              { type: "gen", instruction: kv?.instruction, text: kv?.text },
+              genIndex
+            ),
+          }),
           genIndex,
           active: false,
           depth: depth + 1,
@@ -771,16 +796,16 @@ export function branchTocTree(doc) {
  * MindMapBoard 用树
  * @param {string} [chapterTitle]
  */
-export function buildBranchMindTree(doc, chapterTitle = "本章") {
+export function buildBranchMindTree(doc, chapterTitle = t("editor.thisChapter")) {
   const d = normalizeBranchDoc(doc);
 
   const variantNode = (node, v, i) => {
     const kids = childNodesOf(d, node.id, v.id).map((child) => nodeMind(child));
     return {
       id: `var:${v.id}`,
-      label: v.label || `变体${i + 1}`,
+      label: v.label || variantLabelN(i + 1),
       kind: v.id === node.activeVariantId ? "activeVariant" : "variant",
-      meta: v.id === node.activeVariantId ? "当前" : "",
+      meta: v.id === node.activeVariantId ? t("project.current") : "",
       children: kids,
       _nodeId: node.id,
       _variantId: v.id,
@@ -798,7 +823,7 @@ export function buildBranchMindTree(doc, chapterTitle = "本章") {
         0
       ),
       kind: "section",
-      meta: `${node.variants.length} 变体`,
+      meta: t("draft.variantCount", { n: node.variants.length }),
       children: node.variants.map((v, i) => variantNode(node, v, i)),
       _nodeId: node.id,
       _variantId: active?.id,
@@ -808,7 +833,7 @@ export function buildBranchMindTree(doc, chapterTitle = "本章") {
 
   return {
     id: "branch-root",
-    label: chapterTitle || "本章",
+    label: chapterTitle || t("editor.thisChapter"),
     kind: "root",
     children: rootNodes(d).map((n) => nodeMind(n)),
   };
@@ -943,7 +968,7 @@ export function collapseChapterSectionsToWholeChapter(doc) {
   if (lastGen.key) mergedBlock.key = lastGen.key;
 
   const newDoc = emptyBranchDoc();
-  const variant = variantFromGenBlock(mergedBlock, { label: "变体1" });
+  const variant = variantFromGenBlock(mergedBlock, { label: t("draft.variant1") });
   const nodeId = cryptoRandomId();
   newDoc.nodes.push({
     id: nodeId,

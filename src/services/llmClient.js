@@ -11,6 +11,7 @@ import {
   notifyDeepseekPeakIfNeeded,
 } from "../utils/deepseekPricing.js";
 import { toastWarning } from "./toast.js";
+import { isCancelledMsg, t } from "../i18n/index.js";
 import {
   activeJobCount,
   appendJobDelta,
@@ -32,7 +33,7 @@ export async function refreshHealth() {
   try {
     const r = await invoke("llm_health");
     appState.llmOnline = !!(r && r.ok);
-    appState.statusMessage = appState.llmOnline ? "LM Studio 在线" : "LM Studio 离线";
+    appState.statusMessage = appState.llmOnline ? t("header.llmOnline") : t("header.llmOffline");
     return r;
   } catch (e) {
     appState.llmOnline = false;
@@ -108,10 +109,10 @@ export async function runWriting(request, opts = {}) {
   });
   appState.statusMessage =
     n > 1
-      ? `并发生成 ${n}/${MAX_PARALLEL_GEN}${peakSuffix}…`
+      ? t("status.parallel", { n, max: MAX_PARALLEL_GEN, suffix: peakSuffix })
       : peakNotice
-        ? `生成中${peakSuffix}…`
-        : "生成中…";
+        ? t("status.generatingPeak", { suffix: peakSuffix })
+        : t("status.generating");
 
   let result;
   try {
@@ -129,11 +130,11 @@ export async function runWriting(request, opts = {}) {
     }
   } catch (e) {
     const msg = String(e.message || e);
-    const cancelled = /取消/.test(msg);
+    const cancelled = isCancelledMsg(msg);
     if (job.status !== "cancelled" && job.status !== "error") {
       finishJobError(job, msg, cancelled);
     }
-    appState.statusMessage = cancelled ? "已取消生成" : msg;
+    appState.statusMessage = cancelled ? t("status.cancelled") : msg;
     if (job.draftPlacement === "editor") {
       discardJob(job);
       refreshLegacyFromJobs();
@@ -158,20 +159,20 @@ export async function cancelGeneration(requestId) {
     appState.lastRequestId ||
     "";
   if (!rid) {
-    appState.statusMessage = "无法取消：请求尚未开始";
+    appState.statusMessage = t("status.cannotCancel");
     return { ok: false, request_id: "" };
   }
   appState.lastRequestId = rid;
   try {
     const r = await invoke("llm_cancel", { requestId: rid });
     if (r && r.ok) {
-      appState.statusMessage = "正在取消生成…";
+      appState.statusMessage = t("status.cancelling");
     } else {
-      appState.statusMessage = "取消未生效（可能已结束）";
+      appState.statusMessage = t("status.cancelIneffective");
     }
     return r || { ok: false, request_id: rid };
   } catch (e) {
-    appState.statusMessage = `取消失败：${e.message || e}`;
+    appState.statusMessage = t("status.cancelFailed", { msg: e.message || e });
     throw e;
   }
 }
@@ -186,11 +187,11 @@ export async function cancelJob(jobOrId) {
       /* ignore */
     }
   }
-  finishJobError(job, "已取消", true);
+  finishJobError(job, t("status.cancelledShort"), true);
   discardJob(job);
   refreshLegacyFromJobs();
   syncGeneratingFromJobs();
-  appState.statusMessage = "已取消生成";
+  appState.statusMessage = t("status.cancelled");
   return { ok: true, request_id: job.requestId || "" };
 }
 

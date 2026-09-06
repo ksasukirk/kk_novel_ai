@@ -44,6 +44,7 @@ import {
   saveChapterProgress,
 } from "../services/editorReadingProgress.js";
 import { isMobileUx, watchMobileViewport } from "../utils/platform.js";
+import { t, tLocale } from "../i18n/index.js";
 import {
   aiPanelLayoutButtonLabel,
   cycleAiPanelLayout,
@@ -55,7 +56,6 @@ import {
 import {
   chapterQueueStatus,
   chapterQueueStatusClass,
-  chapterQueueStatusLabel,
   isChapterBodyEmpty,
 } from "../utils/chapterStatus.js";
 import {
@@ -69,6 +69,10 @@ import { appConfirm } from "../services/confirmDialog.js";
 import { updateChapterMeta } from "../services/projectClient.js";
 import { aiPanelForm } from "../stores/aiPanelState.js";
 import { useToastError } from "../services/toast.js";
+
+function writingT(key, values) {
+  return tLocale(appState.settings?.writing_locale || "zh-CN", key, values);
+}
 
 const mobileUx = ref(isMobileUx());
 const tocDrawerOpen = ref(false);
@@ -546,7 +550,10 @@ function tocStatusOf(ch) {
 }
 
 function tocStatusLabel(ch) {
-  return chapterQueueStatusLabel(tocStatusOf(ch));
+  const st = tocStatusOf(ch);
+  if (st === "pending") return t("editor.pending");
+  if (st === "done") return t("editor.done");
+  return t("editor.writing");
 }
 
 function tocStatusClass(ch) {
@@ -595,7 +602,7 @@ async function saveEditSummary(ch) {
     }
     await updateChapterMeta(ch.id, patch);
     editingSummaryId.value = "";
-    appState.statusMessage = "章纲已保存";
+    appState.statusMessage = t("editor.outlineSaved");
   } catch (e) {
     error.value = String(e.message || e);
   }
@@ -634,8 +641,8 @@ async function onTocContinueSplit() {
       instruction: aiPanelForm.instruction,
     });
     appState.statusMessage = r.writingCancelled
-      ? `已续拆 ${(r.createdIds || []).length} 章，写作已取消`
-      : `已续拆 ${(r.createdIds || []).length} 章并按纲写完`;
+      ? t("editor.continueSplitCancel", { n: (r.createdIds || []).length })
+      : t("editor.continueSplitDone", { n: (r.createdIds || []).length });
     await refreshAllTocs();
   } catch (e) {
     error.value = String(e.message || e);
@@ -646,10 +653,10 @@ async function onTocContinueSplit() {
 
 async function onTocWriteAll() {
   error.value = "";
-  const ok = await appConfirm("将按目录中待写章纲依次生成正文，确认开始？", {
-    title: "全部按纲写",
-    confirmText: "开始",
-    cancelText: "取消",
+  const ok = await appConfirm(t("editor.writeAllConfirm"), {
+    title: t("editor.writeAll"),
+    confirmText: t("common.start"),
+    cancelText: t("common.cancel"),
   });
   if (!ok) return;
   tocQueueBusy.value = true;
@@ -698,12 +705,12 @@ function tocGeneratingPhantoms(chapterId) {
   ) {
     const label =
       oq.phase === "splitting"
-        ? "正在拆分节拍…"
+        ? t("editor.splittingBeats")
         : oq.beatTitle
           ? oq.beatTitle
           : oq.beatIndex
-            ? `节拍 ${oq.beatIndex}/${oq.beatTotal || "?"}`
-            : "正在生成…";
+            ? t("editor.beatProgress", { index: oq.beatIndex, total: oq.beatTotal || "?" })
+            : t("status.generating");
     out.push({
       kind: "generating",
       key: `__generating_outline_${oq.phase}_${oq.beatIndex || 0}`,
@@ -725,7 +732,7 @@ function tocGeneratingPhantoms(chapterId) {
     out.push({
       kind: "generating",
       key: `__generating_job_${job.id}`,
-      label: String(job.label || "生成中").trim() || "生成中",
+      label: String(job.label || t("common.generating")).trim() || t("common.generating"),
       generating: true,
       genIndex: -1,
       depth: 0,
@@ -968,13 +975,13 @@ async function deleteTocBlock(chapterId, blockKey, ev) {
   error.value = "";
   if (!blockKey || anchoredJobsFor(blockKey).length) {
     if (anchoredJobsFor(blockKey).length || appState.generating) {
-      error.value = "正在生成中，请稍候再删";
+      error.value = t("editor.waitDelete");
     }
     return;
   }
   if (
-    !(await appConfirmDelete("删除这一段生成内容？", {
-      title: "删除生成块",
+    !(await appConfirmDelete(t("editor.deleteBlockQ"), {
+      title: t("editor.deleteBlockTitle"),
     }))
   ) {
     return;
@@ -986,7 +993,7 @@ async function deleteTocBlock(chapterId, blockKey, ev) {
     await deleteGenBlock(blockKey);
     if (activeBlockKey.value === blockKey) activeBlockKey.value = "";
     syncCurrentToc();
-    appState.statusMessage = "已从目录删除生成块（未保存）";
+    appState.statusMessage = t("editor.deletedBlock");
   } catch (e) {
     error.value = String(e.message || e);
   }
@@ -1005,13 +1012,13 @@ async function deleteTocChapter(ch, ev) {
   error.value = "";
   if (!ch?.id) return;
   if (appState.generating || outlineQueueState.running || tocQueueBusy.value) {
-    error.value = "正在生成中，请稍候再删";
+    error.value = t("editor.waitDelete");
     return;
   }
-  const title = String(ch.title || "本章").trim() || "本章";
+  const title = String(ch.title || t("editor.thisChapter")).trim() || t("editor.thisChapter");
   if (
-    !(await appConfirmDelete(`删除章节「${title}」？正文将一并删除，不可恢复。`, {
-      title: "删除章节",
+    !(await appConfirmDelete(t("editor.deleteChapterQ", { title }), {
+      title: t("editor.deleteChapterDlg"),
     }))
   ) {
     return;
@@ -1061,7 +1068,7 @@ async function deleteTocChapter(ch, ev) {
       editingSummaryId.value = "";
       editingSummaryDraft.value = "";
     }
-    appState.statusMessage = `已删除章节「${title}」`;
+    appState.statusMessage = t("editor.deletedChapter", { title });
   } catch (e) {
     error.value = String(e.message || e);
   }
@@ -1077,9 +1084,9 @@ async function onSave() {
 }
 
 async function onAdd() {
-  const t = newTitle.value.trim() || `第${chapters.value.length + 1}章`;
+  const title = newTitle.value.trim() || t("editor.chapterN", { n: chapters.value.length + 1 });
   try {
-    await project.createChapter(t);
+    await project.createChapter(title);
     newTitle.value = "";
     await refreshAllTocs();
   } catch (e) {
@@ -1109,7 +1116,7 @@ function openInline() {
 
 async function runInline() {
   if (!appState.projectRoot || !appState.chapterId) {
-    error.value = "请先打开作品并选择章节";
+    error.value = t("editor.needProjectChapter");
     return;
   }
   ensureBlocks();
@@ -1146,7 +1153,7 @@ async function runInline() {
               project_root: appState.projectRoot,
               chapter_id: appState.chapterId,
               task,
-              instruction: inlinePrompt.value || "在光标处续写一小段",
+              instruction: inlinePrompt.value || writingT("writingSys.continueAtCursor"),
               selection: selected,
             },
             "continue",
@@ -1156,7 +1163,7 @@ async function runInline() {
             project_root: appState.projectRoot,
             chapter_id: appState.chapterId,
             task,
-            instruction: inlinePrompt.value || "润色选区",
+            instruction: inlinePrompt.value || writingT("writingSys.polishSelection"),
             selection: selected,
           }
     );
@@ -1172,15 +1179,15 @@ async function runInline() {
 
 async function acceptGhost() {
   if (!ghostActive.value || !ghostText.value) return;
-  await pushAiUndo("行内生成");
+  await pushAiUndo(t("editor.inlineUndo"));
   ensureBlocks();
   const bi = ghostBlockIndex.value;
   const list = appState.chapterBlocks.map((b) => ({ ...b }));
   const block = list[bi] || list[0];
   if (!block) return;
   const i = ghostOffset.value;
-  const t = block.text || "";
-  block.text = t.slice(0, i) + ghostText.value + t.slice(i);
+  const text = block.text || "";
+  block.text = text.slice(0, i) + ghostText.value + text.slice(i);
   if (block.type === "gen") block.chars = [...block.text].length;
   list[bi] = block;
   appState.chapterBlocks = list;
@@ -1458,8 +1465,8 @@ watch(
 
 <template>
   <div v-if="!appState.projectRoot" class="panel">
-    <h1 class="panel-heading">写作</h1>
-    <p class="muted">请先在「作品」页打开或新建作品。</p>
+    <h1 class="panel-heading">{{ $t("editor.title") }}</h1>
+    <p class="muted">{{ $t("editor.needProject") }}</p>
   </div>
   <div
     v-else
@@ -1481,34 +1488,34 @@ watch(
       :class="{ 'toc-drawer-open': !mobileUx || tocDrawerOpen }"
     >
       <div class="tree-head-row">
-        <span class="tree-head">目录</span>
+        <span class="tree-head">{{ $t("editor.toc") }}</span>
         <div class="tree-head-actions">
           <button
             type="button"
             class="tree-head-toggle"
-            title="根据已有章节续拆后续待写章"
+            :title="$t('editor.continueSplitTitle')"
             :disabled="tocQueueBusy || outlineQueueState.running || !appState.chapterId"
             @click="onTocContinueSplit"
           >
-            续拆后续
+            {{ $t("editor.expandMore") }}
           </button>
           <button
             type="button"
             class="tree-head-toggle"
-            title="按目录待写章纲整队生成"
+            :title="$t('editor.writeAllTitle')"
             :disabled="tocQueueBusy || outlineQueueState.running || !appState.chapterId"
             @click="onTocWriteAll"
           >
-            全部按纲写
+            {{ $t("editor.writeAll") }}
           </button>
           <button
             v-if="!mobileUx"
             type="button"
             class="tree-head-toggle"
-            title="隐藏目录栏"
+            :title="$t('editor.hideTocBar')"
             @click="toggleTocVisible"
           >
-            隐藏
+            {{ $t("editor.hideToc") }}
           </button>
         </div>
       </div>
@@ -1531,7 +1538,7 @@ watch(
               type="button"
               class="toc-caret"
               :class="{ open: isExpanded(ch.id) }"
-              :title="isExpanded(ch.id) ? '收起章纲' : '展开章纲'"
+              :title="isExpanded(ch.id) ? $t('editor.collapseOutline') : $t('editor.expandOutline')"
               @click="toggleExpand(ch.id, $event)"
             >
               ›
@@ -1555,28 +1562,28 @@ watch(
                 v-if="tocStatusOf(ch) !== 'done'"
                 type="button"
                 class="toc-op-btn"
-                title="按本章纲生成正文"
+                :title="$t('editor.writeChapterTitle')"
                 :disabled="tocQueueBusy || outlineQueueState.running"
                 @click="onTocWriteChapter(ch, $event)"
               >
-                写
+                {{ $t("editor.write") }}
               </button>
               <button
                 type="button"
                 class="toc-op-btn"
-                title="编辑本章纲"
+                :title="$t('editor.editOutlineTitle')"
                 @click="startEditSummary(ch, $event)"
               >
-                纲
+                {{ $t("editor.outline") }}
               </button>
               <button
                 type="button"
                 class="toc-op-btn toc-op-del"
-                title="删除本章"
+                :title="$t('editor.deleteChapterTitle')"
                 :disabled="tocQueueBusy || outlineQueueState.running || appState.generating"
                 @click="deleteTocChapter(ch, $event)"
               >
-                删
+                {{ $t("editor.deleteShort") }}
               </button>
             </div>
           </div>
@@ -1588,14 +1595,14 @@ watch(
             <textarea
               v-model="editingSummaryDraft"
               rows="3"
-              placeholder="本章冲突 / 推进 / 钩子"
+              :placeholder="$t('outline.chSummaryPh')"
             />
             <div class="toc-summary-actions">
               <button type="button" class="app-btn" @click="saveEditSummary(ch)">
-                保存
+                {{ $t("common.save") }}
               </button>
               <button type="button" class="app-btn" @click="cancelEditSummary">
-                取消
+                {{ $t("common.cancel") }}
               </button>
             </div>
           </div>
@@ -1607,14 +1614,14 @@ watch(
               v-else-if="!ch.summary && editingSummaryId !== ch.id"
               class="toc-empty muted"
             >
-              暂无章纲
+              {{ $t("editor.noOutline") }}
             </p>
           </div>
         </div>
       </div>
       <div class="field toc-add">
-        <input v-model="newTitle" type="text" placeholder="新章节标题" />
-        <button type="button" class="app-btn" style="margin-top: 6px; width: 100%" @click="onAdd">添加章节</button>
+        <input v-model="newTitle" type="text" :placeholder="$t('editor.newTitle')" />
+        <button type="button" class="app-btn" style="margin-top: 6px; width: 100%" @click="onAdd">{{ $t("editor.addChapter") }}</button>
       </div>
       <div class="branch-graph-slot">
         <button
@@ -1622,7 +1629,7 @@ watch(
           class="branch-graph-toggle"
           @click="showBranchGraph = !showBranchGraph"
         >
-          {{ showBranchGraph ? "收起分支图" : "展开分支图" }}
+          {{ showBranchGraph ? $t("editor.collapseGraph") : $t("editor.expandGraph") }}
         </button>
         <BranchTreePanel
           v-if="showBranchGraph && appState.chapterId"
@@ -1640,21 +1647,21 @@ watch(
           class="app-btn"
           @click="tocDrawerOpen = !tocDrawerOpen"
         >
-          目录
+          {{ $t("editor.toc") }}
         </button>
         <button
           v-else-if="!tocVisible"
           type="button"
           class="app-btn"
-          title="显示章节目录与分支图"
+          :title="$t('editor.showTocHint')"
           @click="toggleTocVisible"
         >
-          显示目录
+          {{ $t("editor.showToc") }}
         </button>
         <strong>{{
           chapters.find((c) => c.id === tocFocusChapterId)?.title ||
           chapters.find((c) => c.id === appState.chapterId)?.title ||
-          "未选章节"
+          $t("editor.noChapter")
         }}</strong>
         <span
           v-if="
@@ -1663,37 +1670,37 @@ watch(
             tocFocusChapterId !== appState.chapterId
           "
           class="muted tip"
-        >阅读中 · 编辑章另见目录</span>
-        <span class="muted">{{ wordCount }} 字{{ appState.dirty ? " · 未保存" : "" }}</span>
+        >{{ $t("editor.reading") }}</span>
+        <span class="muted">{{ $t("editor.chars", { n: wordCount }) }}{{ appState.dirty ? $t("editor.unsaved") : "" }}</span>
         <label class="typo-ctrl muted">
-          字体
+          {{ $t("editor.font") }}
           <select v-model="fontFamily" class="typo-select">
-            <option v-for="p in fontPresets" :key="p.id" :value="p.id">{{ p.label }}</option>
+            <option v-for="p in fontPresets" :key="p.id" :value="p.id">{{ $t("editor.fonts." + p.id) }}</option>
           </select>
         </label>
         <label class="typo-ctrl muted">
-          字号
+          {{ $t("editor.fontSize") }}
           <select v-model="fontSize" class="typo-select">
             <option v-for="n in fontSizes" :key="n" :value="n">{{ n }}</option>
           </select>
         </label>
-        <span v-if="!mobileUx" class="muted tip">Ctrl+S 保存 · Ctrl+K 行内 · Esc 取消生成</span>
+        <span v-if="!mobileUx" class="muted tip">{{ $t("editor.hotkeys") }}</span>
         <button
           v-if="!mobileUx"
           type="button"
           class="app-btn"
           :title="
             aiPanelLayout === 'dock'
-              ? '切到正文底部浮条'
+              ? $t('editor.aiToFloat')
               : aiPanelLayout === 'float'
-                ? '完全隐藏 AI 面板'
-                : '显示 AI 侧栏'
+                ? $t('editor.aiHidePanel')
+                : $t('editor.aiShowDock')
           "
           @click="toggleAiPanelLayout"
         >
           {{ aiLayoutButtonLabel }}
         </button>
-        <button type="button" class="app-btn app-btn-primary" @click="onSave">保存</button>
+        <button type="button" class="app-btn app-btn-primary" @click="onSave">{{ $t("editor.save") }}</button>
       </div>
       <div class="editor-wrap">
         <div class="editor-scroll">
@@ -1735,13 +1742,13 @@ watch(
               v-else-if="ch.id === appState.chapterId && showEditorDraft"
             />
           </section>
-          <div class="editor-jump-fabs" aria-label="跳转">
+          <div class="editor-jump-fabs" :aria-label="$t('editor.jump')">
             <div class="editor-jump-inner">
               <button
                 type="button"
                 class="editor-jump-fab"
-                title="跳到当前块顶部"
-                aria-label="跳到当前块顶部"
+                :title="$t('editor.jumpBlock')"
+                :aria-label="$t('editor.jumpBlock')"
                 @click="jumpToCurrentBlockTop"
               >
                 <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
@@ -1758,8 +1765,8 @@ watch(
               <button
                 type="button"
                 class="editor-jump-fab"
-                title="跳到本章顶部"
-                aria-label="跳到本章顶部"
+                :title="$t('editor.jumpChapter')"
+                :aria-label="$t('editor.jumpChapter')"
                 @click="jumpToChapterTop"
               >
                 <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
@@ -1781,14 +1788,14 @@ watch(
             id="inline-cmd"
             v-model="inlinePrompt"
             type="text"
-            placeholder="指令，回车生成"
+            :placeholder="$t('editor.instructionPh')"
             @keydown.enter.prevent="runInline"
             @keydown.escape.prevent="showInline = false"
           />
-          <button type="button" class="app-btn app-btn-primary" @click="runInline">生成</button>
+          <button type="button" class="app-btn app-btn-primary" @click="runInline">{{ $t("editor.generate") }}</button>
         </div>
         <p v-if="ghostActive" class="ghost-hint muted">
-          {{ inlineBusy ? "生成中…" : "幽灵文本已就绪" }} — Tab 接受 / Esc 丢弃
+          {{ inlineBusy ? $t("common.generating") : $t("editor.ghostReady") }}{{ $t("editor.ghostHint") }}
         </p>
         <AiPanel
           v-if="isAiFloat"

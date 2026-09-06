@@ -4,6 +4,7 @@
  */
 import { appState } from "../stores/appState.js";
 import { invoke } from "./tauri.js";
+import { t } from "../i18n/index.js";
 import { blocksFromContent } from "../utils/genBlock.js";
 import { applyBranchDoc, syncBranchDocFromEditor } from "./projectClient.js";
 import { migrateBlocksToBranchDoc } from "../utils/branchModel.js";
@@ -11,7 +12,7 @@ import { migrateBlocksToBranchDoc } from "../utils/branchModel.js";
 const MAX = 20;
 
 /** 在改写章节前调用：压入快照 */
-export async function pushAiUndo(label = "AI 写入") {
+export async function pushAiUndo(label = t("draft.undoWrite")) {
   syncBranchDocFromEditor();
   const snapshot = {
     label,
@@ -43,7 +44,7 @@ export async function pushAiUndo(label = "AI 写入") {
 
 export function undoLastAi() {
   if (!appState.aiUndoStack || !appState.aiUndoStack.length) {
-    appState.statusMessage = "没有可撤销的 AI 写入";
+    appState.statusMessage = t("draft.noUndo");
     return false;
   }
   const snap = appState.aiUndoStack.pop();
@@ -58,9 +59,9 @@ export function undoLastAi() {
       );
     }
     appState.dirty = true;
-    appState.statusMessage = `已撤销：${snap.label}`;
+    appState.statusMessage = t("draft.undone", { msg: snap.label });
     return true;
   }
-  appState.statusMessage = "撤销快照与当前章节不一致，已丢弃该项";
+  appState.statusMessage = t("draft.undoMismatch");
   return false;
 }

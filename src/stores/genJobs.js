@@ -5,6 +5,7 @@
 import { computed, reactive } from "vue";
 import { appState } from "./appState.js";
 import { calcGenProgressPct, estimateTargetChars } from "../utils/genProgress.js";
+import { t } from "../i18n/index.js";
 
 /** 同时进行的写作任务上限 */
 export const MAX_PARALLEL_GEN = 3;
@@ -115,7 +116,7 @@ function defaultTargetChars() {
  */
 export function createGenJob(opts = {}) {
   if (!canStartMoreJobs(1)) {
-    throw new Error(`最多同时 ${MAX_PARALLEL_GEN} 路生成，请等一路完成或取消`);
+    throw new Error(t("jobs.maxParallel", { n: MAX_PARALLEL_GEN }));
   }
   const id = `job-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
   const targetChars = defaultTargetChars();
@@ -130,7 +131,7 @@ export function createGenJob(opts = {}) {
     streamChars: 0,
     progressPct: 0,
     error: "",
-    label: opts.label || appState.draftTask || "生成",
+    label: opts.label || appState.draftTask || t("editor.generate"),
     draftPlacement: appState.draftPlacement || "editor",
     draftTask: appState.draftTask || "",
     draftSelection: appState.draftSelection || "",
@@ -263,7 +264,11 @@ function syncAggregateProgress() {
   appState.genStreamChars = chars;
   appState.genProgressPct = Math.round(pct);
   appState.genTargetChars = active[0]?.targetChars || appState.genTargetChars;
-  appState.statusMessage = `并发生成 ${active.length}/${MAX_PARALLEL_GEN} · ${chars} 字`;
+  appState.statusMessage = t("jobs.parallel", {
+    n: active.length,
+    max: MAX_PARALLEL_GEN,
+    chars,
+  });
 }
 
 /** 兼容旧 UI：把焦点 job 镜像到全局 preview* */

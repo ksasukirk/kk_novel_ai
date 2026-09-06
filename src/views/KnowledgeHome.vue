@@ -14,6 +14,7 @@ import StoryView from "./StoryView.vue";
 import { appConfirmDelete } from "../services/confirmDialog.js";
 import { createBackdropDismiss } from "../utils/backdropDismiss.js";
 import { useToastError } from "../services/toast.js";
+import { t } from "../i18n/index.js";
 
 const error = useToastError();
 const showImport = ref(false);
@@ -27,12 +28,12 @@ const syncBusy = ref(false);
 const registry = ref(null);
 const corpusError = useToastError();
 
-const subTabs = [
-  { id: "home", label: "库列表" },
-  { id: "entities", label: "实体" },
-  { id: "story", label: "关系总谱" },
-  { id: "corpus", label: "语料" },
-];
+const subTabs = computed(() => [
+  { id: "home", label: t("knowledge.list") },
+  { id: "entities", label: t("knowledge.entities") },
+  { id: "story", label: t("knowledge.graph") },
+  { id: "corpus", label: t("knowledge.corpus") },
+]);
 
 const subNav = computed({
   get: () => appState.kbSubNav || "home",
@@ -46,7 +47,7 @@ const isUniversal = computed(() => appState.project && appState.project.kind ===
 const chapters = computed(() => (appState.project && appState.project.chapters) || []);
 const currentChapterTitle = computed(() => {
   const ch = chapters.value.find((c) => c.id === appState.chapterId);
-  return ch ? ch.title : "未选章";
+  return ch ? ch.title : t("knowledge.noChapter");
 });
 const wordCount = computed(() => (appState.chapterContent || "").replace(/\s/g, "").length);
 const isHomeTab = computed(() => subNav.value === "home");
@@ -89,7 +90,7 @@ function shortPath(path) {
 
 function ensureKbForWorkbench() {
   if (!kbOpen.value) {
-    error.value = "请先在「库列表」打开通用库或单书知识库";
+    error.value = t("knowledge.needKb");
     subNav.value = "home";
     return false;
   }
@@ -108,7 +109,7 @@ async function openUniversal() {
     await kb.openUniversal();
     await refresh();
     subNav.value = "entities";
-    appState.statusMessage = "已打开通用知识库";
+    appState.statusMessage = t("knowledge.openedUniversal");
   } catch (e) {
     error.value = String(e.message || e);
   }
@@ -121,7 +122,7 @@ async function openByPath(path) {
     await refresh();
     subNav.value = "entities";
     if (appState.chapterId) await project.loadChapter(appState.chapterId);
-    appState.statusMessage = `已打开知识库`;
+    appState.statusMessage = t("knowledge.openedKb");
   } catch (e) {
     error.value = String(e.message || e);
   }
@@ -131,15 +132,15 @@ async function onImportConfirm() {
   error.value = "";
   importing.value = true;
   try {
-    const filePicked = await project.pickFile("选择小说 TXT（导入为知识库）", ["txt", "md"]);
+    const filePicked = await project.pickFile(t("knowledge.pickTxt"), ["txt", "md"]);
     const dirPicked = await project.pickDirectory();
-    const name = importTitle.value.trim() || "未命名知识库";
-    appState.statusMessage = "正在导入为知识库…";
+    const name = importTitle.value.trim() || t("knowledge.untitledKb");
+    appState.statusMessage = t("knowledge.importingStatus");
     await kb.importIntoKb(dirPicked.path, filePicked.path, name);
     await refresh();
     showImport.value = false;
     subNav.value = "home";
-    appState.statusMessage = `知识库「${name}」已就绪`;
+    appState.statusMessage = t("knowledge.ready", { name });
   } catch (e) {
     error.value = String(e.message || e);
   } finally {
@@ -150,12 +151,12 @@ async function onImportConfirm() {
 async function onDistill() {
   error.value = "";
   if (!kb.kbIsSingleBook()) {
-    error.value = "请先打开单书知识库再蒸馏（通用库不可蒸馏）";
+    error.value = t("knowledge.needSingleDistill");
     return;
   }
   distillBusy.value = true;
   try {
-    appState.statusMessage = "正在蒸馏前 20 章…";
+    appState.statusMessage = t("knowledge.distillingStatus");
     const r = await project.importDistill(appState.projectRoot, {
       from: 1,
       to: 20,
@@ -163,7 +164,7 @@ async function onDistill() {
       resume: true,
     });
     await refresh();
-    appState.statusMessage = `蒸馏完成：实体 ${r.entity_count ?? 0}（已尝试同步通用库）`;
+    appState.statusMessage = t("knowledge.distillDone", { n: r.entity_count ?? 0 });
   } catch (e) {
     error.value = String(e.message || e);
   } finally {
@@ -174,13 +175,13 @@ async function onDistill() {
 async function onSyncCurrent() {
   error.value = "";
   if (!kbOpen.value || isUniversal.value) {
-    error.value = "请打开单书知识库再同步到通用库";
+    error.value = t("knowledge.needSingleSync");
     return;
   }
   syncBusy.value = true;
   try {
     const r = await kb.syncKb(appState.projectRoot);
-    appState.statusMessage = `已同步到通用库：lore ${r.lore_count ?? 0}`;
+    appState.statusMessage = t("knowledge.synced", { n: r.lore_count ?? 0 });
     await refresh();
   } catch (e) {
     error.value = String(e.message || e);
@@ -194,7 +195,7 @@ async function onSyncAll() {
   syncBusy.value = true;
   try {
     await kb.syncAll();
-    appState.statusMessage = "全部知识库已同步到通用库";
+    appState.statusMessage = t("knowledge.syncedAll");
     await refresh();
   } catch (e) {
     error.value = String(e.message || e);
@@ -206,8 +207,8 @@ async function onSyncAll() {
 async function onForget(path, ev) {
   ev.stopPropagation();
   if (
-    !(await appConfirmDelete("从最近列表移除该知识库？", {
-      title: "移除知识库",
+    !(await appConfirmDelete(t("knowledge.forgetQ"), {
+      title: t("knowledge.forgetTitle"),
     }))
   ) {
     return;
@@ -248,36 +249,36 @@ watch(
   <section class="panel kb-shell" :class="{ 'kb-work': !isHomeTab }">
     <div v-if="isHomeTab" class="page-head">
       <div>
-        <h1 class="panel-heading">知识库</h1>
+        <h1 class="panel-heading">{{ $t("knowledge.title") }}</h1>
         <p class="muted">
-          一书一库：导入只作语料与证据；通用库聚合全部来源。写作请用侧栏「作品 / 写作」，本页不替换全局导航。
+          {{ $t("knowledge.intro") }}
         </p>
       </div>
       <div class="head-actions">
-        <button type="button" class="app-btn" title="导入 TXT 为知识库" @click="showImport = true">导入进知识库</button>
+        <button type="button" class="app-btn" :title="$t('knowledge.importTxtHint')" @click="showImport = true">{{ $t("knowledge.importToKb") }}</button>
         <button
           type="button"
           class="app-btn"
-          title="对单书知识库蒸馏前 20 章"
+          :title="$t('knowledge.distillHint')"
           :disabled="!kb.kbIsSingleBook() || distillBusy"
           @click="onDistill"
         >
-          {{ distillBusy ? "蒸馏中…" : "蒸馏前20章" }}
+          {{ distillBusy ? $t("knowledge.distilling") : $t("knowledge.distill20") }}
         </button>
         <button
           type="button"
           class="app-btn"
-          title="把当前单书库同步到通用库"
+          :title="$t('knowledge.syncCurrentHint')"
           :disabled="syncBusy || !kb.kbIsSingleBook()"
           @click="onSyncCurrent"
         >
-          同步当前到通用库
+          {{ $t("knowledge.syncCurrent") }}
         </button>
-        <button type="button" class="app-btn" title="全部知识库同步到通用库" :disabled="syncBusy" @click="onSyncAll">全部同步</button>
+        <button type="button" class="app-btn" :title="$t('knowledge.syncAllHint')" :disabled="syncBusy" @click="onSyncAll">{{ $t("knowledge.syncAll") }}</button>
       </div>
     </div>
 
-    <nav class="kb-subnav" aria-label="知识库子导航">
+    <nav class="kb-subnav" :aria-label="$t('knowledge.subnav')">
       <button
         v-for="t in subTabs"
         :key="t.id"
@@ -289,29 +290,29 @@ watch(
         {{ t.label }}
       </button>
       <span v-if="kbOpen" class="kb-current muted">
-        当前：{{ isUniversal ? "通用知识库" : appState.project.title }}
+        {{ $t("knowledge.currentPrefix", { name: isUniversal ? $t("knowledge.universal") : appState.project.title }) }}
       </span>
       <div v-if="!isHomeTab" class="head-actions kb-subnav-actions">
-        <button type="button" class="app-btn" title="导入 TXT 为知识库" @click="showImport = true">导入</button>
+        <button type="button" class="app-btn" :title="$t('knowledge.importTxtHint')" @click="showImport = true">{{ $t("common.import") }}</button>
         <button
           type="button"
           class="app-btn"
-          title="对单书知识库蒸馏前 20 章"
+          :title="$t('knowledge.distillHint')"
           :disabled="!kb.kbIsSingleBook() || distillBusy"
           @click="onDistill"
         >
-          {{ distillBusy ? "蒸馏中…" : "蒸馏" }}
+          {{ distillBusy ? $t("knowledge.distilling") : $t("knowledge.distillShort") }}
         </button>
         <button
           type="button"
           class="app-btn"
-          title="把当前单书库同步到通用库"
+          :title="$t('knowledge.syncCurrentHint')"
           :disabled="syncBusy || !kb.kbIsSingleBook()"
           @click="onSyncCurrent"
         >
-          同步当前
+          {{ $t("knowledge.syncCurrentShort") }}
         </button>
-        <button type="button" class="app-btn" title="全部知识库同步到通用库" :disabled="syncBusy" @click="onSyncAll">全部同步</button>
+        <button type="button" class="app-btn" :title="$t('knowledge.syncAllHint')" :disabled="syncBusy" @click="onSyncAll">{{ $t("knowledge.syncAll") }}</button>
       </div>
     </nav>
 
@@ -320,16 +321,16 @@ watch(
       <div class="work-grid">
         <button type="button" class="work-card work-card-uni" @click="openUniversal">
           <div class="card-top">
-            <span class="card-badge">通用</span>
+            <span class="card-badge">{{ $t("knowledge.universalShort") }}</span>
           </div>
-          <div class="card-title">通用知识库</div>
-          <div class="card-path muted">聚合所有已导入小说 · 带来源</div>
-          <div v-if="isUniversal" class="card-active-tag">当前打开</div>
+          <div class="card-title">{{ $t("knowledge.universal") }}</div>
+          <div class="card-path muted">{{ $t("knowledge.universalDesc") }}</div>
+          <div v-if="isUniversal" class="card-active-tag">{{ $t("knowledge.nowOpen") }}</div>
         </button>
 
         <button type="button" class="work-card work-card-add" @click="showImport = true">
           <span class="plus" aria-hidden="true">+</span>
-          <span class="add-label">导入小说为知识库</span>
+          <span class="add-label">{{ $t("knowledge.importAsKb") }}</span>
         </button>
 
         <button
@@ -343,16 +344,16 @@ watch(
           @click="openByPath(item.path)"
         >
           <div class="card-top">
-            <span class="card-badge">单书</span>
-            <span class="card-forget" title="从最近移除" @click="onForget(item.path, $event)">×</span>
+            <span class="card-badge">{{ $t("knowledge.singleBook") }}</span>
+            <span class="card-forget" :title="$t('knowledge.forgetRecent')" @click="onForget(item.path, $event)">×</span>
           </div>
-          <div class="card-title">{{ item.title || "未命名知识库" }}</div>
+          <div class="card-title">{{ item.title || $t("knowledge.untitledKb") }}</div>
           <div class="card-path muted">{{ shortPath(item.path) }}</div>
           <div
             v-if="appState.projectRoot === item.path && kbOpen && !isUniversal"
             class="card-active-tag"
           >
-            当前打开
+            {{ $t("knowledge.nowOpen") }}
           </div>
         </button>
       </div>
@@ -369,7 +370,7 @@ watch(
     <!-- 语料只读 -->
     <div v-else-if="subNav === 'corpus'" class="kb-pane corpus-layout">
       <aside class="chapter-tree">
-        <div class="tree-head">语料章节</div>
+        <div class="tree-head">{{ $t("knowledge.corpusChapters") }}</div>
         <button
           v-for="c in chapters"
           :key="c.id"
@@ -380,18 +381,18 @@ watch(
         >
           {{ c.title }}
         </button>
-        <p v-if="!chapters.length" class="muted pad">通用库无章节语料；请打开单书库。</p>
+        <p v-if="!chapters.length" class="muted pad">{{ $t("knowledge.corpusEmpty") }}</p>
       </aside>
       <div class="corpus-main">
         <div class="corpus-toolbar">
           <strong>{{ currentChapterTitle }}</strong>
-          <span class="muted">{{ wordCount }} 字 · 只读</span>
+          <span class="muted">{{ $t("knowledge.readonlyChars", { n: wordCount }) }}</span>
         </div>
         <textarea
           class="corpus-area"
           :value="appState.chapterContent"
           readonly
-          placeholder="选择左侧章节浏览证据语料…"
+          :placeholder="$t('knowledge.corpusPh')"
         />
       </div>
     </div>
@@ -403,26 +404,26 @@ watch(
       @click="importBackdrop.onClick"
     >
       <div class="create-dialog">
-        <h2>导入为知识库</h2>
-        <p class="muted">先选 TXT，再选空目录。将创建 kind=knowledge_base，不会进入写作工程。</p>
+        <h2>{{ $t("knowledge.importDialogTitle") }}</h2>
+        <p class="muted">{{ $t("knowledge.importDialogHint") }}</p>
         <div class="field">
-          <label class="field-label">知识库名称</label>
+          <label class="field-label">{{ $t("knowledge.kbName") }}</label>
           <input
             v-model="importTitle"
             type="text"
-            placeholder="书名"
+            :placeholder="$t('knowledge.bookTitlePh')"
             @keydown.enter.prevent="onImportConfirm"
           />
         </div>
         <div class="dialog-actions">
-          <button type="button" class="app-btn" @click="showImport = false">取消</button>
+          <button type="button" class="app-btn" @click="showImport = false">{{ $t("common.cancel") }}</button>
           <button
             type="button"
             class="app-btn app-btn-primary"
             :disabled="importing"
             @click="onImportConfirm"
           >
-            {{ importing ? "导入中…" : "选择文件与目录" }}
+            {{ importing ? $t("knowledge.importing") : $t("knowledge.pickFiles") }}
           </button>
         </div>
       </div>

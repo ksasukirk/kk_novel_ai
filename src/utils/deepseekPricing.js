@@ -2,6 +2,7 @@
  * DeepSeek 官方单价与高峰时段推断（与后端 settings.rs 对齐）
  * 代码路径: kk_novel_ai/src/utils/deepseekPricing.js
  */
+import { t } from "../i18n/index.js";
 
 /** 元/百万 tokens：hit / miss / output */
 export const DEEPSEEK_OFFICIAL_PRICES = {
@@ -15,8 +16,9 @@ export const DEEPSEEK_OFFICIAL_PRICES = {
   },
 };
 
-export const DEEPSEEK_PEAK_NOTICE =
-  "当前为 DeepSeek 高峰时段（周一至周五 9:00–12:00、14:00–18:00 北京时间），API 单价为空闲时段的 2 倍；大批量生成建议改到晚间或周末";
+export function deepseekPeakNoticeText() {
+  return t("settings.peakNotice");
+}
 
 let lastPeakToastAt = 0;
 const PEAK_TOAST_COOLDOWN_MS = 30 * 60 * 1000;
@@ -58,12 +60,12 @@ export function resolveDeepseekPrices(settings, modelUsed = "") {
 
 export function deepseekPeakNotice(settings) {
   if (!isDeepseek(settings) || !resolveDeepseekPeak(settings)) return "";
-  return DEEPSEEK_PEAK_NOTICE;
+  return deepseekPeakNoticeText();
 }
 
 export function deepseekGeneratingStatusSuffix(settings) {
   if (!isDeepseek(settings) || !resolveDeepseekPeak(settings)) return "";
-  return "（DeepSeek 高峰单价 ×2）";
+  return t("settings.peakSuffix");
 }
 
 /**

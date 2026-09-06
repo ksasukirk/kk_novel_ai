@@ -31,51 +31,27 @@ import {
   discardJob,
   visibleGenJobs,
 } from "../stores/genJobs.js";
+import { t, tLocale } from "../i18n/index.js";
+import {
+  describeSplitFailure,
+  estimateSplitMaxTokens,
+  parseOutlineToChapters,
+} from "../utils/outlineChapters.js";
+
+export { parseOutlineToChapters } from "../utils/outlineChapters.js";
+
+function writingT(key, values) {
+  return tLocale(appState.settings?.writing_locale || "zh-CN", key, values);
+}
 
 export { isChapterBodyEmpty };
-
-/**
- * @param {string} text
- */
-export function parseOutlineToChapters(text) {
-  const raw = String(text || "").trim();
-  if (!raw) return { chapters: [], reason: "" };
-  let body = raw;
-  const fence = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  if (fence) body = fence[1].trim();
-  const start = body.indexOf("{");
-  const end = body.lastIndexOf("}");
-  if (start < 0 || end <= start) return { chapters: [], reason: "" };
-  let data;
-  try {
-    data = JSON.parse(body.slice(start, end + 1));
-  } catch {
-    return { chapters: [], reason: "" };
-  }
-  const list = Array.isArray(data.chapters) ? data.chapters : [];
-  const chapters = [];
-  for (const item of list) {
-    if (!item || typeof item !== "object") continue;
-    chapters.push({
-      title: String(item.title || "").trim(),
-      summary: String(item.summary || "").trim(),
-      must_do: String(item.must_do || item.mustDo || "").trim(),
-      must_not: String(item.must_not || item.mustNot || "").trim(),
-      selected: true,
-    });
-  }
-  return {
-    chapters: chapters.filter((c) => c.title || c.summary).slice(0, 30),
-    reason: String(data.reason || "").trim(),
-  };
-}
 
 /**
  * @param {string} [text]
  */
 export async function saveBookOutline(text) {
   if (!appState.projectRoot || !appState.project) {
-    throw new Error("请先打开作品");
+    throw new Error(t("project.needProject"));
   }
   const outline = String(text != null ? text : aiPanelForm.bookOutline || "").trim();
   const next = { ...appState.project, book_outline: outline };
@@ -87,8 +63,8 @@ export async function saveBookOutline(text) {
   noteBookOutlineSaved(outline);
   appState.statusMessage =
     next.title && next.title !== appState.project.title
-      ? `全书大纲已保存，书名暂用「${next.title}」`
-      : "全书大纲已保存";
+      ? t("bookQ.savedTitle", { title: next.title })
+      : t("bookQ.saved");
   return outline;
 }
 
@@ -132,7 +108,7 @@ export function resolveBookOutlineSeed(opts = {}) {
  */
 export async function ensureChapterContext(opts = {}) {
   if (!appState.projectRoot) {
-    throw new Error("请先打开作品");
+    throw new Error(t("project.needProject"));
   }
   const allowCreate = opts.allowCreate !== false;
   const chapters = (appState.project && appState.project.chapters) || [];
@@ -144,11 +120,11 @@ export async function ensureChapterContext(opts = {}) {
     return chapters[0].id;
   }
   if (!allowCreate) {
-    throw new Error("目录里还没有章节，请先用「按纲生成」写入章节队列");
+    throw new Error(t("bookQ.noChapters"));
   }
-  const r = await createChapter("第一章", "", { load: true });
+  const r = await createChapter(writingT("editor.chapterN", { n: 1 }), "", { load: true });
   const id = (r.chapter && r.chapter.id) || appState.chapterId;
-  if (!id) throw new Error("创建占位章节失败");
+  if (!id) throw new Error(t("bookQ.createFailed"));
   return id;
 }
 
@@ -157,21 +133,21 @@ export async function ensureChapterContext(opts = {}) {
  */
 export async function runSplitChapters(opts = {}) {
   if (!appState.projectRoot) {
-    throw new Error("请先打开作品");
+    throw new Error(t("project.needProject"));
   }
   const mode = opts.mode === "append" ? "append" : "full";
   await ensureChapterContext({ allowCreate: mode === "full" });
   if (outlineQueueState.running) {
-    throw new Error("按纲生成已在进行中");
+    throw new Error(t("outlineQ.alreadyRunning"));
   }
   if (visibleGenJobs.value.length) {
-    throw new Error("请先等当前草稿写完或取消，再拆章");
+    throw new Error(t("bookQ.waitDraft"));
   }
 
   if (mode === "full") {
     const outline = resolveBookOutlineSeed(opts);
     if (!outline) {
-      throw new Error("请先填写创作提示或全书大纲（上方框或底部指令均可）");
+      throw new Error(t("bookQ.needPrompt"));
     }
     await saveBookOutline(outline);
   } else if (!opts.skipSaveOutline) {
@@ -181,15 +157,17 @@ export async function runSplitChapters(opts = {}) {
   }
 
   const userInstr = String(opts.instruction ?? aiPanelForm.instruction ?? "").trim();
+  const outlineSeed = resolveBookOutlineSeed(opts);
+  const splitMaxTokens = estimateSplitMaxTokens(outlineSeed || userInstr);
   outlineQueueState.phase = "splitting_chapters";
   outlineQueueState.running = true;
   outlineQueueState.cancelled = false;
   outlineQueueState.error = "";
   appState.statusMessage =
-    mode === "append" ? "正在续拆后续章节…" : "正在根据提示生成章节队列…";
+    mode === "append" ? t("bookQ.appending") : t("bookQ.splitting");
 
   const splitJob = createGenJob({
-    label: mode === "append" ? "续拆后续章" : "生成章节队列",
+    label: mode === "append" ? t("bookQ.labelAppend") : t("bookQ.labelSplit"),
   });
   splitJob.draftPlacement = "";
   let splitResult;
@@ -203,6 +181,7 @@ export async function runSplitChapters(opts = {}) {
           instruction: userInstr,
           selection: "",
           split_mode: mode,
+          max_tokens: splitMaxTokens,
         },
         "continue",
         ""
@@ -222,8 +201,8 @@ export async function runSplitChapters(opts = {}) {
   if (outlineQueueState.cancelled) {
     outlineQueueState.running = false;
     outlineQueueState.phase = "cancelled";
-    appState.statusMessage = "已取消拆章";
-    throw new Error("已取消拆章");
+    appState.statusMessage = t("bookQ.cancelled");
+    throw new Error(t("bookQ.cancelled"));
   }
 
   const planText =
@@ -231,22 +210,19 @@ export async function runSplitChapters(opts = {}) {
     splitJob.previewRawText ||
     splitJob.previewText ||
     "";
-  const { chapters, reason } = parseOutlineToChapters(planText);
+  const parsed = parseOutlineToChapters(planText);
+  const { chapters, reason } = parsed;
   outlineQueueState.running = false;
   outlineQueueState.phase = "";
 
   if (!chapters.length) {
-    throw new Error(
-      mode === "append"
-        ? "未能续拆出后续章节，请补充创作提示或微调指令"
-        : "未能拆出有效章节，请检查提示词后重试"
-    );
+    throw new Error(describeSplitFailure(mode, planText, parsed));
   }
 
   aiPanelForm.chapterPlan = chapters;
   appState.statusMessage = reason
-    ? `已拆出 ${chapters.length} 章 · ${reason}`
-    : `已拆出 ${chapters.length} 章，确认后写入目录并开始写`;
+    ? t("bookQ.splitDoneReason", { n: chapters.length, reason })
+    : t("bookQ.splitDone", { n: chapters.length });
   return { chapters, reason, mode };
 }
 
@@ -281,31 +257,31 @@ export function normalizeChapterPlanTitles(rows) {
  */
 export async function applyChapterPlan(plan, opts = {}) {
   if (!appState.projectRoot || !appState.project) {
-    throw new Error("请先打开作品");
+    throw new Error(t("project.needProject"));
   }
   const mode = opts.mode === "append" ? "append" : "full";
   let rows = (Array.isArray(plan) ? plan : aiPanelForm.chapterPlan || []).filter(
     (c) => c && c.selected !== false && (c.title || c.summary)
   );
   if (!rows.length) {
-    throw new Error("没有勾选要写入的章节");
+    throw new Error(t("bookQ.noSelected"));
   }
   if (mode === "full") {
     rows = normalizeChapterPlanTitles(rows);
   }
 
   if (!opts.skipConfirm) {
-    const titles = rows.map((c, i) => `${i + 1}. ${c.title || "（无标题）"}`).join("\n");
+    const titles = rows.map((c, i) => `${i + 1}. ${c.title || t("bookQ.untitled")}`).join("\n");
     const tip =
       mode === "append"
-        ? `将追加 ${rows.length} 个待写章节到目录，并开始按纲写正文：\n${titles}`
-        : `将写入 ${rows.length} 个章节到目录并开始按纲写正文（空首章会更新为第1条，其余追加；已有正文/章纲的章不覆盖）：\n${titles}`;
+        ? t("bookQ.confirmAppend", { n: rows.length, titles })
+        : t("bookQ.confirmFull", { n: rows.length, titles });
     const ok = await appConfirm(tip, {
-      title: mode === "append" ? "确认续拆写入" : "确认拆章写入",
-      confirmText: "开始写",
-      cancelText: "取消",
+      title: mode === "append" ? t("bookQ.confirmAppendTitle") : t("bookQ.confirmFullTitle"),
+      confirmText: t("bookQ.startWrite"),
+      cancelText: t("common.cancel"),
     });
-    if (!ok) throw new Error("已取消写入章节");
+    if (!ok) throw new Error(t("bookQ.cancelledWrite"));
   }
 
   const createdIds = [];
@@ -335,7 +311,7 @@ export async function applyChapterPlan(plan, opts = {}) {
 
   for (; rowIndex < rows.length; rowIndex++) {
     const row = rows[rowIndex];
-    const r = await createChapter(row.title || `第${rowIndex + 1}章`, row.summary || "", {
+    const r = await createChapter(row.title || writingT("editor.chapterN", { n: rowIndex + 1 }), row.summary || "", {
       load: false,
     });
     const id = r.chapter && r.chapter.id;
@@ -362,7 +338,7 @@ export async function applyChapterPlan(plan, opts = {}) {
   const startWriting = opts.startWriting !== false;
   let writingCancelled = false;
   if (startWriting && writtenIds.length) {
-    appState.statusMessage = `已写入目录 ${writtenIds.length} 章，正在按纲开写…`;
+    appState.statusMessage = t("bookQ.writing", { n: writtenIds.length });
     await runOutlineQueue({
       instruction: String(opts.instruction ?? aiPanelForm.instruction ?? "").trim(),
       startChapterId,
@@ -370,12 +346,11 @@ export async function applyChapterPlan(plan, opts = {}) {
     });
     writingCancelled = outlineQueueState.phase === "cancelled";
     if (writingCancelled) {
-      appState.statusMessage = `已写入目录 ${writtenIds.length} 章，写作已取消`;
+      appState.statusMessage = t("bookQ.writtenCancelled", { n: writtenIds.length });
     }
   } else {
     appState.statusMessage =
-      `已写入目录 ${writtenIds.length} 章（待写）。` +
-      `请在左侧改章名/章纲，再点「写」或「全部按纲写」`;
+      t("bookQ.writtenPending", { n: writtenIds.length });
   }
   return { createdIds, updatedIds, startChapterId, writingCancelled };
 }
@@ -450,7 +425,7 @@ export async function runSplitAndApply(opts = {}) {
  */
 export async function runSingleChapterOutline(chapterId, opts = {}) {
   const id = String(chapterId || "").trim();
-  if (!id) throw new Error("缺少章节 id");
+  if (!id) throw new Error(t("bookQ.needChapterId"));
   await runOutlineQueue({
     startChapterId: id,
     stopAfterOneChapter: true,
@@ -475,7 +450,7 @@ export async function runFullOutlinePipeline(opts = {}) {
   let start = findFirstPendingOutlineChapter();
   if (!start) {
     if (!(aiPanelForm.chapterPlan || []).length) {
-      throw new Error("尚无待写章纲：请先「拆成章节」写入目录，或在目录中填写章纲");
+      throw new Error(t("bookQ.noPending"));
     }
     await applyChapterPlan(aiPanelForm.chapterPlan, {
       mode: "full",

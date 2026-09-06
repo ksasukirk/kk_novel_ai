@@ -9,6 +9,7 @@ import * as project from "../services/projectClient.js";
 import CapsuleSwitch from "../components/CapsuleSwitch.vue";
 import { appConfirmDelete } from "../services/confirmDialog.js";
 import { useToastError } from "../services/toast.js";
+import { t } from "../i18n/index.js";
 import {
   emptyVisualSheet,
   isVisualAttrKey,
@@ -96,7 +97,7 @@ async function refresh() {
   try {
     const ens = await project.ensureCharacterRoster();
     rosterPath.value = ens.root || "";
-    if (!rosterPath.value) throw new Error("无法打开全局角色仓");
+    if (!rosterPath.value) throw new Error(t("roster.noRoster"));
     const r = await project.listLoreAt(rosterPath.value);
     items.value = r.items || [];
   } catch (e) {
@@ -132,8 +133,8 @@ async function save() {
   status.value = "";
   try {
     if (!rosterPath.value) await refresh();
-    if (!rosterPath.value) throw new Error("无角色仓路径");
-    if (!form.value.title.trim()) throw new Error("请填写标题");
+    if (!rosterPath.value) throw new Error(t("roster.noPath"));
+    if (!form.value.title.trim()) throw new Error(t("roster.needTitle"));
     const isChar = form.value.kind === "character";
     await project.upsertLoreAt(rosterPath.value, {
       id: form.value.id || "",
@@ -151,7 +152,7 @@ async function save() {
       updated_at: "",
     });
     status.value =
-      form.value.kind === "world" ? "背景/世界观已保存到全局仓" : "角色已保存到全局仓";
+      form.value.kind === "world" ? t("roster.savedWorld") : t("roster.savedChar");
     resetForm();
     await refresh();
     bumpCastRevision();
@@ -163,8 +164,8 @@ async function save() {
 async function remove(item) {
   if (!rosterPath.value) return;
   if (
-    !(await appConfirmDelete(`删除角色「${item.title || item.id}」？`, {
-      title: "删除角色",
+    !(await appConfirmDelete(t("roster.deleteQ", { title: item.title || item.id }), {
+      title: t("roster.deleteTitle"),
     }))
   ) {
     return;
@@ -182,11 +183,11 @@ onActivated(refresh);
 <template>
   <section class="panel roster-panel">
     <div class="roster-head">
-      <h1 class="panel-heading">角色定义</h1>
+      <h1 class="panel-heading">{{ $t("roster.title") }}</h1>
       <p class="muted">
-        全局人物与背景设定，<strong>不依赖任何作品</strong>。新建小说默认挂接本仓（@characters）。路径：
+        {{ $t("roster.introBefore") }}<strong>{{ $t("roster.introStrong") }}</strong>{{ $t("roster.introAfter") }}
         <code v-if="rosterPath">{{ rosterPath }}</code>
-        <span v-else>加载中…</span>
+        <span v-else>{{ $t("common.loading") }}</span>
       </p>
 
       <div class="tabs">
@@ -196,7 +197,7 @@ onActivated(refresh);
           :class="kindFilter === 'character' ? 'chip-active' : ''"
           @click="kindFilter = 'character'"
         >
-          角色
+          {{ $t("common.character") }}
         </button>
         <button
           type="button"
@@ -204,7 +205,7 @@ onActivated(refresh);
           :class="kindFilter === 'world' ? 'chip-active' : ''"
           @click="kindFilter = 'world'"
         >
-          背景 / 世界观
+          {{ $t("common.world") }}
         </button>
         <button
           type="button"
@@ -212,9 +213,9 @@ onActivated(refresh);
           :class="kindFilter === 'all' ? 'chip-active' : ''"
           @click="kindFilter = 'all'"
         >
-          全部
+          {{ $t("common.all") }}
         </button>
-        <button type="button" class="app-btn app-btn-light refresh-btn" @click="refresh">刷新</button>
+        <button type="button" class="app-btn app-btn-light refresh-btn" @click="refresh">{{ $t("common.refresh") }}</button>
       </div>
     </div>
 
@@ -231,84 +232,84 @@ onActivated(refresh);
             <strong>{{ item.title }}</strong>
             <div class="tag-row">
               <span class="chip chip-active kind-tag">{{
-                item.kind === "world" ? "背景" : "角色"
+                item.kind === "world" ? $t("common.worldShort") : $t("common.character")
               }}</span>
               <span
                 v-if="item.kind === 'character' && entryIsUnique(item)"
                 class="chip kind-tag unique"
-                >唯一</span
+                >{{ $t("common.unique") }}</span
               >
             </div>
             <p class="snippet">{{ (item.content || "").slice(0, 72) }}{{ (item.content || "").length > 72 ? "…" : "" }}</p>
           </div>
-          <button type="button" class="app-btn app-btn-danger" @click.stop="remove(item)">删除</button>
+          <button type="button" class="app-btn app-btn-danger" @click.stop="remove(item)">{{ $t("common.delete") }}</button>
         </div>
-        <p v-if="!visibleItems.length" class="muted">暂无条目。右侧新建即可，无需先开作品。</p>
+        <p v-if="!visibleItems.length" class="muted">{{ $t("roster.empty") }}</p>
       </div>
 
       <div class="editor editor-pane">
         <div class="field">
-          <label class="field-label">类型</label>
+          <label class="field-label">{{ $t("lore.type") }}</label>
           <select
             v-model="form.kind"
             @change="form.unique = form.kind === 'character'"
           >
-            <option value="character">角色</option>
-            <option value="world">背景 / 世界观</option>
+            <option value="character">{{ $t("common.character") }}</option>
+            <option value="world">{{ $t("common.world") }}</option>
           </select>
         </div>
         <div v-if="form.kind === 'character'" class="field capsule-switch-row">
-          <CapsuleSwitch v-model="form.unique" label="唯一角色（同名跨作品只保留一条；可改）" />
+          <CapsuleSwitch v-model="form.unique" :label="$t('roster.uniqueSwitch')" />
         </div>
         <div class="field">
-          <label class="field-label">名称</label>
+          <label class="field-label">{{ $t("roster.name") }}</label>
           <input
             v-model="form.title"
             type="text"
-            :placeholder="form.kind === 'world' ? '如：暑门乡镇' : '如：娜娜'"
+            :placeholder="form.kind === 'world' ? $t('lore.titlePhWorld') : $t('lore.titlePhChar')"
           />
         </div>
         <div class="field">
-          <label class="field-label">关键词（逗号分隔）</label>
-          <input v-model="form.keywords" type="text" placeholder="娜娜, 清理, 女体" />
+          <label class="field-label">{{ $t("lore.keywords") }}</label>
+          <input v-model="form.keywords" type="text" :placeholder="$t('roster.keywordsPh')" />
         </div>
         <div class="field" v-if="form.kind === 'character'">
-          <label class="field-label">形象卡（出图用）</label>
-          <input v-model="form.visual.外貌" type="text" placeholder="外貌" />
-          <input v-model="form.visual.发型" type="text" placeholder="发型" />
-          <input v-model="form.visual.瞳色" type="text" placeholder="瞳色" />
-          <input v-model="form.visual.体态" type="text" placeholder="体态" />
-          <input v-model="form.visual.常服" type="text" placeholder="常服" />
-          <input v-model="form.visual.画风锚" type="text" placeholder="画风锚（英文短 token）" />
-          <input v-model="form.visual.portrait_rel" type="text" placeholder="立绘路径 assets/portraits/…（可空）" />
+          <label class="field-label">{{ $t("lore.visualCard") }}</label>
+          <input v-model="form.visual.外貌" type="text" :placeholder="$t('lore.look')" />
+          <input v-model="form.visual.发型" type="text" :placeholder="$t('lore.hair')" />
+          <input v-model="form.visual.瞳色" type="text" :placeholder="$t('lore.eyes')" />
+          <input v-model="form.visual.体态" type="text" :placeholder="$t('lore.body')" />
+          <input v-model="form.visual.常服" type="text" :placeholder="$t('lore.outfit')" />
+          <input v-model="form.visual.画风锚" type="text" :placeholder="$t('lore.styleAnchor')" />
+          <input v-model="form.visual.portrait_rel" type="text" :placeholder="$t('lore.portraitPath')" />
         </div>
         <div class="field">
-          <label class="field-label">属性（每行 key=value）</label>
+          <label class="field-label">{{ $t("lore.attrs") }}</label>
           <textarea
             v-model="form.attrsText"
             rows="3"
             :placeholder="
               form.kind === 'world'
-                ? '时代=当代\n地点=乡镇'
-                : '解剖=女体无阴茎\n自称=娜娜/人家'
+                ? $t('lore.attrsPhWorld')
+                : $t('roster.attrsPhChar')
             "
           />
         </div>
         <div class="field">
-          <label class="field-label">关联（每行 target_id|关系）</label>
-          <textarea v-model="form.linksText" rows="2" placeholder="uuid|恋人" />
+          <label class="field-label">{{ $t("lore.links") }}</label>
+          <textarea v-model="form.linksText" rows="2" :placeholder="$t('roster.linksPh')" />
         </div>
         <div class="field">
-          <label class="field-label">设定正文</label>
+          <label class="field-label">{{ $t("roster.content") }}</label>
           <textarea
             v-model="form.content"
             rows="12"
-            placeholder="身份、性格、对白习惯、解剖硬约束、禁止项…"
+            :placeholder="$t('roster.contentPh')"
           />
         </div>
         <div class="actions">
-          <button type="button" class="app-btn app-btn-primary" @click="save">保存到全局仓</button>
-          <button type="button" class="app-btn" @click="resetForm">新建</button>
+          <button type="button" class="app-btn app-btn-primary" @click="save">{{ $t("roster.save") }}</button>
+          <button type="button" class="app-btn" @click="resetForm">{{ $t("roster.new") }}</button>
         </div>
         <pre v-if="status" class="out">{{ status }}</pre>
       </div>

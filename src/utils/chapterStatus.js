@@ -2,6 +2,7 @@
  * 目录待写章队列：章节状态判定
  * 代码路径: kk_novel_ai/src/utils/chapterStatus.js
  */
+import { t } from "../i18n/index.js";
 
 /**
  * @param {string} content
@@ -46,9 +47,9 @@ export function chapterQueueStatus(ch, opts = {}) {
  * @param {"pending"|"writing"|"done"} status
  */
 export function chapterQueueStatusLabel(status) {
-  if (status === "pending") return "待写";
-  if (status === "done") return "已完成";
-  return "写作中";
+  if (status === "pending") return t("editor.pending");
+  if (status === "done") return t("editor.done");
+  return t("editor.writing");
 }
 
 /**

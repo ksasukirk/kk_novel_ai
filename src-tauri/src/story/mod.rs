@@ -545,7 +545,7 @@ pub fn apply_story_patch(root: &Path, patch: &Value) -> AppResult<Value> {
     }
 
     if report["updated"].as_array().map(|a| a.is_empty()).unwrap_or(true) {
-        return Err(AppError::msg("patch 中无可识别字段（arcs/promises/events/edges/facts）"));
+        return Err(AppError::t("errors.patchNoRecognizedFields"));
     }
     Ok(report)
 }

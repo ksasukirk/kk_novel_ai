@@ -18,6 +18,7 @@ import {
   sendChat,
   switchChatMode,
 } from "../services/chatClient.js";
+import { t } from "../i18n/index.js";
 
 defineOptions({ name: "ChatView" });
 
@@ -38,7 +39,7 @@ const novelMode = computed({
 
 async function onToggleNovel(on) {
   if (on && !hasProject.value) {
-    error.value = "本作对话需要先在「作品」打开一部小说";
+    error.value = t("chat.needNovel");
     return;
   }
   try {
@@ -76,13 +77,13 @@ async function onNew() {
 async function persistPersona(showToast) {
   if (personaBusy.value) return;
   if (!chatState.loadedKey) {
-    error.value = "会话还在加载，稍后再保存人设";
+    error.value = t("chat.sessionLoading");
     return;
   }
   personaBusy.value = true;
   try {
     await saveChatPersona();
-    if (showToast) toastSuccess("人设已保存");
+    if (showToast) toastSuccess(t("chat.personaSaved"));
   } catch (e) {
     error.value = String(e.message || e);
   } finally {
@@ -135,23 +136,23 @@ onMounted(async () => {
 <template>
   <section class="panel chat-page">
     <div class="chat-head">
-      <h1 class="panel-heading">对话</h1>
+      <h1 class="panel-heading">{{ $t("chat.title") }}</h1>
       <p class="muted">
-        单独聊天，不写入章节。本作模式会带上书名、大纲、角色名；需要正文时再打开「附带本章正文」。
+        {{ $t("chat.intro") }}
       </p>
       <div class="chat-tools">
         <CapsuleSwitch
           v-model="novelMode"
-          label="本作上下文"
+          :label="$t('chat.novelCtx')"
           :disabled="!hasProject"
         />
         <CapsuleSwitch
           v-model="chatState.includeChapterBody"
-          label="附带本章正文"
+          :label="$t('chat.attachBody')"
           :disabled="!novelMode || !hasProject"
         />
         <button type="button" class="app-btn" :disabled="chatState.busy" @click="onNew">
-          新会话
+          {{ $t("chat.newSession") }}
         </button>
         <button
           type="button"
@@ -159,36 +160,36 @@ onMounted(async () => {
           :class="showPersona ? 'chip-active' : ''"
           @click="showPersona = !showPersona"
         >
-          {{ showPersona ? "收起人设" : "助手人设" }}
+          {{ showPersona ? $t("chat.hidePersona") : $t("chat.showPersona") }}
         </button>
       </div>
       <div v-show="showPersona" class="chat-persona">
-        <p class="muted">本作与自由聊各存一份；新会话只清消息，不清人设。</p>
+        <p class="muted">{{ $t("chat.personaHint") }}</p>
         <div class="field">
-          <label class="field-label">名称</label>
+          <label class="field-label">{{ $t("chat.name") }}</label>
           <input
             v-model="chatState.assistantName"
             type="text"
             maxlength="40"
-            placeholder="空则显示「助手」"
+            :placeholder="$t('chat.namePh')"
             @change="persistPersona(false)"
           />
         </div>
         <div class="field">
-          <label class="field-label">对话风格</label>
+          <label class="field-label">{{ $t("chat.style") }}</label>
           <input
             v-model="chatState.assistantStyle"
             type="text"
-            placeholder="如：简洁、先给结论、少客套"
+            :placeholder="$t('chat.stylePh')"
             @change="persistPersona(false)"
           />
         </div>
         <div class="field">
-          <label class="field-label">角色定义</label>
+          <label class="field-label">{{ $t("chat.role") }}</label>
           <textarea
             v-model="chatState.assistantPersona"
             rows="4"
-            placeholder="身份、口吻、禁忌、对用户怎么称呼"
+            :placeholder="$t('chat.rolePh')"
             @change="persistPersona(false)"
           />
         </div>
@@ -198,21 +199,21 @@ onMounted(async () => {
           :disabled="personaBusy"
           @click="persistPersona(true)"
         >
-          保存人设
+          {{ $t("chat.savePersona") }}
         </button>
       </div>
-      <p v-if="!hasProject" class="muted">未打开作品时只能自由聊。</p>
+      <p v-if="!hasProject" class="muted">{{ $t("chat.freeOnly") }}</p>
     </div>
 
     <div ref="listEl" class="chat-list" aria-live="polite">
-      <p v-if="!chatState.messages.length" class="muted chat-empty">还没有消息。在下方输入后回车发送。</p>
+      <p v-if="!chatState.messages.length" class="muted chat-empty">{{ $t("chat.empty") }}</p>
       <div
         v-for="(m, i) in chatState.messages"
         :key="i"
         class="chat-bubble"
         :class="m.role === 'user' ? 'is-user' : 'is-assistant'"
       >
-        <span class="chat-role">{{ m.role === "user" ? "你" : nameLabel }}</span>
+        <span class="chat-role">{{ m.role === "user" ? $t("chat.you") : nameLabel }}</span>
         <div class="chat-body">{{ m.content || (chatState.busy && i === chatState.messages.length - 1 ? "…" : "") }}</div>
       </div>
     </div>
@@ -221,7 +222,7 @@ onMounted(async () => {
       <textarea
         v-model="chatState.draft"
         rows="3"
-        placeholder="Shift+Enter 换行，Enter 发送"
+        :placeholder="$t('chat.inputPh')"
         :disabled="chatState.busy"
         @keydown="onKeydown"
       />
@@ -232,10 +233,10 @@ onMounted(async () => {
           :disabled="chatState.busy || !String(chatState.draft || '').trim()"
           @click="onSend"
         >
-          {{ chatState.busy ? "生成中…" : "发送" }}
+          {{ chatState.busy ? $t("common.generating") : $t("common.send") }}
         </button>
         <button type="button" class="app-btn" :disabled="!chatState.busy" @click="cancelChat">
-          取消
+          {{ $t("common.cancel") }}
         </button>
       </div>
     </div>

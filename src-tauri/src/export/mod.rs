@@ -378,7 +378,7 @@ pub fn export_epub(root: &Path, output: &Path) -> AppResult<()> {
         fs::create_dir_all(parent)?;
     }
     let file = fs::File::create(output)
-        .map_err(|e| AppError::msg(format!("创建 epub 失败: {e}")))?;
+        .map_err(|e| AppError::t_fmt("errors.createEpubFailed", &[("e", &e.to_string())]))?;
     let mut zip = ZipWriter::new(file);
     let opts_stored = SimpleFileOptions::default().compression_method(zip::CompressionMethod::Stored);
     let opts_deflate =
@@ -449,12 +449,13 @@ p{text-indent:2em;margin:0.6em 0;}
         ));
     }
 
+    let lang = crate::prompt_i18n::writing_locale();
     let opf = format!(
         r#"<?xml version="1.0" encoding="UTF-8"?>
 <package xmlns="http://www.idpf.org/2007/opf" unique-identifier="BookId" version="2.0">
   <metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">
     <dc:title>{title}</dc:title>
-    <dc:language>zh-CN</dc:language>
+    <dc:language>{lang}</dc:language>
     <dc:identifier id="BookId">urn:uuid:{uid}</dc:identifier>
     <dc:description>{desc}</dc:description>
   </metadata>
@@ -466,6 +467,7 @@ p{text-indent:2em;margin:0.6em 0;}
   </spine>
 </package>"#,
         title = xml_escape(title),
+        lang = lang,
         uid = opened.project.id,
         desc = xml_escape(desc.trim()),
         manifest = manifest,
@@ -512,7 +514,7 @@ p{text-indent:2em;margin:0.6em 0;}
     }
 
     zip.finish()
-        .map_err(|e| AppError::msg(format!("写入 epub 失败: {e}")))?;
+        .map_err(|e| AppError::t_fmt("errors.writeEpubFailed", &[("e", &e.to_string())]))?;
     Ok(())
 }
 
@@ -602,19 +604,27 @@ fn load_cjk_font() -> AppResult<Font> {
             }
         }
     }
-    Err(AppError::msg(format!(
-        "未找到可用的中文字体，无法导出 PDF。{}已尝试：{}",
-        if cfg!(target_os = "android") {
-            "请把 NotoSansSC-Regular.otf 放到应用 fonts 目录，或改用 TXT/EPUB 导出。"
-        } else {
-            "请安装微软雅黑/黑体，或把 NotoSansSC 放到系统字体目录。"
-        },
-        if tried.is_empty() {
-            "（无候选文件）".into()
-        } else {
-            tried.join("；")
-        }
-    )))
+    Err(AppError::t_fmt(
+        "errors.noCjkFontForPdf",
+        &[
+            (
+                "hint",
+                &if cfg!(target_os = "android") {
+                    crate::i18n::t("errors.noCjkFontHintAndroid")
+                } else {
+                    crate::i18n::t("errors.noCjkFontHintDesktop")
+                },
+            ),
+            (
+                "tried",
+                &if tried.is_empty() {
+                    crate::i18n::t("errors.noCjkFontTriedNone")
+                } else {
+                    tried.join("；")
+                },
+            ),
+        ],
+    ))
 }
 
 fn char_advance(ch: char, font_size: f32) -> f32 {
@@ -742,7 +752,7 @@ pub fn export_pdf(root: &Path, output: &Path) -> AppResult<()> {
     let mut document = Document::new();
 
     let page_settings = PageSettings::from_wh(PAGE_W, PAGE_H)
-        .ok_or_else(|| AppError::msg("无法创建 PDF 页面尺寸"))?;
+        .ok_or_else(|| AppError::t("errors.cannotCreatePdfPageSize"))?;
 
     let mut runs: Vec<PdfRun> = Vec::new();
     runs.push(PdfRun::Text {
@@ -913,10 +923,10 @@ pub fn export_pdf(root: &Path, output: &Path) -> AppResult<()> {
 
     let pdf = document
         .finish()
-        .map_err(|e| AppError::msg(format!("生成 PDF 失败: {e:?}")))?;
+        .map_err(|e| AppError::t_fmt("errors.generatePdfFailed", &[("e", &format!("{e:?}"))]))?;
     if let Some(parent) = output.parent() {
         fs::create_dir_all(parent)?;
     }
-    fs::write(output, pdf).map_err(|e| AppError::msg(format!("写入 PDF 失败: {e}")))?;
+    fs::write(output, pdf).map_err(|e| AppError::t_fmt("errors.writePdfFailed", &[("e", &e.to_string())]))?;
     Ok(())
 }

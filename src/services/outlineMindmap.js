@@ -7,6 +7,7 @@ import { runWriting } from "./llmClient.js";
 import { saveProjectMeta } from "./projectClient.js";
 import { createGenJob, discardJob } from "../stores/genJobs.js";
 import { parseOutlineMindmap } from "../utils/outlineMindTree.js";
+import { t } from "../i18n/index.js";
 
 function fallbackChapterId() {
   return (
@@ -23,7 +24,7 @@ function fallbackChapterId() {
  */
 export async function runOutlineToMindmap(opts = {}) {
   if (!appState.projectRoot || !appState.project) {
-    throw new Error("请先打开作品");
+    throw new Error(t("project.needProject"));
   }
   const outline = String(appState.project.book_outline || "").trim();
   const chapters = appState.project.chapters || [];
@@ -31,16 +32,16 @@ export async function runOutlineToMindmap(opts = {}) {
     (c) => String((c && c.summary) || "").trim() || (Array.isArray(c.beats) && c.beats.length)
   );
   if (!outline && !hasChapterOutline) {
-    throw new Error("请先填写全书大纲或章纲");
+    throw new Error(t("outline.needBookOrChapter"));
   }
   const chapterId = fallbackChapterId();
   if (!chapterId) {
-    throw new Error("作品还没有章节，无法整理导图");
+    throw new Error(t("outline.needChapterForMap"));
   }
 
   const prevPlacement = appState.draftPlacement;
   appState.draftPlacement = "";
-  const job = createGenJob({ label: "整理成导图" });
+  const job = createGenJob({ label: t("outline.organize") });
   job.draftPlacement = "";
   job.draftTask = "outline_to_mindmap";
 
@@ -71,7 +72,7 @@ export async function runOutlineToMindmap(opts = {}) {
     "";
   const { reason, root } = parseOutlineMindmap(text);
   if (!root) {
-    throw new Error("未能整理出导图，请检查大纲后重试");
+    throw new Error(t("outline.organizeFailed"));
   }
 
   const now = new Date().toISOString();
@@ -85,6 +86,8 @@ export async function runOutlineToMindmap(opts = {}) {
     ...appState.project,
     outline_mindmap,
   });
-  appState.statusMessage = reason ? `导图已保存 · ${reason}` : "导图已保存";
+  appState.statusMessage = reason
+    ? t("outline.mapSavedReason", { msg: reason })
+    : t("outline.mapSaved");
   return { reason, root };
 }

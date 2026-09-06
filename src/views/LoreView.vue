@@ -9,6 +9,7 @@ import * as project from "../services/projectClient.js";
 import CapsuleSwitch from "../components/CapsuleSwitch.vue";
 import { appConfirmDelete } from "../services/confirmDialog.js";
 import { useToastError } from "../services/toast.js";
+import { t } from "../i18n/index.js";
 import {
   emptyVisualSheet,
   isVisualAttrKey,
@@ -63,7 +64,7 @@ const visibleItems = computed(() => {
 async function loadGlobalRoster() {
   const ens = await project.ensureCharacterRoster();
   rosterPath.value = ens.root || "";
-  if (!rosterPath.value) throw new Error("无法创建全局角色仓");
+  if (!rosterPath.value) throw new Error(t("lore.noRoster"));
   const r = await project.listLoreAt(rosterPath.value);
   items.value = (r.items || []).map((e) => ({
     ...e,
@@ -204,7 +205,7 @@ async function save() {
       await loadGlobalRoster();
     }
     const root = saveRoot();
-    if (!root) throw new Error("无保存路径");
+    if (!root) throw new Error(t("lore.noSavePath"));
     const isChar = form.value.kind === "character";
     await project.upsertLoreAt(root, {
       id: form.value.id || "",
@@ -223,9 +224,9 @@ async function save() {
     });
     if (globalOnly.value || form.value.scope === "global") {
       status.value =
-        form.value.kind === "world" ? "已写入全局背景/世界观" : "已写入全局角色仓";
+        form.value.kind === "world" ? t("lore.savedWorld") : t("lore.savedChar");
     } else {
-      status.value = "已保存到本篇设定";
+      status.value = t("lore.savedLocal");
     }
     resetForm();
     await refresh();
@@ -239,8 +240,8 @@ async function remove(item) {
   const root = item._root || rosterPath.value || appState.projectRoot;
   if (!root) return;
   if (
-    !(await appConfirmDelete(`删除设定「${item.title || item.id}」？`, {
-      title: "删除设定",
+    !(await appConfirmDelete(t("lore.deleteQ", { title: item.title || item.id }), {
+      title: t("lore.deleteTitle"),
     }))
   ) {
     return;
@@ -253,16 +254,16 @@ async function remove(item) {
 
 <template>
   <section class="panel" :class="{ 'lore-embed': embedded }">
-    <h1 v-if="!embedded" class="panel-heading">设定</h1>
+    <h1 v-if="!embedded" class="panel-heading">{{ $t("lore.title") }}</h1>
     <p v-if="!embedded" class="muted">
       <template v-if="globalOnly">
-        本页可维护全局与本篇挂接设定。日常建角色请优先用侧栏<strong>角色定义</strong>。全局仓：
+        {{ $t("lore.introGlobal") }}
       </template>
       <template v-else>
-        角色可勾选「唯一」。全局人物建议在「角色定义」维护；此处可看本篇补充。全局仓：
+        {{ $t("lore.introNovel") }}
       </template>
       <code v-if="rosterPath">{{ rosterPath }}</code>
-      <span v-else>加载中…</span>
+      <span v-else>{{ $t("common.loading") }}</span>
     </p>
 
     <div class="tabs">
@@ -273,7 +274,7 @@ async function remove(item) {
           :class="tab === 'global' ? 'chip-active' : ''"
           @click="tab = 'global'"
         >
-          全局
+          {{ $t("common.global") }}
         </button>
         <button
           type="button"
@@ -281,7 +282,7 @@ async function remove(item) {
           :class="tab === 'local' ? 'chip-active' : ''"
           @click="tab = 'local'"
         >
-          本篇补充
+          {{ $t("lore.localExtra") }}
         </button>
       </template>
       <button
@@ -290,7 +291,7 @@ async function remove(item) {
         :class="kindFilter === 'all' ? 'chip-active' : ''"
         @click="kindFilter = 'all'"
       >
-        全部
+        {{ $t("common.all") }}
       </button>
       <button
         type="button"
@@ -298,7 +299,7 @@ async function remove(item) {
         :class="kindFilter === 'character' ? 'chip-active' : ''"
         @click="kindFilter = 'character'"
       >
-        角色
+        {{ $t("common.character") }}
       </button>
       <button
         type="button"
@@ -306,7 +307,7 @@ async function remove(item) {
         :class="kindFilter === 'world' ? 'chip-active' : ''"
         @click="kindFilter = 'world'"
       >
-        背景/世界观
+        {{ $t("common.world") }}
       </button>
     </div>
 
@@ -322,77 +323,77 @@ async function remove(item) {
             <strong>{{ item.title }}</strong>
             <div class="tag-row">
               <span class="chip chip-active kind-tag">{{
-                item.kind === "world" ? "背景" : item.kind
+                item.kind === "world" ? $t("common.worldShort") : $t("common.character")
               }}</span>
               <span v-if="item.kind === 'character' && entryIsUnique(item)" class="chip kind-tag unique"
-                >唯一</span
+                >{{ $t("common.unique") }}</span
               >
               <span v-if="isNovel" class="chip kind-tag">{{
-                item.scope === "global" ? "全局" : "本篇"
+                item.scope === "global" ? $t("common.global") : $t("common.local")
               }}</span>
             </div>
           </div>
-          <button type="button" class="app-btn app-btn-danger" @click.stop="remove(item)">删除</button>
+          <button type="button" class="app-btn app-btn-danger" @click.stop="remove(item)">{{ $t("common.delete") }}</button>
         </div>
         <p v-if="!visibleItems.length" class="muted">
-          暂无条目。右侧可选「角色」或「世界观」新建；无需先开作品。
+          {{ $t("lore.empty") }}
         </p>
       </div>
       <div>
         <div class="field" v-if="isNovel">
-          <label class="field-label">保存位置</label>
+          <label class="field-label">{{ $t("lore.saveLocation") }}</label>
           <select v-model="form.scope">
-            <option value="global">全局仓</option>
-            <option value="local">仅本篇</option>
+            <option value="global">{{ $t("lore.globalStore") }}</option>
+            <option value="local">{{ $t("lore.localOnly") }}</option>
           </select>
         </div>
         <div class="field">
-          <label class="field-label">类型</label>
+          <label class="field-label">{{ $t("lore.type") }}</label>
           <select v-model="form.kind" @change="form.unique = form.kind === 'character'">
-            <option value="character">角色</option>
-            <option value="world">背景 / 世界观</option>
+            <option value="character">{{ $t("common.character") }}</option>
+            <option value="world">{{ $t("common.world") }}</option>
           </select>
         </div>
         <div class="field capsule-switch-row" v-if="form.kind === 'character'">
-          <CapsuleSwitch v-model="form.unique" label="唯一角色（同名只保留一条；可随时改）" />
+          <CapsuleSwitch v-model="form.unique" :label="$t('lore.uniqueSwitch')" />
         </div>
         <div class="field">
-          <label class="field-label">标题</label>
-          <input v-model="form.title" type="text" :placeholder="form.kind === 'world' ? '如：暑门乡镇' : '如：娜娜'" />
+          <label class="field-label">{{ $t("lore.entryTitle") }}</label>
+          <input v-model="form.title" type="text" :placeholder="form.kind === 'world' ? $t('lore.titlePhWorld') : $t('lore.titlePhChar')" />
         </div>
         <div class="field">
-          <label class="field-label">关键词（逗号分隔）</label>
+          <label class="field-label">{{ $t("lore.keywords") }}</label>
           <input v-model="form.keywords" type="text" />
         </div>
         <div class="field" v-if="form.kind === 'character'">
-          <label class="field-label">形象卡（出图用）</label>
-          <input v-model="form.visual.外貌" type="text" placeholder="外貌" />
-          <input v-model="form.visual.发型" type="text" placeholder="发型" />
-          <input v-model="form.visual.瞳色" type="text" placeholder="瞳色" />
-          <input v-model="form.visual.体态" type="text" placeholder="体态" />
-          <input v-model="form.visual.常服" type="text" placeholder="常服" />
-          <input v-model="form.visual.画风锚" type="text" placeholder="画风锚（英文短 token）" />
-          <input v-model="form.visual.portrait_rel" type="text" placeholder="立绘路径 assets/portraits/…（可空）" />
+          <label class="field-label">{{ $t("lore.visualCard") }}</label>
+          <input v-model="form.visual.外貌" type="text" :placeholder="$t('lore.look')" />
+          <input v-model="form.visual.发型" type="text" :placeholder="$t('lore.hair')" />
+          <input v-model="form.visual.瞳色" type="text" :placeholder="$t('lore.eyes')" />
+          <input v-model="form.visual.体态" type="text" :placeholder="$t('lore.body')" />
+          <input v-model="form.visual.常服" type="text" :placeholder="$t('lore.outfit')" />
+          <input v-model="form.visual.画风锚" type="text" :placeholder="$t('lore.styleAnchor')" />
+          <input v-model="form.visual.portrait_rel" type="text" :placeholder="$t('lore.portraitPath')" />
         </div>
         <div class="field">
-          <label class="field-label">属性（每行 key=value）</label>
+          <label class="field-label">{{ $t("lore.attrs") }}</label>
           <textarea
             v-model="form.attrsText"
             rows="3"
-            :placeholder="form.kind === 'world' ? '时代=当代\n地点=乡镇' : '解剖=女体无阴茎'"
+            :placeholder="form.kind === 'world' ? $t('lore.attrsPhWorld') : $t('lore.attrsPhChar')"
           />
         </div>
         <div class="field">
-          <label class="field-label">关联（每行 target_id|关系）</label>
-          <textarea v-model="form.linksText" rows="3" placeholder="角色uuid|相关" />
+          <label class="field-label">{{ $t("lore.links") }}</label>
+          <textarea v-model="form.linksText" rows="3" :placeholder="$t('lore.linksPh')" />
         </div>
         <div class="field">
-          <label class="field-label">内容</label>
+          <label class="field-label">{{ $t("lore.content") }}</label>
           <textarea v-model="form.content" rows="8" />
         </div>
         <div class="actions">
-          <button type="button" class="app-btn app-btn-primary" @click="save">保存设定</button>
-          <button type="button" class="app-btn" @click="resetForm">新建</button>
+          <button type="button" class="app-btn app-btn-primary" @click="save">{{ $t("lore.save") }}</button>
+          <button type="button" class="app-btn" @click="resetForm">{{ $t("lore.new") }}</button>
         </div>
       </div>
     </div>

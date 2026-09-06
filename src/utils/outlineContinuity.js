@@ -2,16 +2,41 @@
  * 拆章/按纲写：时间线与亲属连续约束
  * 代码路径: kk_novel_ai/src/utils/outlineContinuity.js
  */
+import { appState } from "../stores/appState.js";
+import { tLocale } from "../i18n/index.js";
 
-export const CONTINUITY_MUST_NOT =
-  "禁止把上章已发生的用餐、入睡、出行写成尚未发生；禁止同一顿饭再开一桌；禁止改写已确立的亲属（谁是谁家的孩子、表哥表妹属哪一门）。";
+const WRITING_LOCALES = ["zh-CN", "en", "ja"];
 
-export const CONTINUITY_WRITE_HINT =
-  "承接上章收束的时间地点与人物状态；上章已用餐或已吃西瓜则按饭后写，禁止喊开饭；亲属称谓以角色卡为准。";
+function writingT(key, values) {
+  return tLocale(appState.settings?.writing_locale || "zh-CN", key, values);
+}
+
+export function continuityMustNot() {
+  return writingT("continuity.mustNot");
+}
+
+export function continuityWriteHint() {
+  return writingT("continuity.writeHint");
+}
+
+/** @deprecated 请用 continuityMustNot()；保留名称以免旧引用炸 */
+export function CONTINUITY_MUST_NOT() {
+  return continuityMustNot();
+}
+
+/** @deprecated 请用 continuityWriteHint() */
+export function CONTINUITY_WRITE_HINT() {
+  return continuityWriteHint();
+}
 
 export function isPlaceholderBookTitle(title) {
-  const t = String(title || "").trim();
-  return !t || /^未命名小说/.test(t);
+  const s = String(title || "").trim();
+  if (!s) return true;
+  for (const loc of WRITING_LOCALES) {
+    const untitled = tLocale(loc, "project.untitled");
+    if (untitled && (s === untitled || s.startsWith(untitled))) return true;
+  }
+  return /^未命名小说/.test(s);
 }
 
 export function seedTitleFromOutline(outline) {
@@ -26,6 +51,11 @@ export function seedTitleFromOutline(outline) {
   return [...line].slice(0, 24).join("");
 }
 
+function alreadyHasContinuityMustNot(parts) {
+  const texts = WRITING_LOCALES.map((loc) => tLocale(loc, "continuity.mustNot")).filter(Boolean);
+  return parts.some((p) => texts.some((text) => p.includes(text) || text.includes(p)));
+}
+
 export function composeMustNot(row, bookOutline) {
   const parts = [];
   const user = String((row && (row.must_not || row.mustNot)) || "").trim();
@@ -33,12 +63,10 @@ export function composeMustNot(row, bookOutline) {
   const outline = String(bookOutline || "").trim();
   const outlineChars = [...outline.replace(/\s+/g, "")].length;
   if (outline && outlineChars < 80) {
-    parts.push(
-      "一句话大纲：只推进该句已有动作；末章须留下未兑现的核心愿望/下场钩子，禁止假装全书已经写完。"
-    );
+    parts.push(writingT("continuity.oneLineHint"));
   }
-  if (!parts.some((p) => p.includes("禁止把上章已发生的用餐"))) {
-    parts.push(CONTINUITY_MUST_NOT);
+  if (!alreadyHasContinuityMustNot(parts)) {
+    parts.push(continuityMustNot());
   }
   return parts.join(" ");
 }

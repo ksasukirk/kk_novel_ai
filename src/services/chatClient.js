@@ -8,6 +8,7 @@ import { chatState } from "../stores/chatState.js";
 import { peekChapterBlocks } from "./projectClient.js";
 import { contentFromBlocks } from "../utils/genBlock.js";
 import { cancelGeneration } from "./llmClient.js";
+import { t, tLocale } from "../i18n/index.js";
 
 const MAX_TURNS = 40;
 const OUTLINE_CHARS = 2000;
@@ -26,9 +27,9 @@ function sessionKey(mode, root) {
 }
 
 function clip(s, n) {
-  const t = String(s || "").trim();
-  if (t.length <= n) return t;
-  return `${t.slice(0, n)}\n…（已截断）`;
+  const text = String(s || "").trim();
+  if (text.length <= n) return text;
+  return `${text.slice(0, n)}\n${t("chat.truncated")}`;
 }
 
 export async function ensureChatListeners() {
@@ -64,7 +65,7 @@ export async function ensureChatListeners() {
   unlistenErr = await listen("llm-error", (event) => {
     const p = event.payload || {};
     if (p.task !== "llm_chat") return;
-    chatState.error = String(p.error || "对话失败");
+    chatState.error = String(p.error || t("chat.failed"));
   });
   void unlistenChunk;
   void unlistenStart;
@@ -123,8 +124,13 @@ export async function saveChatPersona() {
   await saveChatSession();
 }
 
+function writingT(key, values) {
+  const loc = (appState.settings && appState.settings.writing_locale) || "zh-CN";
+  return tLocale(loc, key, values);
+}
+
 export function assistantLabel() {
-  return String(chatState.assistantName || "").trim() || "助手";
+  return String(chatState.assistantName || "").trim() || t("chat.assistant");
 }
 
 function personaPromptLines() {
@@ -132,9 +138,9 @@ function personaPromptLines() {
   const name = String(chatState.assistantName || "").trim();
   const style = String(chatState.assistantStyle || "").trim();
   const persona = String(chatState.assistantPersona || "").trim();
-  if (name) lines.push(`你叫「${name}」，按这个名字自称。`);
-  if (style) lines.push(`对话风格：${clip(style, STYLE_CHARS)}`);
-  if (persona) lines.push(`角色定义：${clip(persona, PERSONA_CHARS)}`);
+  if (name) lines.push(writingT("writingSys.callName", { name }));
+  if (style) lines.push(writingT("writingSys.style", { style: clip(style, STYLE_CHARS) }));
+  if (persona) lines.push(writingT("writingSys.persona", { persona: clip(persona, PERSONA_CHARS) }));
   return lines;
 }
 
@@ -157,34 +163,33 @@ async function novelSystemPrompt() {
   }
   const lines = [
     ...personaPromptLines(),
-    "你是小说创作助手，用中文对话。只讨论、建议、分析；不要输出要直接落盘的章节补丁，也不要假装已经改了正文。",
-    `书名：${p.title || "未命名"}`,
-    `全书大纲摘要：${clip(p.book_outline || "（空）", OUTLINE_CHARS)}`,
+    writingT("writingSys.novel"),
+    writingT("writingSys.book", { title: p.title || writingT("writingSys.unnamed") }),
+    writingT("writingSys.outline", {
+      text: clip(p.book_outline || writingT("writingSys.unnamed"), OUTLINE_CHARS),
+    }),
   ];
   if (ch) {
-    lines.push(`当前章：${ch.title || ""}`);
-    if (ch.summary) lines.push(`章纲：${clip(ch.summary, 800)}`);
+    lines.push(writingT("writingSys.chapter", { title: ch.title || "" }));
+    if (ch.summary) lines.push(writingT("writingSys.chOutline", { text: clip(ch.summary, 800) }));
   }
-  if (names.length) lines.push(`角色：${names.join("、")}`);
-  if (body) lines.push(`本章正文（截断）：\n${body}`);
+  if (names.length) lines.push(writingT("writingSys.cast", { names: names.join("、") }));
+  if (body) lines.push(writingT("writingSys.body", { text: body }));
   return lines.join("\n");
 }
 
 function freeSystemPrompt() {
-  const lines = [
-    ...personaPromptLines(),
-    "你是通用助手，用中文对话。这不是写作引擎：不要改用户作品文件，不要输出落盘用的章节 JSON。",
-  ];
+  const lines = [...personaPromptLines(), writingT("writingSys.free")];
   return lines.join("\n");
 }
 
 export async function sendChat(text) {
   const content = String(text || "").trim();
-  if (!content) throw new Error("请先输入内容");
-  if (chatState.busy) throw new Error("上一句还在生成");
+  if (!content) throw new Error(t("chat.needInput"));
+  if (chatState.busy) throw new Error(t("chat.busy"));
   const mode = chatState.mode === "novel" ? "novel" : "free";
   if (mode === "novel" && !appState.projectRoot) {
-    throw new Error("本作对话需要先打开作品");
+    throw new Error(t("chat.needOpen"));
   }
   await ensureChatListeners();
   chatState.error = "";

@@ -37,10 +37,10 @@ fn normalize_base(url: &str) -> String {
 fn safe_rel_path(rel: &str) -> AppResult<PathBuf> {
     let rel = rel.replace('\\', "/").trim().trim_start_matches('/').to_string();
     if rel.is_empty() || rel.contains("..") {
-        return Err(AppError::msg("非法图像路径"));
+        return Err(AppError::t("errors.illegalImagePath"));
     }
     if !rel.starts_with("assets/") {
-        return Err(AppError::msg("图像只能写到作品 assets/ 下"));
+        return Err(AppError::t("errors.imageMustBeInAssets"));
     }
     Ok(PathBuf::from(rel))
 }
@@ -53,7 +53,7 @@ pub fn abs_under_root(root: &Path, rel: &str) -> AppResult<PathBuf> {
         .unwrap_or_else(|_| root.to_path_buf());
     if let Ok(canon) = abs.canonicalize() {
         if !canon.starts_with(&root_c) {
-            return Err(AppError::msg("图像路径超出作品目录"));
+            return Err(AppError::t("errors.imagePathOutsideProject"));
         }
     }
     Ok(abs)
@@ -89,16 +89,16 @@ fn decode_b64(s: &str) -> AppResult<Vec<u8>> {
     base64::engine::general_purpose::STANDARD
         .decode(payload.trim())
         .or_else(|_| base64::engine::general_purpose::STANDARD_NO_PAD.decode(payload.trim()))
-        .map_err(|e| AppError::msg(format!("图像 base64 解码失败: {e}")))
+        .map_err(|e| AppError::t_fmt("errors.imageBase64DecodeFailed", &[("e", &e.to_string())]))
 }
 
 async fn download_url(client: &reqwest::Client, url: &str) -> AppResult<Vec<u8>> {
     let resp = client.get(url).send().await?;
     if !resp.status().is_success() {
-        return Err(AppError::msg(format!(
-            "下载生成图失败 HTTP {}",
-            resp.status()
-        )));
+        return Err(AppError::t_fmt(
+            "errors.downloadGeneratedImageFailedHttp",
+            &[("status", &resp.status().to_string())],
+        ));
     }
     Ok(resp.bytes().await?.to_vec())
 }
@@ -132,23 +132,23 @@ fn extract_error_message(body: &Value) -> String {
     if let Some(m) = body.get("message").and_then(|v| v.as_str()) {
         return m.to_string();
     }
-    serde_json::to_string(body).unwrap_or_else(|_| "图像接口返回错误".into())
+    serde_json::to_string(body).unwrap_or_else(|_| crate::i18n::t("errors.imageApiReturnedError"))
 }
 
 pub async fn generate(settings: &AppSettings, req: ImageGenerateRequest) -> AppResult<Value> {
     let prompt = req.prompt.trim();
     if prompt.is_empty() {
-        return Err(AppError::msg("绘图提示词为空"));
+        return Err(AppError::t("errors.imagePromptEmpty"));
     }
     let base = normalize_base(&settings.image_base_url);
     if base.is_empty() {
-        return Err(AppError::msg("请先在设置里填写图像 Base URL"));
+        return Err(AppError::t("errors.needImageBaseUrl"));
     }
     if settings.image_provider != "openai_compat" && !settings.image_provider.is_empty() {
-        return Err(AppError::msg(format!(
-            "暂不支持图像供应商 {}",
-            settings.image_provider
-        )));
+        return Err(AppError::t_fmt(
+            "errors.unsupportedImageProvider",
+            &[("provider", &settings.image_provider)],
+        ));
     }
     let model = if settings.image_model.trim().is_empty() {
         "dall-e-3"
@@ -168,7 +168,7 @@ pub async fn generate(settings: &AppSettings, req: ImageGenerateRequest) -> AppR
         });
     let root = Path::new(&req.project_root);
     if !root.exists() {
-        return Err(AppError::msg("作品目录不存在"));
+        return Err(AppError::t("errors.projectDirMissing"));
     }
     let rel = req.rel.replace('\\', "/");
     let abs = abs_under_root(root, &rel)?;
@@ -198,10 +198,13 @@ pub async fn generate(settings: &AppSettings, req: ImageGenerateRequest) -> AppR
         body.as_object_mut().map(|m| m.remove("response_format"));
         let (st2, parsed2) = post_images(&client, &url, key, &body).await?;
         if !st2.is_success() {
-            return Err(AppError::msg(format!(
-                "图像接口 HTTP {st2}: {}",
-                extract_error_message(&parsed2)
-            )));
+            return Err(AppError::t_fmt(
+                "errors.imageApiHttp",
+                &[
+                    ("status", &st2.to_string()),
+                    ("detail", &extract_error_message(&parsed2)),
+                ],
+            ));
         }
         parsed2
     };
@@ -215,13 +218,13 @@ pub async fn generate(settings: &AppSettings, req: ImageGenerateRequest) -> AppR
         } else if let Some(u) = item.get("url").and_then(|v| v.as_str()) {
             download_url(&client, u).await?
         } else {
-            return Err(AppError::msg("图像接口未返回 b64_json 或 url"));
+            return Err(AppError::t("errors.imageApiNoData"));
         }
     } else {
         return Err(AppError::msg(extract_error_message(&parsed)));
     };
     if bytes.len() < 32 {
-        return Err(AppError::msg("图像接口返回空数据"));
+        return Err(AppError::t("errors.imageApiEmpty"));
     }
     fs::write(&abs, &bytes)?;
     Ok(json!({
@@ -237,7 +240,7 @@ pub fn read_data_url(project_root: &str, rel: &str) -> AppResult<Value> {
     let root = Path::new(project_root);
     let abs = abs_under_root(root, rel)?;
     if !abs.exists() {
-        return Err(AppError::msg("插图文件不存在"));
+        return Err(AppError::t("errors.illustrationFileMissing"));
     }
     let bytes = fs::read(&abs)?;
     let mime = guess_mime(&bytes, rel);

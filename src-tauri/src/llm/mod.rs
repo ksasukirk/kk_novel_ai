@@ -217,7 +217,7 @@ impl LmStudioClient {
                     Some(settings.model.clone())
                 }
             })
-            .ok_or_else(|| AppError::msg("未指定模型，请在设置中选择或传入 model"))
+            .ok_or_else(|| AppError::t("errors.modelNotSpecified"))
     }
 
     fn extract_message_content(data: &Value) -> Option<String> {
@@ -264,9 +264,7 @@ impl LmStudioClient {
     pub async fn probe_model(&self, settings: &AppSettings, model: &str) -> AppResult<()> {
         let ids = self.model_ids(settings).await?;
         if !ids.iter().any(|id| id == model) {
-            return Err(AppError::msg(format!(
-                "模型不在 LM Studio /v1/models 列表中: `{model}`（请核对 id，或先下载该模型）"
-            )));
+            return Err(AppError::t_fmt("errors.modelNotInLmStudio", &[("model", model)]));
         }
         // 短超时：未加载进内存的大模会卡住，尽快失败以便回退
         let probe_client = Self::with_timeout_secs(25);
@@ -294,12 +292,12 @@ impl LmStudioClient {
             .header("Authorization", format!("Bearer {}", settings.api_key))
             .send()
             .await
-            .map_err(|e| AppError::msg(format!("无法连接 LM Studio: {e}")))?;
+            .map_err(|e| AppError::t_fmt("errors.cannotConnectLmStudio", &[("e", &e.to_string())]))?;
         if !resp.status().is_success() {
-            return Err(AppError::msg(format!(
-                "LM Studio 健康检查失败: HTTP {}",
-                resp.status()
-            )));
+            return Err(AppError::t_fmt(
+                "errors.lmStudioHealthFailed",
+                &[("status", &resp.status().to_string())],
+            ));
         }
         Ok(json!({
             "ok": true,
@@ -316,12 +314,12 @@ impl LmStudioClient {
             .header("Authorization", format!("Bearer {}", settings.api_key))
             .send()
             .await
-            .map_err(|e| AppError::msg(format!("无法连接 LM Studio: {e}")))?;
+            .map_err(|e| AppError::t_fmt("errors.cannotConnectLmStudio", &[("e", &e.to_string())]))?;
         if !resp.status().is_success() {
-            return Err(AppError::msg(format!(
-                "获取模型列表失败: HTTP {}",
-                resp.status()
-            )));
+            return Err(AppError::t_fmt(
+                "errors.listModelsFailedHttp",
+                &[("status", &resp.status().to_string())],
+            ));
         }
         let body: Value = resp.json().await?;
         Ok(body)
@@ -345,33 +343,48 @@ impl LmStudioClient {
             .send()
             .await
             .map_err(|e| {
-                AppError::msg(format!(
-                    "chat 请求失败（模型 {model}）: {e}。请确认 LM Studio 已加载该模型。"
-                ))
+                AppError::t_fmt(
+                    "errors.chatRequestFailed",
+                    &[("model", &model), ("e", &e.to_string())],
+                )
             })?;
 
         let status = resp.status();
         let raw = resp
             .text()
             .await
-            .map_err(|e| AppError::msg(format!("chat 读响应失败（模型 {model}）: {e}")))?;
+            .map_err(|e| {
+                AppError::t_fmt(
+                    "errors.chatReadResponseFailed",
+                    &[("model", &model), ("e", &e.to_string())],
+                )
+            })?;
         let data: Value = serde_json::from_str(&raw).map_err(|e| {
-            AppError::msg(format!(
-                "chat JSON 无效（模型 {model}，HTTP {status}）: {e}; 原文前200字: {}",
-                raw.chars().take(200).collect::<String>()
-            ))
+            AppError::t_fmt(
+                "errors.chatJsonInvalid",
+                &[
+                    ("model", &model),
+                    ("status", &status.to_string()),
+                    ("e", &e.to_string()),
+                    ("preview", &raw.chars().take(200).collect::<String>()),
+                ],
+            )
         })?;
         if !status.is_success() {
-            return Err(AppError::msg(format!(
-                "chat 失败 HTTP {status}（模型 {model}）: {}",
-                Self::format_api_error(&data)
-            )));
+            return Err(AppError::t_fmt(
+                "errors.chatFailedHttp",
+                &[
+                    ("status", &status.to_string()),
+                    ("model", &model),
+                    ("detail", &Self::format_api_error(&data)),
+                ],
+            ));
         }
         if data.get("error").is_some() {
-            return Err(AppError::msg(format!(
-                "chat API error（模型 {model}）: {}",
-                Self::format_api_error(&data)
-            )));
+            return Err(AppError::t_fmt(
+                "errors.chatApiError",
+                &[("model", &model), ("detail", &Self::format_api_error(&data))],
+            ));
         }
         let text = Self::extract_message_content(&data).unwrap_or_default();
         let usage = TokenUsage::or_estimate(
@@ -419,7 +432,9 @@ impl LmStudioClient {
                     || msg.contains("connection")
                     || msg.contains("timed out")
                     || msg.contains("empty stream")
-                    || msg.contains("非 SSE");
+                    || msg.contains("非 SSE")
+                    || msg.contains("not SSE")
+                    || msg.contains("SSEではありません");
                 if !recoverable {
                     return Err(e);
                 }
@@ -432,9 +447,10 @@ impl LmStudioClient {
                     }
                     Ok(r) => r,
                     Err(e2) => {
-                        return Err(AppError::msg(format!(
-                            "流式失败（{msg}）；非流式亦失败: {e2}"
-                        )));
+                        return Err(AppError::t_fmt(
+                            "errors.streamThenNonStreamFailed",
+                            &[("msg", &msg), ("e2", &e2.to_string())],
+                        ));
                     }
                 }
             }
@@ -483,9 +499,10 @@ impl LmStudioClient {
             .send()
             .await
             .map_err(|e| {
-                AppError::msg(format!(
-                    "stream 请求失败（模型 {model}）: {e}。请确认该模型已在 LM Studio 加载。"
-                ))
+                AppError::t_fmt(
+                    "errors.streamRequestFailed",
+                    &[("model", &model), ("e", &e.to_string())],
+                )
             })?;
 
         let status = resp.status();
@@ -502,10 +519,14 @@ impl LmStudioClient {
             let raw = resp.text().await.unwrap_or_default();
             let data: Value = serde_json::from_str(&raw).unwrap_or(json!({ "raw": raw }));
             if !status.is_success() || data.get("error").is_some() {
-                return Err(AppError::msg(format!(
-                    "stream 收到 JSON 错误（模型 {model}，HTTP {status}）: {}。请在 LM Studio 加载该模型后重试。",
-                    Self::format_api_error(&data)
-                )));
+                return Err(AppError::t_fmt(
+                    "errors.streamGotJsonError",
+                    &[
+                        ("model", &model),
+                        ("status", &status.to_string()),
+                        ("detail", &Self::format_api_error(&data)),
+                    ],
+                ));
             }
             if let Some(content) = Self::extract_message_content(&data) {
                 if !content.is_empty() {
@@ -521,16 +542,19 @@ impl LmStudioClient {
                     usage,
                 });
             }
-            return Err(AppError::msg(format!(
-                "stream 非 SSE（模型 {model}）且无正文"
-            )));
+            return Err(AppError::t_fmt("errors.streamNotSse", &[("model", &model)]));
         }
 
         if !status.is_success() {
             let text = resp.text().await.unwrap_or_default();
-            return Err(AppError::msg(format!(
-                "stream chat 失败 HTTP {status}（模型 {model}）: {text}"
-            )));
+            return Err(AppError::t_fmt(
+                "errors.streamChatFailedHttp",
+                &[
+                    ("status", &status.to_string()),
+                    ("model", &model),
+                    ("text", &text),
+                ],
+            ));
         }
 
         let mut stream = resp.bytes_stream();
@@ -541,12 +565,13 @@ impl LmStudioClient {
 
         while let Some(item) = stream.next().await {
             if cancel.load(Ordering::SeqCst) {
-                return Err(AppError::msg("生成已取消"));
+                return Err(AppError::t("errors.generationCancelled"));
             }
             let chunk = item.map_err(|e| {
-                AppError::msg(format!(
-                    "stream 读块失败（模型 {model}）: {e}"
-                ))
+                AppError::t_fmt(
+                    "errors.streamReadFailed",
+                    &[("model", &model), ("e", &e.to_string())],
+                )
             })?;
             byte_buf.extend_from_slice(&chunk);
 
@@ -557,9 +582,7 @@ impl LmStudioClient {
             };
             if ok_upto == 0 {
                 if byte_buf.len() > 8 {
-                    return Err(AppError::msg(format!(
-                        "stream UTF-8 无效（模型 {model}）"
-                    )));
+                    return Err(AppError::t_fmt("errors.streamUtf8Invalid", &[("model", &model)]));
                 }
                 continue;
             }
@@ -577,10 +600,10 @@ impl LmStudioClient {
                 if line.starts_with('{') {
                     if let Ok(v) = serde_json::from_str::<Value>(&line) {
                         if v.get("error").is_some() {
-                            return Err(AppError::msg(format!(
-                                "stream 中途错误（模型 {model}）: {}",
-                                Self::format_api_error(&v)
-                            )));
+                            return Err(AppError::t_fmt(
+                                "errors.streamMidwayError",
+                                &[("model", &model), ("detail", &Self::format_api_error(&v))],
+                            ));
                         }
                         if let Some(u) = v.get("usage").and_then(TokenUsage::from_api_json) {
                             api_usage = Some(u);
@@ -617,9 +640,7 @@ impl LmStudioClient {
             }
         }
         if full.trim().is_empty() {
-            return Err(AppError::msg(format!(
-                "empty stream（模型 {model}）：无增量。可能模型未加载或后端未返回 SSE。"
-            )));
+            return Err(AppError::t_fmt("errors.emptyStream", &[("model", &model)]));
         }
         let usage = TokenUsage::or_estimate(api_usage, messages, &full);
         Ok(ChatResult { text: full, usage })
@@ -637,7 +658,7 @@ impl LmStudioClient {
         inputs: &[String],
     ) -> AppResult<Vec<Vec<f32>>> {
         if model.trim().is_empty() {
-            return Err(AppError::msg("未配置 embedding_model"));
+            return Err(AppError::t("errors.embeddingModelNotSet"));
         }
         if inputs.is_empty() {
             return Ok(vec![]);
@@ -654,13 +675,14 @@ impl LmStudioClient {
             .json(&body)
             .send()
             .await
-            .map_err(|e| AppError::msg(format!("embeddings 请求失败: {e}")))?;
+            .map_err(|e| AppError::t_fmt("errors.embeddingsRequestFailed", &[("e", &e.to_string())]))?;
         if !resp.status().is_success() {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
-            return Err(AppError::msg(format!(
-                "embeddings 失败 HTTP {status}: {text}"
-            )));
+            return Err(AppError::t_fmt(
+                "errors.embeddingsFailedHttp",
+                &[("status", &status.to_string()), ("text", &text)],
+            ));
         }
         let data: Value = resp.json().await?;
         let mut out = Vec::new();
@@ -676,7 +698,7 @@ impl LmStudioClient {
             }
         }
         if out.is_empty() {
-            return Err(AppError::msg("embeddings 响应无向量"));
+            return Err(AppError::t("errors.embeddingsNoVector"));
         }
         Ok(out)
     }

@@ -3,23 +3,25 @@
  * 代码路径: kk_novel_ai/src/services/tauri.js
  */
 
+import { t } from "../i18n/index.js";
+
 export function getTauriInvoke() {
-  const t = globalThis.__TAURI__;
-  if (t && t.core && typeof t.core.invoke === "function") return t.core.invoke;
-  if (t && typeof t.invoke === "function") return t.invoke;
+  const api = globalThis.__TAURI__;
+  if (api && api.core && typeof api.core.invoke === "function") return api.core.invoke;
+  if (api && typeof api.invoke === "function") return api.invoke;
   return null;
 }
 
 export async function invoke(cmd, args = {}) {
   const fn = getTauriInvoke();
-  if (!fn) throw new Error("未检测到 Tauri 环境");
+  if (!fn) throw new Error(t("common.noTauri"));
   return await fn(cmd, args);
 }
 
 export async function listen(event, handler) {
-  const t = globalThis.__TAURI__;
-  if (!t || !t.event || typeof t.event.listen !== "function") {
-    throw new Error("未检测到 Tauri event API");
+  const api = globalThis.__TAURI__;
+  if (!api || !api.event || typeof api.event.listen !== "function") {
+    throw new Error(t("common.noTauriEvent"));
   }
-  return await t.event.listen(event, handler);
+  return await api.event.listen(event, handler);
 }

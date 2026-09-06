@@ -3,13 +3,15 @@
   代码路径: kk_novel_ai/src/components/shell/AppSidebar.vue
 -->
 <script setup>
+import { t } from "../../i18n/index.js";
+
 defineProps({
   /** expanded | compact | closed */
   mode: { type: String, default: "expanded" },
   tabs: { type: Array, required: true },
   activeId: { type: String, required: true },
   theme: { type: String, default: "light" },
-  themeLabel: { type: String, default: "切换主题" },
+  themeLabel: { type: String, default: () => t("app.toggleTheme") },
   overlay: { type: Boolean, default: false },
 });
 

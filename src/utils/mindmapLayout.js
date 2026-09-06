@@ -4,6 +4,7 @@
  */
 
 import { parseChapterPoints } from "./outlineMindTree.js";
+import { t } from "../i18n/index.js";
 
 /**
  * @typedef {{ id: string, label: string, kind?: string, meta?: string, children?: object[] }} MindNode
@@ -130,7 +131,7 @@ export function buildNovelMindTree({
         const b = beats[i];
         kids.push({
           id: `beat:${ch.id}:${b.id || i}`,
-          label: b.title || `节拍${i + 1}`,
+          label: b.title || t("mindmap.beatN", { n: i + 1 }),
           kind: "beat",
           meta: b.purpose || b.conflict || "",
           children: [],
@@ -151,7 +152,7 @@ export function buildNovelMindTree({
     if (String(ch.must_do || "").trim()) {
       kids.push({
         id: `must:${ch.id}`,
-        label: "必达",
+        label: t("story.mustDo"),
         kind: "point",
         meta: ch.must_do,
         children: [],
@@ -161,7 +162,7 @@ export function buildNovelMindTree({
     if (written) {
       kids.push({
         id: `written:${ch.id}`,
-        label: "已写总结",
+        label: t("mindmap.writtenSum"),
         kind: "written",
         meta: written,
         children: [],
@@ -191,7 +192,7 @@ export function buildNovelMindTree({
       if (arcText) {
         volKids.push({
           id: `volarc:${vol.id}`,
-          label: "本卷弧",
+          label: t("mindmap.volArc"),
           kind: "point",
           meta: arcText,
           children: [],
@@ -205,7 +206,7 @@ export function buildNovelMindTree({
       );
       outlineChildren.push({
         id: `vol:${vol.id}`,
-        label: vol.title || "卷",
+        label: vol.title || t("mindmap.volume"),
         kind: "volume",
         meta: vol.arc_goal || vol.arc_summary || "",
         children: volKids,
@@ -220,7 +221,7 @@ export function buildNovelMindTree({
       .filter((p) => !p.arc_id || p.arc_id === a.id)
       .map((p) => ({
         id: `promise:${p.id}`,
-        label: (p.text || "承诺").slice(0, 28),
+        label: (p.text || t("mindmap.promise")).slice(0, 28),
         kind: p.status === "open" ? "promise-open" : "promise",
         meta: p.status,
         children: [],
@@ -238,7 +239,7 @@ export function buildNovelMindTree({
     .filter((p) => !p.arc_id || !(plot.arcs || []).some((a) => a.id === p.arc_id))
     .map((p) => ({
       id: `promise:${p.id}`,
-      label: (p.text || "承诺").slice(0, 28),
+      label: (p.text || t("mindmap.promise")).slice(0, 28),
       kind: p.status === "open" ? "promise-open" : "promise",
       meta: p.status,
       children: [],
@@ -257,7 +258,7 @@ export function buildNovelMindTree({
 
   const canonNodes = (canon.facts || []).map((f) => ({
     id: `fact:${f.id}`,
-    label: (f.text || "事实").slice(0, 32),
+    label: (f.text || t("mindmap.fact")).slice(0, 32),
     kind: f.locked ? "canon-locked" : "canon",
     meta: f.locked ? "LOCKED" : "",
     children: [],
@@ -281,7 +282,7 @@ export function buildNovelMindTree({
     seenChar.add(key);
     charNodes.push({
       id: `char:${l.id}`,
-      label: l.title || "角色",
+      label: l.title || t("common.character"),
       kind: "character",
       meta: (l.content || "").slice(0, 40),
       children: [],
@@ -290,50 +291,52 @@ export function buildNovelMindTree({
 
   return {
     id: "root",
-    label: title || "作品",
+    label: title || t("outline.workDefault"),
     kind: "root",
     meta: "Novel OS",
     children: [
       {
         id: "branch:outline",
-        label: "大纲",
+        label: t("nav.outline"),
         kind: "branch",
-        meta: `${chapters.length} 章`,
+        meta: t("mindmap.chapterCount", { n: chapters.length }),
         children: outlineChildren,
       },
       {
         id: "branch:characters",
-        label: "角色",
+        label: t("common.character"),
         kind: "branch",
-        meta: `${charNodes.length} 人`,
+        meta: t("mindmap.personCount", { n: charNodes.length }),
         children: charNodes,
       },
       {
         id: "branch:plot",
-        label: "故事线",
+        label: t("story.tabPlot"),
         kind: "branch",
-        meta: `${(plot.arcs || []).length} 弧`,
+        meta: t("mindmap.arcCount", { n: (plot.arcs || []).length }),
         children: [...arcNodes, ...orphanPromises],
       },
       {
         id: "branch:timeline",
-        label: "时间线",
+        label: t("story.tabTimeline"),
         kind: "branch",
-        meta: timeline.calendar_note || `${sortedEvents.length} 事`,
+        meta: timeline.calendar_note || t("mindmap.eventCount", { n: sortedEvents.length }),
         children: timelineNodes,
       },
       {
         id: "branch:canon",
-        label: "Canon",
+        label: t("story.tabCanon"),
         kind: "branch",
-        meta: `${(canon.facts || []).filter((f) => f.locked).length} 锁定`,
+        meta: t("mindmap.lockedCount", {
+          n: (canon.facts || []).filter((f) => f.locked).length,
+        }),
         children: canonNodes,
       },
       {
         id: "branch:relations",
-        label: "关系",
+        label: t("story.tabRelations"),
         kind: "branch",
-        meta: `${(relations.edges || []).length} 边`,
+        meta: t("mindmap.edgeCount", { n: (relations.edges || []).length }),
         children: relNodes,
       },
     ],

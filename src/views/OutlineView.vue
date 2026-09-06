@@ -16,6 +16,7 @@ import {
 } from "../utils/outlineMindTree.js";
 import { runOutlineToMindmap } from "../services/outlineMindmap.js";
 import { toastWarning, useToastError } from "../services/toast.js";
+import { t } from "../i18n/index.js";
 
 const error = useToastError();
 const drafts = ref({});
@@ -61,7 +62,7 @@ const structuredReady = computed(() => hasStructuredOutline(appState.project));
 
 function buildStructureTree() {
   const full = buildNovelMindTree({
-    title: (appState.project && appState.project.title) || "作品",
+    title: (appState.project && appState.project.title) || t("outline.workDefault"),
     volumes: volumes.value,
     chapters: chapters.value,
     plot: plot.value,
@@ -75,7 +76,7 @@ function buildStructureTree() {
     id: full.id,
     label: full.label,
     kind: "root",
-    meta: "大纲导图",
+    meta: t("outline.mapMeta"),
     children: (full.children || []).filter((c) =>
       ["branch:outline", "branch:characters", "branch:plot"].includes(c.id)
     ),
@@ -93,11 +94,11 @@ const outlinePageTree = computed(() =>
 
 const outlineMindTree = computed(() => outlinePageTree.value.tree);
 const mapEmptyHint = computed(() => {
-  if (!appState.projectRoot) return "请先打开作品。";
+  if (!appState.projectRoot) return t("outline.emptyOpen");
   const book = String((appState.project && appState.project.book_outline) || "").trim();
-  if (!book && !structuredReady.value) return "还没大纲，先写下全书大纲或拆章。";
-  if (outlinePageTree.value.thin) return "大纲还太整段，点「整理成导图」用 AI 拆树。";
-  return "暂无导图数据。";
+  if (!book && !structuredReady.value) return t("outline.emptyNeed");
+  if (outlinePageTree.value.thin) return t("outline.emptyThin");
+  return t("outline.emptyData");
 });
 
 watch(
@@ -296,7 +297,7 @@ async function organizeMindMap() {
   const book = String(bookOutlineDraft.value || (appState.project && appState.project.book_outline) || "").trim();
   const ready = hasStructuredOutline(appState.project);
   if (!book && !ready) {
-    toastWarning("请先填写并保存全书大纲");
+    toastWarning(t("outline.needBook"));
     return;
   }
   if (book && String(bookOutlineDraft.value || "") !== bookOutlineDraftSynced) {
@@ -322,25 +323,25 @@ function useStructureTree() {
 
 <template>
   <section class="panel outline-panel">
-    <h1 class="panel-heading">大纲</h1>
-    <p v-if="!appState.projectRoot" class="muted">请先打开作品。完整总谱导图见侧栏「总谱」。</p>
+    <h1 class="panel-heading">{{ $t("outline.title") }}</h1>
+    <p v-if="!appState.projectRoot" class="muted">{{ $t("outline.needProject") }}</p>
     <template v-else>
-      <div class="outline-subtabs" role="radiogroup" aria-label="大纲子视图">
+      <div class="outline-subtabs" role="radiogroup" :aria-label="$t('outline.subview')">
         <label class="outline-subtab" :class="{ 'is-active': outlineTab === 'map' }">
           <input v-model="outlineTab" type="radio" name="outline-subview" value="map" />
-          结构导图
+          {{ $t("outline.tabMap") }}
         </label>
         <label class="outline-subtab" :class="{ 'is-active': outlineTab === 'edit' }">
           <input v-model="outlineTab" type="radio" name="outline-subview" value="edit" />
-          大纲编辑
+          {{ $t("outline.tabEdit") }}
         </label>
       </div>
 
       <div v-show="outlineTab === 'map'" class="outline-map-view">
         <div class="map-head">
-          <h2 class="sub">结构导图</h2>
+          <h2 class="sub">{{ $t("outline.tabMap") }}</h2>
           <button type="button" class="app-btn" :disabled="mapBusy" @click="organizeMindMap">
-            {{ mapBusy ? "整理中…" : "整理成导图" }}
+            {{ mapBusy ? $t("outline.organizing") : $t("outline.organize") }}
           </button>
           <button
             v-if="structuredReady"
@@ -349,9 +350,9 @@ function useStructureTree() {
             :disabled="mapBusy"
             @click="useStructureTree"
           >
-            用结构树
+            {{ $t("outline.useTree") }}
           </button>
-          <button type="button" class="app-btn" @click="loadStoryLite">刷新</button>
+          <button type="button" class="app-btn" @click="loadStoryLite">{{ $t("common.refresh") }}</button>
         </div>
         <MindMapBoard
           fill
@@ -365,40 +366,40 @@ function useStructureTree() {
         <div class="outline-main">
           <div class="outline-scroll">
             <div class="field">
-              <label class="field-label">全书大纲</label>
+              <label class="field-label">{{ $t("outline.book") }}</label>
               <textarea
                 v-model="bookOutlineDraft"
                 rows="6"
-                placeholder="全书主线冲突 / 分章钩子 / 人物关系（与写作页「按纲生成」共用）"
+                :placeholder="$t('outline.bookPh')"
               />
               <button type="button" class="app-btn" style="margin-top: 8px" @click="saveBookOutlineField">
-                保存全书大纲
+                {{ $t("outline.saveBook") }}
               </button>
             </div>
 
             <div class="field" style="margin-top: 16px">
-              <label class="field-label">文风</label>
+              <label class="field-label">{{ $t("outline.style") }}</label>
               <textarea v-model="appState.project.style" rows="3" @change="saveStyle" />
             </div>
 
-            <h2 class="sub">卷弧</h2>
+            <h2 class="sub">{{ $t("outline.volumes") }}</h2>
             <div v-for="vol in volumes" :key="vol.id" class="outline-card">
-              <input v-model="volumeDrafts[vol.id].title" type="text" placeholder="卷名" />
-              <input v-model="volumeDrafts[vol.id].arc_goal" type="text" placeholder="本卷目标" />
-              <textarea v-model="volumeDrafts[vol.id].arc_summary" rows="2" placeholder="本卷弧线摘要" />
-              <button type="button" class="app-btn" @click="saveVolume(vol.id)">保存卷弧</button>
+              <input v-model="volumeDrafts[vol.id].title" type="text" :placeholder="$t('outline.volTitle')" />
+              <input v-model="volumeDrafts[vol.id].arc_goal" type="text" :placeholder="$t('outline.volGoal')" />
+              <textarea v-model="volumeDrafts[vol.id].arc_summary" rows="2" :placeholder="$t('outline.volSummary')" />
+              <button type="button" class="app-btn" @click="saveVolume(vol.id)">{{ $t("outline.saveVolume") }}</button>
             </div>
 
-            <h2 class="sub">章纲</h2>
+            <h2 class="sub">{{ $t("outline.chapters") }}</h2>
             <div v-for="ch in chapters" :key="ch.id" class="outline-card">
               <input v-model="drafts[ch.id].title" type="text" />
-              <textarea v-model="drafts[ch.id].summary" rows="3" placeholder="本章冲突 / 推进 / 钩子" />
-              <textarea v-model="drafts[ch.id].must_do" rows="2" placeholder="本章必达（焦点）" />
-              <textarea v-model="drafts[ch.id].must_not" rows="2" placeholder="本章禁止" />
+              <textarea v-model="drafts[ch.id].summary" rows="3" :placeholder="$t('outline.chSummaryPh')" />
+              <textarea v-model="drafts[ch.id].must_do" rows="2" :placeholder="$t('outline.mustDo')" />
+              <textarea v-model="drafts[ch.id].must_not" rows="2" :placeholder="$t('outline.mustNot')" />
               <p v-if="snapshots[ch.id]" class="written-sum muted">
-                已写总结：{{ snapshots[ch.id] }}
+                {{ $t("outline.writtenSum", { text: snapshots[ch.id] }) }}
               </p>
-              <button type="button" class="app-btn" @click="saveOne(ch.id)">保存本章纲</button>
+              <button type="button" class="app-btn" @click="saveOne(ch.id)">{{ $t("outline.saveChapter") }}</button>
             </div>
           </div>
         </div>

@@ -6,6 +6,7 @@
 <script setup>
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { appState } from "../stores/appState.js";
+import { msgMatchesKey, t } from "../i18n/index.js";
 import {
   isEditorDraftVisible,
   recentlyEditorScrollIntent,
@@ -80,38 +81,48 @@ const draftTitle = computed(() => {
   const done = !streaming.value && !!(text.value);
   if (done) {
     if (draftBranchMode.value === "variant" || draftTask.value === "same_slot_variant") {
-      return props.job?.label ? `${props.job.label}草稿` : "变体草稿";
+      return props.job?.label
+        ? t("editor.draftOf", { label: props.job.label })
+        : t("editor.variantDraft");
     }
-    if (draftBranchMode.value === "fork") return "岔开草稿";
-    if (draftRewriteKey.value && draftTask.value === "polish") return "润色草稿";
-    if (draftRewriteKey.value) return "重写草稿";
-    return "生成草稿";
+    if (draftBranchMode.value === "fork") return t("editor.forkDraft");
+    if (draftRewriteKey.value && draftTask.value === "polish") return t("editor.polishDraft");
+    if (draftRewriteKey.value) return t("editor.rewriteDraft");
+    return t("editor.genDraft");
   }
   if (draftBranchMode.value === "variant" || draftTask.value === "same_slot_variant") {
-    return props.job?.label ? `正在生成${props.job.label}` : "正在生成变体";
+    return props.job?.label
+      ? t("editor.generatingNamed", { label: props.job.label })
+      : t("editor.generatingVariant");
   }
-  if (draftBranchMode.value === "fork") return "正在岔开续写";
-  if (draftRewriteKey.value && draftTask.value === "polish") return "正在润色";
-  if (draftRewriteKey.value) return "正在重写本段";
-  return "正在生成";
+  if (draftBranchMode.value === "fork") return t("editor.forking");
+  if (draftRewriteKey.value && draftTask.value === "polish") return t("editor.polishingNow");
+  if (draftRewriteKey.value) return t("editor.rewritingNow");
+  return t("editor.generatingNow");
 });
 
 const meta = computed(() => {
   const waitingWrite =
     !streaming.value &&
     !!text.value &&
-    String(appState.statusMessage || "").includes("停滚");
+    String(appState.statusMessage || "") &&
+    msgMatchesKey(appState.statusMessage, "draft.reading");
   const parts = [
-    waitingWrite ? "已完成 · 停滚后写入" : streaming.value ? "生成中…" : "已完成",
+    waitingWrite
+      ? t("editor.donePausedWrite")
+      : streaming.value
+        ? t("common.generating")
+        : t("progress.done"),
   ];
   if (draftBranchMode.value === "variant" || draftTask.value === "same_slot_variant") {
-    parts.push("同位置按指令重写");
-  } else if (draftBranchMode.value === "fork") parts.push("岔开");
-  else if (draftRewriteKey.value) parts.push(draftTask.value === "polish" ? "润色" : "重写");
-  else if (draftTask.value) parts.push(draftTask.value);
+    parts.push(t("editor.rewriteInPlace"));
+  } else if (draftBranchMode.value === "fork") parts.push(t("editor.fork"));
+  else if (draftRewriteKey.value) {
+    parts.push(draftTask.value === "polish" ? t("ai.taskPolish") : t("editor.rewrite"));
+  } else if (draftTask.value) parts.push(draftTask.value);
   if (modelUsed.value) parts.push(modelUsed.value);
   const n = [...text.value].length;
-  if (n) parts.push(`${n} 字`);
+  if (n) parts.push(t("editor.chars", { n }));
   if (props.job?.progressPct && streaming.value) {
     parts.push(`${props.job.progressPct}%`);
   }
@@ -289,9 +300,9 @@ function onHitOut(e) {
       <span class="draft-title">{{ draftTitle }}</span>
       <span class="draft-meta muted">{{ meta }}</span>
       <span class="draft-auto muted">{{
-        !streaming && String(appState.statusMessage || "").includes("停滚")
-          ? "停滚约 1.4 秒后自动写入并保存"
-          : "完成后自动写入并保存"
+        !streaming && msgMatchesKey(appState.statusMessage, "draft.reading")
+          ? $t("editor.autoWritePaused")
+          : $t("editor.autoWriteDone")
       }}</span>
     </div>
     <div
@@ -302,7 +313,7 @@ function onHitOut(e) {
       v-html="bodyHtml"
     />
     <div class="draft-actions">
-      <button type="button" class="app-btn" @click="onCancel">取消</button>
+      <button type="button" class="app-btn" @click="onCancel">{{ $t("common.cancel") }}</button>
     </div>
     <CharacterHoverCard
       :visible="hover.visible"
