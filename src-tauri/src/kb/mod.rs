@@ -146,6 +146,8 @@ pub fn ensure_character_roster() -> AppResult<OpenedKb> {
     let root = character_roster_dir()?;
     let pj = root.join("project.json");
     if pj.exists() {
+        let _ = fs::create_dir_all(root.join("lore").join("tropes"));
+        let _ = fs::create_dir_all(root.join("lore").join("kinks"));
         let opened = project::open_project(&root)?;
         return Ok(OpenedKb {
             root,
@@ -155,6 +157,8 @@ pub fn ensure_character_roster() -> AppResult<OpenedKb> {
     fs::create_dir_all(root.join("chapters"))?;
     fs::create_dir_all(root.join("lore").join("characters"))?;
     fs::create_dir_all(root.join("lore").join("world"))?;
+    fs::create_dir_all(root.join("lore").join("tropes"))?;
+    fs::create_dir_all(root.join("lore").join("kinks"))?;
     fs::create_dir_all(root.join("story"))?;
     let project = NovelProject {
         id: Uuid::new_v4().to_string(),

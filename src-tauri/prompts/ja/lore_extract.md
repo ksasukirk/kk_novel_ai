@@ -8,6 +8,7 @@
 - 事実と関係は、できるだけ本章由来の短い証拠（evidence）を付ける
 - attrs は短いキー（例：身分、境地、所属勢力、武器、性格）
 - 人物は kind=`character`。場所／功法／勢力／物品などは kind=`world`
+- 筋の型は kind=`trope`。性癖は kind=`kink`。tropes は最大 6。各 content は 40 字以下
 - links / edges の target、from、to は**実体タイトル**を使う（システムが id へ写像する）
 - 新規項目の id は空文字でよい
 - **簡潔**：entities は最大 8。各 content は 40 字以下。facts / events / edges / arcs / promises は各最大 6。evidence は 20 字以下
@@ -41,11 +42,17 @@ JSON schema：
   ],
   "promises": [
     {"id": "", "text": "", "status": "open|paid|broken", "arc_title": ""}
+  ],
+  "tropes": [
+    {"kind": "trope|kink", "title": "", "content": "", "keywords": [], "evidence": ""}
   ]
 }
 
 既存設定（タイトル一覧。結合時は同名／別名の再利用を優先）：
 {{lore}}
+
+既知の筋／性癖カタログ（当たればタイトルを再利用）：
+{{known_tropes}}
 
 既存 Canon 要約：
 {{canon}}

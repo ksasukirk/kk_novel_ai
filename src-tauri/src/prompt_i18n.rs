@@ -96,6 +96,10 @@ pub fn prompt(name: &str) -> &'static str {
         ("ja", "lore_extract.md") => include_str!("../prompts/ja/lore_extract.md"),
         (_, "lore_extract.md") => include_str!("../prompts/lore_extract.md"),
 
+        ("en", "trope_extract.md") => include_str!("../prompts/en/trope_extract.md"),
+        ("ja", "trope_extract.md") => include_str!("../prompts/ja/trope_extract.md"),
+        (_, "trope_extract.md") => include_str!("../prompts/trope_extract.md"),
+
         _ => "",
     }
 }

@@ -16,6 +16,7 @@ import {
   mergeVisualIntoAttrs,
   visualFromAttrs,
 } from "../utils/loreVisual.js";
+import { isTropeKind } from "../utils/tropeKinds.js";
 
 const items = ref([]);
 const rosterPath = ref("");
@@ -99,7 +100,7 @@ async function refresh() {
     rosterPath.value = ens.root || "";
     if (!rosterPath.value) throw new Error(t("roster.noRoster"));
     const r = await project.listLoreAt(rosterPath.value);
-    items.value = r.items || [];
+    items.value = (r.items || []).filter((it) => !isTropeKind(it.kind));
   } catch (e) {
     error.value = String(e.message || e);
     items.value = [];

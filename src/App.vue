@@ -20,6 +20,7 @@ import EditorView from "./views/EditorView.vue";
 import OutlineView from "./views/OutlineView.vue";
 import LoreView from "./views/LoreView.vue";
 import CharacterRosterView from "./views/CharacterRosterView.vue";
+import TropeLibraryView from "./views/TropeLibraryView.vue";
 import SettingsView from "./views/SettingsView.vue";
 import GenLogView from "./views/GenLogView.vue";
 import UsageAnalyticsView from "./views/UsageAnalyticsView.vue";
@@ -49,6 +50,7 @@ const sidebarTabIds = [
   "project",
   "knowledge",
   "characters",
+  "tropes",
   "story",
   "outline",
   "editor",
@@ -69,7 +71,7 @@ const bottomPrimary = computed(() => {
   return bottomPrimaryIds.map((id) => ({ id, label: t(`nav.${id}`) }));
 });
 
-const moreTabIds = new Set(["knowledge", "characters", "lore", "analytics", "log", "settings"]);
+const moreTabIds = new Set(["knowledge", "characters", "tropes", "lore", "analytics", "log", "settings"]);
 
 const navViews = {
   project: ProjectHome,
@@ -79,6 +81,7 @@ const navViews = {
   editor: EditorView,
   chat: ChatView,
   characters: CharacterRosterView,
+  tropes: TropeLibraryView,
   lore: LoreView,
   analytics: UsageAnalyticsView,
   log: GenLogView,
@@ -119,7 +122,7 @@ const sidebarMenuTitle = computed(() => sidebarToggleTitle(effectiveSidebarMode.
 
 function setActiveNav(tab) {
   // 角色定义 / 设定：全局仓，不强制先开写作工程
-  if (tab.id === "lore" || tab.id === "characters" || tab.id === "chat") {
+  if (tab.id === "lore" || tab.id === "characters" || tab.id === "tropes" || tab.id === "chat") {
     appState.activeNav = tab.id;
     if (mobileUx.value) sidebarDrawerOpen.value = false;
     return;

@@ -15,6 +15,9 @@ import { buildNovelMindTree } from "../utils/mindmapLayout.js";
 import { appConfirm, appConfirmDelete } from "../services/confirmDialog.js";
 import { useToastError } from "../services/toast.js";
 import { t } from "../i18n/index.js";
+import { isTropeKind } from "../utils/tropeKinds.js";
+import { aiPanelForm } from "../stores/aiPanelState.js";
+import { refreshTropeIndex } from "../services/tropeIndex.js";
 import { outlineQueueState } from "../services/outlineQueue.js";
 import { sectionQueueState } from "../services/sectionQueue.js";
 import {
@@ -408,11 +411,11 @@ function flattenScopedLore(scoped) {
   const global = (scoped.global || []).map((row) => row.entry);
   const byTitle = new Map();
   for (const e of global) {
-    if (!e) continue;
+    if (!e || isTropeKind(e.kind)) continue;
     byTitle.set((e.title || "").trim() || e.id, e);
   }
   for (const e of local) {
-    if (!e) continue;
+    if (!e || isTropeKind(e.kind)) continue;
     byTitle.set((e.title || "").trim() || e.id, e);
   }
   return [...byTitle.values()];
@@ -499,6 +502,32 @@ function onGraphSelect(n) {
   };
 }
 
+const tropeTags = computed(() => appState.tropeList || []);
+const tropeTagsPlot = computed(() =>
+  tropeTags.value.filter((x) => x && x.kind === "trope")
+);
+const tropeTagsKink = computed(() =>
+  tropeTags.value.filter((x) => x && x.kind === "kink")
+);
+
+function isFocusTropeSelected(id) {
+  return (aiPanelForm.selectedTropeIds || []).includes(id);
+}
+
+async function toggleFocusTrope(id) {
+  const ids = [...(aiPanelForm.selectedTropeIds || [])];
+  const i = ids.indexOf(id);
+  if (i >= 0) ids.splice(i, 1);
+  else ids.push(id);
+  aiPanelForm.selectedTropeIds = ids;
+  if (!appState.projectRoot || !appState.chapterId) return;
+  try {
+    await project.updateChapterMeta(appState.chapterId, { trope_ids: ids });
+  } catch (e) {
+    error.value = String(e.message || e);
+  }
+}
+
 function syncFocusDraft(force) {
   const ch = currentChapter.value;
   const cid = appState.chapterId || "";
@@ -535,6 +564,11 @@ function syncFocusDraft(force) {
       )
       .join("\n"),
   };
+  const ids = Array.isArray(ch.trope_ids) ? ch.trope_ids.map(String) : [];
+  const cur = (aiPanelForm.selectedTropeIds || []).map(String);
+  if (JSON.stringify([...ids].sort()) !== JSON.stringify([...cur].sort())) {
+    aiPanelForm.selectedTropeIds = [...ids];
+  }
   loadedSnap.focus = jsonSnap(focusDraft.value);
   loadedSnap.focusChapterId = cid;
 }
@@ -566,9 +600,11 @@ watch(
 onMounted(async () => {
   await refreshAll();
   await loadBeatProgress();
+  void refreshTropeIndex().catch(() => {});
 });
 onActivated(() => {
   if (appState.projectRoot) void reloadLore();
+  void refreshTropeIndex().catch(() => {});
 });
 
 function addArc() {
@@ -707,6 +743,7 @@ async function onSaveFocus() {
         reader_knows: focusDraft.value.reader_knows,
         character_knows: focusDraft.value.character_knows,
         beats: parseBeats(focusDraft.value.beatsText),
+        trope_ids: [...(aiPanelForm.selectedTropeIds || [])],
       },
     });
     noteBlockSaved("focus", focusDraft.value);
@@ -919,6 +956,35 @@ function onMapSelect(n) {
                   <option value="">{{ $t("common.none") }}</option>
                   <option v-for="l in loreItems" :key="l.id" :value="l.id">{{ l.title }} ({{ l.id.slice(0, 8) }})</option>
                 </select>
+              </div>
+              <div class="field">
+                <label class="field-label">{{ $t("story.focusTropes") }}</label>
+                <p v-if="!tropeTags.length" class="hint muted">{{ $t("trope.noneSelected") }}</p>
+                <div v-else class="char-tag-row">
+                  <button
+                    v-for="c in tropeTagsPlot"
+                    :key="c.id"
+                    type="button"
+                    class="chip"
+                    :class="{ 'chip-active': isFocusTropeSelected(c.id) }"
+                    :title="$t('trope.selectHint')"
+                    @click="toggleFocusTrope(c.id)"
+                  >
+                    {{ c.title }}
+                  </button>
+                  <button
+                    v-for="c in tropeTagsKink"
+                    :key="'k' + c.id"
+                    type="button"
+                    class="chip"
+                    :class="{ 'chip-active': isFocusTropeSelected(c.id) }"
+                    :title="$t('trope.selectHint')"
+                    @click="toggleFocusTrope(c.id)"
+                  >
+                    {{ c.title }}
+                  </button>
+                </div>
+                <p class="hint muted">{{ $t("trope.selectHint") }}</p>
               </div>
               <div class="field">
                 <label class="field-label">{{ $t("story.focusArcIds") }}</label>
@@ -1224,6 +1290,11 @@ function onMapSelect(n) {
 .chip-active {
   background: var(--accent-soft);
   color: var(--accent-hover);
+}
+.char-tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 .row-actions {
   display: flex;

@@ -60,5 +60,8 @@ Recent text (sliding window):
 Related lore:
 {{lore}}
 
+Selected tropes and kinks (cover their process when planning; ignore if empty):
+{{tropes}}
+
 User instruction:
 {{instruction}}

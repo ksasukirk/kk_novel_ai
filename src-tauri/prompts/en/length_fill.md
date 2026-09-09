@@ -8,6 +8,7 @@ Hard rules:
 - Stop once this turn's cumulative length meets or exceeds the required length as a floor; still finish this chapter's remaining plot points before stopping; exceeding is allowed
 - Do not close mid-sentence or mid-scene just because length is met; no padding, no repetition loops, no jumping scenes to fill space
 - Strictly follow the "active beat" and "narrative direction anchor"; do not go off-topic
+- **Trope / kink library**: if selected tropes are not "(none)" and their process is unfinished, this fill must continue fulfilling them; do not name-drop only
 
 Chapter outline:
 {{outline}}
@@ -20,6 +21,9 @@ Active beat:
 
 Narrative direction anchor:
 {{direction_anchor}}
+
+Selected tropes and kinks (fulfill as process; ignore if empty):
+{{tropes}}
 
 Original task note:
 {{instruction}}

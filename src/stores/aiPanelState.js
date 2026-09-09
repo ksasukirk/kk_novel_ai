@@ -42,9 +42,11 @@ export const aiPanelForm = reactive({
    * @type {Array<{title:string, summary:string, must_do:string, selected:boolean}>}
    */
   chapterPlan: [],
-  syncMsg: "",
+    syncMsg: "",
   error: "",
   floatExpanded: false,
+  /** 本轮/本章勾选的情节性癖 id */
+  selectedTropeIds: [],
 });
 
 /** 指令框光标（失焦后插入角色名用） */

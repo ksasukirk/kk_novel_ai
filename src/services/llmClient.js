@@ -12,6 +12,7 @@ import {
 } from "../utils/deepseekPricing.js";
 import { toastWarning } from "./toast.js";
 import { isCancelledMsg, t } from "../i18n/index.js";
+import { aiPanelForm } from "../stores/aiPanelState.js";
 import {
   activeJobCount,
   appendJobDelta,
@@ -116,7 +117,13 @@ export async function runWriting(request, opts = {}) {
 
   let result;
   try {
-    result = await invoke("writing_run", { request });
+    const payload = { ...(request || {}) };
+    if (payload.selected_trope_ids === undefined) {
+      payload.selected_trope_ids = Array.isArray(aiPanelForm.selectedTropeIds)
+        ? [...aiPanelForm.selectedTropeIds]
+        : [];
+    }
+    result = await invoke("writing_run", { request: payload });
     const rid = result && result.request_id ? String(result.request_id) : "";
     if (rid) {
       if (!job.requestId) {

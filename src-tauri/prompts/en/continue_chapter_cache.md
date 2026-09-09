@@ -22,6 +22,7 @@ Hard rules:
 - Length: the target {{target_chars}} characters is a floor, not a ceiling; do not close before the floor. If this chapter's outline or this turn's instruction is not finished, keep writing until it is; exceeding is allowed. Do not stop mid-sentence or mid-scene just because length is met; do not jump to the next scene or next day to pad.
 - Memory first: cross-chapter facts follow the "memory digest", but if that digest is a placeholder or conflicts with "previous chapter close / the end of recent prose", follow the previous close and the current prose tail; "recent text" is for style continuity. Do not restore deleted plot.
 - **Outline-guided priority** (when "active beat" is not "(none)"): active beat > narrative direction anchor > chapter must-dos > user tweaks; do not skip beats; do not write completed beats early
+- **Trope / kink library**: if "selected tropes and kinks" is not "(none)", fulfill the card's writing notes as process and sensation; do not name-drop tags only; do not treat unselected library entries as must-dos
 
 <!-- Keep the following blocks as stable as possible so the API prefix can be cached; put volatile content at the end -->
 
@@ -80,6 +81,9 @@ Narrative direction anchor (this turn must advance toward this):
 
 Dynamic ban list (do not write again):
 {{ban_list}}
+
+Selected tropes and kinks (fulfill as process; ignore if empty):
+{{tropes}}
 
 User instruction:
 {{instruction}}

@@ -8,6 +8,7 @@
 - 事实与关系尽量带来自本章的短证据（evidence）
 - attrs 用短键（如 身份、境界、所属势力、武器、性格）
 - 人物 kind=`character`，地点/功法/势力/物品等 kind=`world`
+- 情节套路 kind=`trope`，性癖/玩法 kind=`kink`；tropes 最多 6 条；content 不超过 40 字
 - links / edges 的 target、from、to 用**实体标题**（系统会映射 id）
 - 新条目 id 可留空字符串
 - **精简**：entities 最多 8 条；每条 content 不超过 40 字；facts/events/edges/arcs/promises 各最多 6 条；evidence 不超过 20 字
@@ -41,11 +42,17 @@ JSON schema：
   ],
   "promises": [
     {"id": "", "text": "", "status": "open|paid|broken", "arc_title": ""}
+  ],
+  "tropes": [
+    {"kind": "trope|kink", "title": "", "content": "", "keywords": [], "evidence": ""}
   ]
 }
 
 既有设定（标题列表，合并时优先复用同名/别名）：
 {{lore}}
+
+已知情节/性癖目录（能对上就复用标题）：
+{{known_tropes}}
 
 既有 Canon 摘要：
 {{canon}}

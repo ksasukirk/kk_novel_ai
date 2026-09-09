@@ -1392,6 +1392,9 @@ pub async fn dispatch_rpc(req: Value) -> AppResult<Value> {
                         .and_then(|v| v.as_str())
                         .map(|s| s.to_string());
                 }
+                if req.get("trope_ids").is_some() {
+                    patch.trope_ids = serde_json::from_value(req["trope_ids"].clone()).ok();
+                }
             }
             chapter_update_meta(req_str(&req, "root")?, req_str(&req, "chapter_id")?, patch)
         }

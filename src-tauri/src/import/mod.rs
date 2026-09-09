@@ -338,12 +338,14 @@ fn render_lore_extract(
     outline: &str,
     recent: &str,
     instruction: &str,
+    known_tropes: &str,
 ) -> String {
     let tpl = crate::prompt_i18n::prompt("lore_extract.md");
     tpl.replace("{{lore}}", lore)
         .replace("{{canon}}", canon)
         .replace("{{outline}}", outline)
         .replace("{{recent_text}}", recent)
+        .replace("{{known_tropes}}", known_tropes)
         .replace(
             "{{instruction}}",
             if instruction.is_empty() {
@@ -365,10 +367,32 @@ async fn call_lore_extract(
 ) -> AppResult<Value> {
     let lore_entries = project::list_lore(root)?;
     let canon = crate::story::load_canon(root).unwrap_or_default();
-    let lore_text = lore_catalog_text(&lore_entries);
+    let entity_lore: Vec<LoreEntry> = lore_entries
+        .iter()
+        .filter(|e| e.kind != "trope" && e.kind != "kink")
+        .cloned()
+        .collect();
+    let lore_text = lore_catalog_text(&entity_lore);
+    let known_tropes: Vec<String> = lore_entries
+        .iter()
+        .filter(|e| e.kind == "trope" || e.kind == "kink")
+        .map(|e| format!("- {} ({})", e.title, e.kind))
+        .collect();
+    let known_tropes_text = if known_tropes.is_empty() {
+        "（无）".into()
+    } else {
+        known_tropes.join("\n")
+    };
     let canon_text = crate::story::canon_for_prompt(&canon, false);
     let recent = take_tail(content, settings.recent_window_chars.max(4000));
-    let user = render_lore_extract(&lore_text, &canon_text, chapter_title, &recent, instruction);
+    let user = render_lore_extract(
+        &lore_text,
+        &canon_text,
+        chapter_title,
+        &recent,
+        instruction,
+        &known_tropes_text,
+    );
     let model = settings.resolve_analysis_model();
     if model.is_empty() {
         return Err(AppError::t("errors.needAnalysisModel"));
@@ -727,6 +751,85 @@ fn apply_chapter_extract(
         }
     }
 
+    if let Some(tropes) = extracted.get("tropes").and_then(|v| v.as_array()) {
+        for row in tropes {
+            let title = row
+                .get("title")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .trim();
+            if title.is_empty() {
+                continue;
+            }
+            let kind_raw = row
+                .get("kind")
+                .and_then(|v| v.as_str())
+                .unwrap_or("trope")
+                .trim();
+            let kind = if kind_raw == "kink" { "kink" } else { "trope" };
+            let content = row.get("content").and_then(|v| v.as_str()).unwrap_or("");
+            let evidence = row.get("evidence").and_then(|v| v.as_str()).unwrap_or("");
+            let keywords: Vec<String> = row
+                .get("keywords")
+                .and_then(|v| v.as_array())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|x| x.as_str().map(|s| s.to_string()))
+                        .collect()
+                })
+                .unwrap_or_default();
+            let existing_id = index.resolve(title);
+            let existing = if let Some(id) = &existing_id {
+                project::list_lore(root)?
+                    .into_iter()
+                    .find(|e| &e.id == id)
+            } else {
+                project::list_lore(root)?
+                    .into_iter()
+                    .find(|e| e.title.trim() == title && (e.kind == "trope" || e.kind == "kink"))
+            };
+            let mut entry = existing.unwrap_or_else(|| LoreEntry {
+                id: Uuid::new_v4().to_string(),
+                kind: kind.into(),
+                title: title.to_string(),
+                content: String::new(),
+                keywords: vec![],
+                links: vec![],
+                attrs: BTreeMap::new(),
+                sources: vec![],
+                unique: true,
+                updated_at: String::new(),
+            });
+            entry.kind = kind.into();
+            entry.unique = true;
+            if !content.is_empty() {
+                if entry.content.is_empty() {
+                    entry.content = content.to_string();
+                } else if !entry.content.contains(content) {
+                    entry.content = format!("{}\n{}", entry.content, content);
+                }
+            }
+            if !evidence.is_empty() {
+                let prev = entry.attrs.get("evidence").cloned().unwrap_or_default();
+                if prev.is_empty() {
+                    entry.attrs.insert("evidence".into(), evidence.to_string());
+                } else if !prev.contains(evidence) {
+                    entry
+                        .attrs
+                        .insert("evidence".into(), format!("{prev}; {evidence}"));
+                }
+            }
+            for k in keywords {
+                if !entry.keywords.iter().any(|x| x == &k) {
+                    entry.keywords.push(k);
+                }
+            }
+            let saved = project::upsert_lore(root, entry)?;
+            index.register(&saved.title, &saved.id, &[]);
+            entity_n += 1;
+        }
+    }
+
     // Refresh index from disk for link resolution
     let lore_now = project::list_lore(root)?;
     *index = AliasIndex::from_lore(&lore_now);
@@ -932,6 +1035,7 @@ pub async fn distill_range(
             active_beat_id: None,
             outline_run: None,
             split_mode: None,
+            selected_trope_ids: None,
         };
         let sync_patch = match writing::run_writing(&client, &settings, &sync_req, None, |_| {}).await
         {
@@ -975,6 +1079,9 @@ pub async fn distill_range(
         // accumulate pending
         if let Some(ents) = extracted.get("entities").and_then(|v| v.as_array()) {
             let _ = merge_pending_json(&pending_lore, "entities", ents);
+        }
+        if let Some(tropes) = extracted.get("tropes").and_then(|v| v.as_array()) {
+            let _ = merge_pending_json(&pending_lore, "tropes", tropes);
         }
         let story_bits = extract_to_story_patch(&extracted, &ch.id, &index);
         for key in ["facts", "events", "edges", "arcs", "promises"] {

@@ -55,6 +55,18 @@
 | M51 | 按纲续写引擎：节拍进度 sidecar / beat_engine / 跨章队列 / prompt 加固 | 完成 | `writing/beat_engine.rs`、`outlineQueue.js`、`outline_to_beats.md`、`AiPanel.vue` |
 | M52 | 跨章连续阅读 + 目录滚动激活 | 完成 | `EditorView.vue`、`ContinuousChapterRead.vue`、`editorReadingProgress.js` |
 | M53 | 作品卡片 AI 生成书名 | 完成 | `project_suggest_title` / `project_apply_title`、`suggest_book_title.md`、`ProjectHome.vue` |
+| M54 | 情节/性癖库：全局页 + 本章多选注入 + 写后抽取 | 完成 | `TropeLibraryView.vue`、`ChapterMeta.trope_ids`、`writing` tropes 注入、`tropeExtract.js` |
+
+### M54 明细 TODO
+
+| # | 项 | 状态 | 路径 |
+|---|---|---|---|
+| 1 | 存储：`kind` trope/kink 目录 + 本章 `trope_ids` + IPC | 完成 | `src-tauri/src/project/mod.rs`（`kind_dir`、`ChapterMeta`/`ChapterMetaPatch`）；`src-tauri/src/kb/mod.rs` `ensure_character_roster`；`src-tauri/src/api.rs` `chapter_update_meta`；`src/services/projectClient.js` |
+| 2 | 生成注入：RAG 排除未勾选、强制 `{{tropes}}`、context_sources、补字 | 完成 | `src-tauri/src/writing/mod.rs`；`src/utils/genBlock.js` |
+| 3 | 三语 prompt：生成/摘要/蒸馏 + `trope_extract`；distill 落地 | 完成 | `src-tauri/prompts/*.md`（根/`en/`/`ja/`）；`src-tauri/src/prompt_i18n.rs`；`src-tauri/src/import/mod.rs` |
+| 4 | 库页 + 侧栏 + i18n；设定/角色页排除 | 完成 | `src/views/TropeLibraryView.vue`；`src/App.vue`；`src/components/shell/AppSidebar.vue`；`src/views/LoreView.vue`；`src/views/CharacterRosterView.vue`；`src/i18n/locales/{zh-CN,en,ja}.json` |
+| 5 | 双层多选：AI 面板 + 本章焦点，hydrate/立刻写入 `trope_ids` | 完成 | `src/utils/tropeKinds.js`；`src/services/tropeIndex.js`；`src/stores/appState.js`；`src/stores/aiPanelState.js`；`src/components/AiPanel.vue`；`src/views/StoryView.vue`；`src/views/EditorView.vue` |
+| 6 | 写后抽取 + 设置开关 | 完成 | `src/services/tropeExtract.js`；`src/services/draftAccept.js`；`src/utils/writingTasks.js`；`src-tauri/src/settings.rs` `writing_auto_trope`；`src/views/SettingsView.vue` |
 
 ### M53 明细 TODO
 

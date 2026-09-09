@@ -9,6 +9,7 @@ import * as project from "../services/projectClient.js";
 import { runWriting, cancelGeneration, saveSettings } from "../services/llmClient.js";
 import { pushAiUndo, undoLastAi } from "../services/aiUndo.js";
 import { refreshCharacterNameIndex } from "../services/characterIndex.js";
+import { refreshTropeIndex } from "../services/tropeIndex.js";
 import AiPanel from "../components/AiPanel.vue";
 import ChapterBlockEditor from "../components/ChapterBlockEditor.vue";
 import ContinuousChapterRead from "../components/ContinuousChapterRead.vue";
@@ -1313,6 +1314,7 @@ onMounted(() => {
   cacheCurrentChapterBody();
   void preloadChapterBodies();
   void refreshCharacterNameIndex().catch(() => {});
+  void refreshTropeIndex().catch(() => {});
   nextTick(() => {
     const el = getEditorScroller();
     if (el) {
@@ -1352,6 +1354,7 @@ watch(
   () => appState.projectRoot,
   () => {
     void refreshCharacterNameIndex().catch(() => {});
+  void refreshTropeIndex().catch(() => {});
   }
 );
 
@@ -1360,6 +1363,7 @@ watch(
   (v) => {
     if (v === "editor") {
       void refreshCharacterNameIndex().catch(() => {});
+  void refreshTropeIndex().catch(() => {});
       syncCurrentToc();
       nextTick(() => syncActiveBlockFromScroll());
     }
@@ -1369,6 +1373,7 @@ watch(
 onActivated(() => {
   if (appState.activeNav !== "editor") return;
   void refreshCharacterNameIndex().catch(() => {});
+  void refreshTropeIndex().catch(() => {});
   syncCurrentToc();
   nextTick(() => syncActiveBlockFromScroll());
 });

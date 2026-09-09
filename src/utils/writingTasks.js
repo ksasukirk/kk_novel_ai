@@ -9,6 +9,8 @@ export function isBackgroundAnalysisTask(task) {
     t === "digest" ||
     t === "cast_extract" ||
     t === "auto_cast" ||
+    t === "trope_extract" ||
+    t === "auto_trope" ||
     t === "section_plan" ||
     t === "plan_sections" ||
     t === "outline_to_beats" ||

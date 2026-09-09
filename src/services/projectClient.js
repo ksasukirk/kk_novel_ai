@@ -276,6 +276,7 @@ export async function updateChapterMeta(chapterId, patch) {
       "reader_knows",
       "character_knows",
       "beats",
+      "trope_ids",
     ]) {
       if (patch[k] !== undefined) ext[k] = patch[k];
     }

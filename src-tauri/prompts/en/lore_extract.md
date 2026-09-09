@@ -8,6 +8,7 @@ Hard rules:
 - Facts and relations should carry short evidence from this chapter when possible
 - attrs use short keys (e.g. identity, realm, faction, weapon, personality)
 - People have kind=`character`; places / techniques / factions / items etc. have kind=`world`
+- Plot tropes have kind=`trope`; kinks have kind=`kink`; at most 6 tropes; each content no more than 40 characters
 - links / edges `target`, `from`, `to` use **entity titles** (the system will map ids)
 - New entry ids may be an empty string
 - **Keep it lean**: at most 8 entities; each content no more than 40 characters; facts / events / edges / arcs / promises at most 6 each; evidence no more than 20 characters
@@ -41,11 +42,17 @@ JSON schema:
   ],
   "promises": [
     {"id": "", "text": "", "status": "open|paid|broken", "arc_title": ""}
+  ],
+  "tropes": [
+    {"kind": "trope|kink", "title": "", "content": "", "keywords": [], "evidence": ""}
   ]
 }
 
 Existing lore (title list; prefer reusing same names / aliases when merging):
 {{lore}}
+
+Known trope / kink catalog (reuse titles when they match):
+{{known_tropes}}
 
 Existing Canon digest:
 {{canon}}

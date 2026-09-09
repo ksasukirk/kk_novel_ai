@@ -30,6 +30,8 @@ pub enum WritingTask {
     StorySync,
     BlockDigest,
     CastExtract,
+    /** 本块情节/性癖抽取，写入全局库 */
+    TropeExtract,
     /** 先分析需要几节，再由前端排队续写 */
     SectionPlan,
     /** 从章纲 summary 拆成 beats JSON */
@@ -56,6 +58,7 @@ impl WritingTask {
             "story_sync" | "sync_story" => Ok(Self::StorySync),
             "block_digest" | "digest" => Ok(Self::BlockDigest),
             "cast_extract" | "auto_cast" => Ok(Self::CastExtract),
+            "trope_extract" | "auto_trope" => Ok(Self::TropeExtract),
             "section_plan" | "plan_sections" => Ok(Self::SectionPlan),
             "outline_to_beats" | "split_beats" => Ok(Self::OutlineToBeats),
             "outline_to_chapters" | "split_chapters" => Ok(Self::OutlineToChapters),
@@ -77,6 +80,7 @@ impl WritingTask {
             Self::StorySync => crate::prompt_i18n::prompt("story_sync.md"),
             Self::BlockDigest => crate::prompt_i18n::prompt("block_digest.md"),
             Self::CastExtract => crate::prompt_i18n::prompt("cast_extract.md"),
+            Self::TropeExtract => crate::prompt_i18n::prompt("trope_extract.md"),
             Self::SectionPlan => crate::prompt_i18n::prompt("section_plan.md"),
             Self::OutlineToBeats => crate::prompt_i18n::prompt("outline_to_beats.md"),
             Self::OutlineToChapters => crate::prompt_i18n::prompt("outline_to_chapters.md"),
@@ -97,6 +101,7 @@ impl WritingTask {
             Self::StorySync => "story_sync",
             Self::BlockDigest => "block_digest",
             Self::CastExtract => "cast_extract",
+            Self::TropeExtract => "trope_extract",
             Self::SectionPlan => "section_plan",
             Self::OutlineToBeats => "outline_to_beats",
             Self::OutlineToChapters => "outline_to_chapters",
@@ -114,6 +119,7 @@ impl WritingTask {
                 | Self::StorySync
                 | Self::BlockDigest
                 | Self::CastExtract
+                | Self::TropeExtract
                 | Self::SectionPlan
                 | Self::OutlineToBeats
                 | Self::OutlineToChapters
@@ -164,12 +170,15 @@ pub struct WritingRequest {
     /// outline_to_chapters：full | append
     #[serde(default)]
     pub split_mode: Option<String>,
+    /// 本轮勾选的情节/性癖 id；Some（含空数组）覆盖本章；None 回退 chapter.trope_ids
+    #[serde(default)]
+    pub selected_trope_ids: Option<Vec<String>>,
 }
 
 /// 单次生成实际注入的上下文来源（挂到生成块，便于回看情节依据）
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct ContextSourceItem {
-    /// instruction | outline | pov | arc | must_do | lore | beat
+    /// instruction | outline | pov | arc | must_do | lore | beat | trope | kink
     pub kind: String,
     #[serde(default)]
     pub id: String,
@@ -558,6 +567,100 @@ fn lore_to_text(entries: &[&LoreEntry]) -> String {
         .join("\n")
 }
 
+fn is_trope_kind(kind: &str) -> bool {
+    kind == "trope" || kind == "kink"
+}
+
+fn tropes_to_text(entries: &[&LoreEntry]) -> String {
+    if entries.is_empty() {
+        return "（无）".into();
+    }
+    entries
+        .iter()
+        .map(|e| {
+            let kind_label = if e.kind == "kink" { "性癖" } else { "情节" };
+            let intensity = e.attrs.get("intensity").map(|s| s.as_str()).unwrap_or("");
+            let do_line = e.attrs.get("do").map(|s| s.as_str()).unwrap_or("");
+            let dont_line = e.attrs.get("dont").map(|s| s.as_str()).unwrap_or("");
+            let tags = e.attrs.get("tags").map(|s| s.as_str()).unwrap_or("");
+            let mut extra = String::new();
+            if !intensity.is_empty() {
+                extra.push_str(&format!("\n强度: {intensity}"));
+            }
+            if !tags.is_empty() {
+                extra.push_str(&format!("\n标签: {tags}"));
+            }
+            if !do_line.is_empty() {
+                extra.push_str(&format!("\n要写: {do_line}"));
+            }
+            if !dont_line.is_empty() {
+                extra.push_str(&format!("\n不要: {dont_line}"));
+            }
+            format!(
+                "### {}（{}）\n关键词: {}{}\n{}\n",
+                e.title,
+                kind_label,
+                e.keywords.join(", "),
+                extra,
+                e.content
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn known_tropes_catalog(entries: &[LoreEntry]) -> String {
+    let mut lines: Vec<String> = entries
+        .iter()
+        .filter(|e| is_trope_kind(&e.kind))
+        .map(|e| {
+            let kind_label = if e.kind == "kink" { "kink" } else { "trope" };
+            format!("- {} ({})", e.title, kind_label)
+        })
+        .collect();
+    if lines.is_empty() {
+        return "（无）".into();
+    }
+    lines.sort();
+    lines.dedup();
+    lines.join("\n")
+}
+
+fn resolve_selected_trope_ids(req: &WritingRequest, chapter: &project::ChapterMeta) -> Vec<String> {
+    match &req.selected_trope_ids {
+        Some(ids) => ids.clone(),
+        None => chapter.trope_ids.clone(),
+    }
+}
+
+fn should_inject_selected_tropes(task: &WritingTask) -> bool {
+    matches!(
+        task,
+        WritingTask::Continue
+            | WritingTask::SameSlotVariant
+            | WritingTask::Outline
+            | WritingTask::OutlineToBeats
+            | WritingTask::SectionPlan
+    )
+}
+
+fn collect_selected_tropes<'a>(pool: &'a [LoreEntry], ids: &[String]) -> Vec<&'a LoreEntry> {
+    let mut out = Vec::new();
+    for id in ids {
+        let id = id.trim();
+        if id.is_empty() {
+            continue;
+        }
+        if out.iter().any(|e: &&LoreEntry| e.id == id) {
+            continue;
+        }
+        if let Some(e) = pool.iter().find(|e| e.id == id) {
+            out.push(e);
+        }
+    }
+    out
+}
+
 /// 长全书大纲拆章：按 prompt 字数抬高 max_tokens，避免 JSON 被截断。
 fn outline_split_max_tokens(prompt_chars: u32, current: u32) -> u32 {
     let estimated = ((prompt_chars as f64 / 1.5 * 0.9).ceil() as u32)
@@ -632,7 +735,10 @@ fn resolve_writing_options(
         }
     });
     // 写作任务：max_tokens 始终与规定字数同量级；分析任务用较短上限
-    let max_tokens = if matches!(task, WritingTask::BlockDigest | WritingTask::CastExtract) {
+    let max_tokens = if matches!(
+        task,
+        WritingTask::BlockDigest | WritingTask::CastExtract | WritingTask::TropeExtract
+    ) {
         req.max_tokens.or(Some(512))
     } else if matches!(
         task,
@@ -714,12 +820,21 @@ pub fn assemble_messages_with_scores(
         } else {
             req.instruction.as_str()
         };
+        let known_digest = {
+            let list = collect_known_trope_titles(root, &opened.project);
+            if list.is_empty() {
+                "（无）".into()
+            } else {
+                list.join("\n")
+            }
+        };
         let user = render_template(
             task.template(),
             &[
                 ("prev_memory", &prev_memory),
                 ("block_text", &block_text),
                 ("instruction", instruction),
+                ("known_tropes", &known_digest),
             ],
         );
         let messages = vec![
@@ -760,6 +875,48 @@ pub fn assemble_messages_with_scores(
             task.template(),
             &[
                 ("known_characters", &known_characters),
+                ("block_text", &block_text),
+                ("instruction", instruction),
+            ],
+        );
+        let messages = vec![
+            ChatMessage {
+                role: "system".into(),
+                content: "你是小说设定助理，只输出规定 JSON，不要解释。".into(),
+            },
+            ChatMessage {
+                role: "user".into(),
+                content: user,
+            },
+        ];
+        return Ok(AssembledWriting {
+            messages,
+            context_sources: WritingContextSources::default(),
+        });
+    }
+
+    // 情节/性癖抽取：对照已知名单，不拉 RAG
+    if task == WritingTask::TropeExtract {
+        let block_text = if !req.selection.trim().is_empty() {
+            req.selection.clone()
+        } else {
+            take_tail(&content, 4000)
+        };
+        let known_list = collect_known_trope_titles(root, &opened.project);
+        let known_tropes = if known_list.is_empty() {
+            "（无）".into()
+        } else {
+            known_list.join("\n")
+        };
+        let instruction = if req.instruction.is_empty() {
+            "（无）"
+        } else {
+            req.instruction.as_str()
+        };
+        let user = render_template(
+            task.template(),
+            &[
+                ("known_tropes", &known_tropes),
                 ("block_text", &block_text),
                 ("instruction", instruction),
             ],
@@ -855,6 +1012,18 @@ pub fn assemble_messages_with_scores(
         }
     }
     all_lore = project::coalesce_unique_lore(ranked);
+    let (entity_lore, trope_pool): (Vec<LoreEntry>, Vec<LoreEntry>) = all_lore
+        .into_iter()
+        .partition(|e| !is_trope_kind(&e.kind));
+    all_lore = entity_lore;
+    let selected_trope_ids = resolve_selected_trope_ids(req, &chapter);
+    let selected_tropes = collect_selected_tropes(&trope_pool, &selected_trope_ids);
+    let tropes_text = if should_inject_selected_tropes(&task) {
+        tropes_to_text(&selected_tropes)
+    } else {
+        "（无）".into()
+    };
+    let known_tropes_text = known_tropes_catalog(&trope_pool);
     let plot = crate::story::load_plot(root).unwrap_or_default();
     let timeline = crate::story::load_timeline(root).unwrap_or_default();
     let relations = crate::story::load_relations(root).unwrap_or_default();
@@ -945,6 +1114,7 @@ pub fn assemble_messages_with_scores(
         WritingTask::OutlineToChapters | WritingTask::OutlineToMindmap => String::new(),
         WritingTask::BlockDigest
         | WritingTask::CastExtract
+        | WritingTask::TropeExtract
         | WritingTask::BeatsToStoryboard
         | WritingTask::ContentToImagePrompt => req.selection.clone(),
     };
@@ -1251,6 +1421,8 @@ pub fn assemble_messages_with_scores(
             ("target_chars", &target_chars),
             ("prev_chapter_bridge", &prev_chapter_bridge),
             ("character_lock", &character_lock),
+            ("tropes", &tropes_text),
+            ("known_tropes", &known_tropes_text),
         ],
     );
 
@@ -1334,6 +1506,16 @@ pub fn assemble_messages_with_scores(
             detail: e.kind.clone(),
         });
     }
+    if should_inject_selected_tropes(&task) {
+        for e in &selected_tropes {
+            context_sources.items.push(ContextSourceItem {
+                kind: e.kind.clone(),
+                id: e.id.clone(),
+                title: e.title.clone(),
+                detail: take_chars_brief(e.content.trim(), 80),
+            });
+        }
+    }
 
     Ok(AssembledWriting {
         messages: vec![
@@ -1345,6 +1527,7 @@ pub fn assemble_messages_with_scores(
                     | WritingTask::OutlineToMindmap
                     | WritingTask::SectionPlan
                     | WritingTask::CastExtract
+                    | WritingTask::TropeExtract
                     | WritingTask::StorySync
                     | WritingTask::BeatsToStoryboard
                     | WritingTask::ContentToImagePrompt => {
@@ -1464,6 +1647,40 @@ fn collect_known_character_names(root: &Path, project: &project::NovelProject) -
     names
 }
 
+/// 收集本篇 + 挂接库中的情节/性癖标题，供 digest / trope_extract 对照
+fn collect_known_trope_titles(root: &Path, project: &project::NovelProject) -> Vec<String> {
+    let mut lines: Vec<String> = Vec::new();
+    let mut push_entry = |e: &LoreEntry| {
+        if !is_trope_kind(&e.kind) {
+            return;
+        }
+        let kind_label = if e.kind == "kink" { "kink" } else { "trope" };
+        let line = format!("- {} ({})", e.title.trim(), kind_label);
+        if !line.contains("-  ()") && !lines.iter().any(|x| x == &line) {
+            lines.push(line);
+        }
+    };
+    if let Ok(local) = project::list_lore(root) {
+        for e in &local {
+            push_entry(e);
+        }
+    }
+    for link in &project.linked_kb_roots {
+        let kb_path = match crate::kb::resolve_kb_root(link) {
+            Ok(p) => p,
+            Err(_) => continue,
+        };
+        if let Ok(entries) = project::list_lore(&kb_path) {
+            for e in &entries {
+                push_entry(e);
+            }
+        }
+    }
+    lines.sort();
+    lines.dedup();
+    lines
+}
+
 pub async fn run_writing(
     client: &LmStudioClient,
     settings: &AppSettings,
@@ -1483,7 +1700,7 @@ pub async fn run_writing(
     }
     let scores = if matches!(
         task,
-        WritingTask::BlockDigest | WritingTask::CastExtract | WritingTask::SectionPlan | WritingTask::OutlineToBeats | WritingTask::OutlineToChapters | WritingTask::OutlineToMindmap | WritingTask::BeatsToStoryboard | WritingTask::ContentToImagePrompt
+        WritingTask::BlockDigest | WritingTask::CastExtract | WritingTask::TropeExtract | WritingTask::SectionPlan | WritingTask::OutlineToBeats | WritingTask::OutlineToChapters | WritingTask::OutlineToMindmap | WritingTask::BeatsToStoryboard | WritingTask::ContentToImagePrompt
     ) {
         None
     } else {
@@ -1792,6 +2009,7 @@ pub async fn run_writing(
                         ("must_do", &fill_ctx.must_do),
                         ("direction_anchor", &fill_ctx.direction_anchor),
                         ("active_beat", &fill_ctx.active_beat),
+                        ("tropes", &fill_ctx.tropes),
                     ],
                 )
             } else {
@@ -1804,6 +2022,7 @@ pub async fn run_writing(
                         ("outline", &fill_ctx.outline),
                         ("must_do", &fill_ctx.must_do),
                         ("direction_anchor", &fill_ctx.direction_anchor),
+                        ("tropes", &fill_ctx.tropes),
                     ],
                 )
             };
@@ -1953,6 +2172,7 @@ struct LengthFillContext {
     must_do: String,
     direction_anchor: String,
     active_beat: String,
+    tropes: String,
 }
 
 fn build_length_fill_context(settings: &AppSettings, req: &WritingRequest) -> LengthFillContext {
@@ -1963,6 +2183,7 @@ fn build_length_fill_context(settings: &AppSettings, req: &WritingRequest) -> Le
             must_do: "（无）".into(),
             direction_anchor: "（无）".into(),
             active_beat: "（无）".into(),
+            tropes: "（无）".into(),
         };
     };
     let mut beat_progress = project::load_beat_progress(root, &req.chapter_id).unwrap_or_default();
@@ -2003,6 +2224,21 @@ fn build_length_fill_context(settings: &AppSettings, req: &WritingRequest) -> Le
     } else {
         format!("{}\n{}", chapter.title, chapter.summary)
     };
+    let tropes = {
+        let mut pool: Vec<LoreEntry> = project::list_lore(root).unwrap_or_default();
+        if let Ok(opened) = project::open_project(root) {
+            for link in &opened.project.linked_kb_roots {
+                if let Ok(kb_path) = crate::kb::resolve_kb_root(link) {
+                    if let Ok(entries) = project::list_lore(&kb_path) {
+                        pool.extend(entries);
+                    }
+                }
+            }
+        }
+        pool = project::coalesce_unique_lore(pool);
+        let ids = resolve_selected_trope_ids(req, &chapter);
+        tropes_to_text(&collect_selected_tropes(&pool, &ids))
+    };
     LengthFillContext {
         outline,
         must_do: if chapter.must_do.is_empty() {
@@ -2014,6 +2250,7 @@ fn build_length_fill_context(settings: &AppSettings, req: &WritingRequest) -> Le
         active_beat: active_beat_ref
             .map(beat_engine::beat_summary)
             .unwrap_or_else(|| "（无）".into()),
+        tropes,
     }
 }
 

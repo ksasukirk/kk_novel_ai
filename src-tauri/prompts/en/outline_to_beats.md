@@ -11,6 +11,7 @@ Hard rules:
 - Do not split too finely (small actions inside the same scene should not be their own beats)
 - **Cross-chapter**: if "previous chapter close" is non-empty and not an opening, the **first beat** must continue from the previous chapter's ending state (same night / same place, or a clear transition); do not write an unrelated cold open
 - **Person**: follow the "character person lock"; do not write female characters as boys / male cousins
+- **Trope / kink library**: if selected tropes are not empty, beats must cover their process; do not put tags only in the title
 
 Output format (must be valid JSON):
 {
@@ -52,6 +53,9 @@ Canon (locked, must not be broken):
 
 Related lore:
 {{lore}}
+
+Selected tropes and kinks (beats must cover; ignore if empty):
+{{tropes}}
 
 User instruction:
 {{instruction}}

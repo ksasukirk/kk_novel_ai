@@ -244,7 +244,17 @@ function scheduleCastThenStorySync(writtenKey, text, instruction) {
         instruction,
       });
     } catch {
-      /* 抽角色失败仍尝试总谱 */
+      /* 抽角色失败仍尝试情节/总谱 */
+    }
+    try {
+      const tropes = await import("./tropeExtract.js");
+      await tropes.runTropeExtract({
+        blockKey: writtenKey,
+        text: body,
+        instruction,
+      });
+    } catch {
+      /* 抽情节失败仍尝试总谱 */
     }
     try {
       const sync = await import("./storySync.js");

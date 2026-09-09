@@ -6,7 +6,7 @@
 
 | 项 | 值 |
 |---|---|
-| 当前版本 | `0.2.30`（`package.json` / `src-tauri/Cargo.toml` / `src-tauri/tauri.conf.json` 同步） |
+| 当前版本 | `0.2.31`（`package.json` / `src-tauri/Cargo.toml` / `src-tauri/tauri.conf.json` 同步） |
 | 标识符 | `com.kk.kk-novel-ai` |
 | 仓库 | [https://github.com/ksasukirk/kk_novel_ai](https://github.com/ksasukirk/kk_novel_ai) |
 | 作者 | kk |
@@ -20,6 +20,8 @@
 **界面与写作语言**：设置页可分别选择 **界面语言** 与 **写作语言**（`zh-CN` / `en` / `ja`）。界面文案走 vue-i18n；写作 Prompt、导出语言与部分用户可见错误按对应 locale 加载（见第 1 节）。
 
 **用量与分析**：侧栏「分析」页展示 DeepSeek 官方余额、本应用累计花费 / token、近 14 天趋势与按模型柱状图；无履历时按当前单价与写作参数做约算（不写假账）。业务 AI 调用会记入全局 `gen_log.jsonl` 与作品目录 `gen_activity.jsonl`（见第 8 节）。
+
+**情节 / 性癖库**：侧栏「情节库」可维护可复用的情节套路与性癖写法卡；本章可在 AI 面板与总谱「本章焦点」多选，续写时强制注入并要求兑现过程；写后可自动抽回全局库（见第 1 节）。
 
 ---
 
@@ -45,33 +47,36 @@
 | R16 | v0.2.28 对话助手人设 + 大纲导图/编辑分栏 | 完成 | [`ChatView.vue`](src/views/ChatView.vue)、[`chatClient.js`](src/services/chatClient.js)、[`OutlineView.vue`](src/views/OutlineView.vue)、[`MindMapBoard.vue`](src/components/MindMapBoard.vue) |
 | R17 | v0.2.29 界面/写作多语言 + 拆章 JSON 加固 | 完成 | [`src/i18n/`](src/i18n/)、[`src-tauri/src/i18n.rs`](src-tauri/src/i18n.rs)、[`prompt_i18n.rs`](src-tauri/src/prompt_i18n.rs)、[`SettingsView.vue`](src/views/SettingsView.vue)、[`outlineChapters.js`](src/utils/outlineChapters.js)、[`llmJson.js`](src/utils/llmJson.js) |
 | R18 | v0.2.30 按纲写完收束 + 半句补全 + 记忆去脏 | 完成 | [`writing/mod.rs`](src-tauri/src/writing/mod.rs)、[`continuity.rs`](src-tauri/src/writing/continuity.rs)、[`outlineQueue.js`](src/services/outlineQueue.js)、[`outlineSnapshot.js`](src/utils/outlineSnapshot.js)、[`scene_complete.md`](src-tauri/prompts/scene_complete.md) |
+| R19 | v0.2.31 情节/性癖库 + 本章勾选注入 + 写后抽取 | 完成 | [`TropeLibraryView.vue`](src/views/TropeLibraryView.vue)、[`tropeExtract.js`](src/services/tropeExtract.js)、[`writing/mod.rs`](src-tauri/src/writing/mod.rs)、[`AiPanel.vue`](src/components/AiPanel.vue)、[`StoryView.vue`](src/views/StoryView.vue)、[`trope_extract.md`](src-tauri/prompts/trope_extract.md) |
 
 ---
 
-## 1. 本版（0.2.30）做了什么
+## 1. 本版（0.2.31）做了什么
 
-相对 `0.2.29`，本版把「够字就停」改成「字数是下限、本章纲写完再停」，并在半句截断或按纲收束未出现时自动补写；按纲队列与记忆快照会拒绝空章冒充写完、拒绝把脏占位句带回下一章。
+相对 `0.2.30`，本版补上「情节 / 性癖库」：可复用的写法卡进全局目录，本章多选后强制注入续写 / 补字 / 拆节拍等 Prompt，要求按卡兑现过程与感官；写完可自动抽回库，蒸馏也能落地同类条目。
 
-- **完整度补写（字数 + 半句 + 按纲收束）**：续写 / 同位置变体在达到规定字数后，若正文停在半句，或按纲模式下章纲收束钩子尚未出现在正文后部，会继续用 [`scene_complete.md`](src-tauri/prompts/scene_complete.md)（含 `en/`、`ja/`）补写，而不是只靠 [`length_fill.md`](src-tauri/prompts/length_fill.md)。见 [`src-tauri/src/writing/mod.rs`](src-tauri/src/writing/mod.rs)、[`src-tauri/src/writing/continuity.rs`](src-tauri/src/writing/continuity.rs)（`prose_incomplete` / `outline_hook_missing`）。
-- **按纲整章模式（`outline_run`）**：按纲队列显式传 `outline_run: true`；叙事方向锚点改为「只覆盖本章纲、写完即停」，禁止为凑字跳到下一章或下一天；整章 token 预算按章纲略抬。见 [`src/services/outlineQueue.js`](src/services/outlineQueue.js)、[`src-tauri/src/writing/advance.rs`](src-tauri/src/writing/advance.rs)、续写 Prompt [`continue_chapter.md`](src-tauri/prompts/continue_chapter.md) / [`continue_chapter_cache.md`](src-tauri/prompts/continue_chapter_cache.md)。
-- **按纲队列更稳**：生成 job 带 `targetChapterId` / `skipAutoAccept`，落盘前切到正确章节；要求章标题与实质正文；磁盘无正文时禁止标成写完。见 [`src/stores/genJobs.js`](src/stores/genJobs.js)、[`src/services/draftAccept.js`](src/services/draftAccept.js)、[`src/utils/outlineSnapshot.js`](src/utils/outlineSnapshot.js)。
-- **记忆去脏**：写后总结过长 / 复读时压缩回收，不再往 memory 塞占位句；滚动摘要过滤脏快照；摘要与上章收束冲突时以上章收束与正文末段为准。见 [`continuity.rs`](src-tauri/src/writing/continuity.rs)、[`project/mod.rs`](src-tauri/src/project/mod.rs)。
-- **版本号同步**：[`package.json`](package.json)、[`src-tauri/Cargo.toml`](src-tauri/Cargo.toml)（及 [`Cargo.lock`](src-tauri/Cargo.lock)）、[`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json) 均为 `0.2.30`。
+- **全局情节库页**：侧栏新增「情节库」，维护 `kind=trope` / `kind=kink` 条目（写法说明、关键词等）；设定页与角色仓不再混入这两类。见 [`src/views/TropeLibraryView.vue`](src/views/TropeLibraryView.vue)、[`src/App.vue`](src/App.vue)、[`src/components/shell/AppSidebar.vue`](src/components/shell/AppSidebar.vue)、[`src/views/LoreView.vue`](src/views/LoreView.vue)、[`src/views/CharacterRosterView.vue`](src/views/CharacterRosterView.vue)。
+- **本章双层多选**：AI 面板与总谱「本章焦点」均可勾选情节 / 性癖；勾选立刻写入章节 `trope_ids`，打开章时会 hydrate。见 [`src/components/AiPanel.vue`](src/components/AiPanel.vue)、[`src/views/StoryView.vue`](src/views/StoryView.vue)、[`src/stores/aiPanelState.js`](src/stores/aiPanelState.js)、[`src/stores/appState.js`](src/stores/appState.js)、[`src/utils/tropeKinds.js`](src/utils/tropeKinds.js)、[`src/services/tropeIndex.js`](src/services/tropeIndex.js)、[`src/services/projectClient.js`](src/services/projectClient.js)。
+- **生成强制注入**：写作引擎把勾选项填进 `{{tropes}}`，RAG 排除未勾选库条目；续写、同位置变体、补字、场景收束、扩纲、拆节拍等 Prompt（中 / 英 / 日）要求兑现过程，禁止只点名标签。见 [`src-tauri/src/writing/mod.rs`](src-tauri/src/writing/mod.rs)、[`src/utils/genBlock.js`](src/utils/genBlock.js)、[`src-tauri/prompts/`](src-tauri/prompts/)（含 `en/`、`ja/`）。
+- **写后自动抽取**：定稿后可按设置 `writing_auto_trope`（默认开）调用 [`trope_extract.md`](src-tauri/prompts/trope_extract.md) 抽情节 / 性癖并入全局库。见 [`src/services/tropeExtract.js`](src/services/tropeExtract.js)、[`src/services/draftAccept.js`](src/services/draftAccept.js)、[`src/views/SettingsView.vue`](src/views/SettingsView.vue)、[`src-tauri/src/settings.rs`](src-tauri/src/settings.rs)。
+- **蒸馏与摘要对齐**：知识库蒸馏可落地 trope / kink；块摘要 / 章摘要对照已知库名，只记正文里实际出现的套路。见 [`src-tauri/src/import/mod.rs`](src-tauri/src/import/mod.rs)、[`lore_extract.md`](src-tauri/prompts/lore_extract.md)、[`block_digest.md`](src-tauri/prompts/block_digest.md)、[`chapter_summary.md`](src-tauri/prompts/chapter_summary.md)。
+- **存储与 IPC**：`ChapterMeta.trope_ids`、lore 按 kind 分目录、`chapter_update_meta` 可补丁更新。见 [`src-tauri/src/project/mod.rs`](src-tauri/src/project/mod.rs)、[`src-tauri/src/api.rs`](src-tauri/src/api.rs)、[`src-tauri/src/kb/mod.rs`](src-tauri/src/kb/mod.rs)。
+- **版本号同步**：[`package.json`](package.json)、[`src-tauri/Cargo.toml`](src-tauri/Cargo.toml)（及 [`Cargo.lock`](src-tauri/Cargo.lock)）、[`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json) 均为 `0.2.31`。
 
-**上一版（0.2.29）及更早已交付、本版继续可用的体验**：
+**上一版（0.2.30）及更早已交付、本版继续可用的体验**：
 
+- **按纲写完收束**：字数是下限；半句或按纲钩子未出现时用 `scene_complete` 补写；按纲队列拒空章冒充写完、记忆拒脏占位。
 - **界面 / 写作多语言**：`zh-CN` / `en` / `ja`；Prompt 与后端用户文案分 locale 加载。
-- **拆章 JSON 加固**：[`outlineChapters.js`](src/utils/outlineChapters.js)、[`llmJson.js`](src/utils/llmJson.js)。
-- **对话助手人设**、大纲导图 / 编辑分栏、角色 / 设定跨页刷新、侧栏「对话」页与 `KeepAlive`。
+- **拆章 JSON 加固**、对话助手人设、大纲导图 / 编辑分栏、角色 / 设定跨页刷新、侧栏「对话」页与 `KeepAlive`。
 - 章内插图与分镜、文生图设置、导出带图、应用内检查更新，以及 `python build.py` 默认发版流水线（见第 9 节）。
 
 ---
 
 ## 2. 它做什么
 
-- 以**本地作品目录**为真相源：`project.json`、章节 Markdown、lore / memory / 总谱 / 分镜 JSON；对话会话另存（不混进章节）。
-- 续写、润色、拆章、按纲节拍、设定召回、知识库蒸馏，都走同一套 Rust 写作引擎；按纲整章可一次写完本章纲，并自动补半句 / 收束。
-- 桌面 GUI（Tauri 2 + Vue 3）负责编辑与预览；界面可切中 / 英 / 日；写作 Prompt 可按写作语言独立选择；独立「对话」页做本作 / 自由聊（可配助手人设）；CLI / NDJSON RPC 给脚本编排；GUI 在线时 CLI 默认可经本机 IPC 驱动同一套预览（见 [`src-tauri/src/ipc/mod.rs`](src-tauri/src/ipc/mod.rs)、[`src/services/guiBridge.js`](src/services/guiBridge.js)）。
+- 以**本地作品目录**为真相源：`project.json`、章节 Markdown、lore / memory / 总谱 / 分镜 JSON；对话会话另存（不混进章节）；情节 / 性癖条目与角色 / 世界观分目录存放。
+- 续写、润色、拆章、按纲节拍、设定召回、知识库蒸馏，都走同一套 Rust 写作引擎；按纲整章可一次写完本章纲，并自动补半句 / 收束；本章勾选的情节 / 性癖会注入生成。
+- 桌面 GUI（Tauri 2 + Vue 3）负责编辑与预览；界面可切中 / 英 / 日；写作 Prompt 可按写作语言独立选择；独立「对话」页做本作 / 自由聊（可配助手人设）；独立「情节库」页维护套路卡；CLI / NDJSON RPC 给脚本编排；GUI 在线时 CLI 默认可经本机 IPC 驱动同一套预览（见 [`src-tauri/src/ipc/mod.rs`](src-tauri/src/ipc/mod.rs)、[`src/services/guiBridge.js`](src/services/guiBridge.js)）。
 - Windows 桌面为主，Android APK 由 `build_android.py` 引导工具链后打包（见 [`docs/android-setup.md`](docs/android-setup.md)）。
 - **持续迭代**：会吸取更多建议来优化本软件；写作模型**最好使用 DeepSeek**（设置页配置端点与模型槽）。
 - **用量可追溯**：续写 / 润色 / 书名建议 / 导入蒸馏等业务 AI 调用记 token 与花费；侧栏「分析」可看余额、KPI 与趋势。
@@ -98,6 +103,7 @@
 | 应用更新 | GitHub Release 检查 / 下载 | [`src-tauri/src/update.rs`](src-tauri/src/update.rs) |
 | LLM JSON 容错 | 前端近似 JSON 修复 + 拆章抢救 | [`src/utils/llmJson.js`](src/utils/llmJson.js)、[`src/utils/outlineChapters.js`](src/utils/outlineChapters.js) |
 | 按纲快照校验 | 正文门槛 + 拒脏占位 | [`src/utils/outlineSnapshot.js`](src/utils/outlineSnapshot.js)、[`scripts/check-outline-snapshot.mjs`](scripts/check-outline-snapshot.mjs) |
+| 情节 / 性癖库 | lore kind + 本章 `trope_ids` + 写后抽取 | [`TropeLibraryView.vue`](src/views/TropeLibraryView.vue)、[`tropeExtract.js`](src/services/tropeExtract.js)、[`tropeIndex.js`](src/services/tropeIndex.js)、[`writing/mod.rs`](src-tauri/src/writing/mod.rs) |
 | 对话会话 | 本地 JSON 落盘（含人设字段） | [`src-tauri/src/chat.rs`](src-tauri/src/chat.rs) |
 
 窗口无系统边框（`decorations: false`），自定义标题栏在 [`src/App.vue`](src/App.vue)；主题 Token 在 [`src/style.css`](src/style.css)。
@@ -112,7 +118,7 @@ Vue (src/)  --invoke / listen-->  Tauri commands.rs  -->  api.rs
                                                       -->  chat.rs    -->  作品 chat/ 或 APPDATA/chat/
                                                       -->  image.rs   -->  文生图端点
                                                       -->  update.rs  -->  GitHub Release
-                                                      -->  project/* / story/*  -->  作品目录
+                                                      -->  project/* / story/*  -->  作品目录（含 lore tropes/kinks）
 CLI (cli.rs)  --默认 IPC-->  运行中 GUI（ipc/mod.rs + guiBridge.js）
               --offline / rpc-->  同一套 api.rs（不驱动界面）
 ```
@@ -124,9 +130,9 @@ CLI (cli.rs)  --默认 IPC-->  运行中 GUI（ipc/mod.rs + guiBridge.js）
 
 GUI 装配：[`src-tauri/src/lib.rs`](src-tauri/src/lib.rs)（注册命令、`CancelRegistry` / `PrepareRegistry`，桌面端启动 IPC；含 `chat_session_*`；挂载 `i18n` / `prompt_i18n`）。
 
-设置字段：`ui_locale` / `writing_locale`（[`settings.rs`](src-tauri/src/settings.rs)）；前端保存后 `applyUiLocale`（[`src/i18n/index.js`](src/i18n/index.js)）。
+设置字段：`ui_locale` / `writing_locale` / `writing_auto_trope`（[`settings.rs`](src-tauri/src/settings.rs)）；前端保存后 `applyUiLocale`（[`src/i18n/index.js`](src/i18n/index.js)）。
 
-写作请求可带 `outline_run`（[`writing/mod.rs`](src-tauri/src/writing/mod.rs)）；按纲队列在 [`outlineQueue.js`](src/services/outlineQueue.js) 置位。前端跨页同步（角色 / 设定）：写入方调用 [`bumpCastRevision()`](src/stores/appState.js)；大纲侧栏、总谱、设定页在 watch / `onActivated` 时重载。
+写作请求可带 `outline_run` 与本章 `selected_trope_ids`（[`writing/mod.rs`](src-tauri/src/writing/mod.rs)）；按纲队列在 [`outlineQueue.js`](src/services/outlineQueue.js) 置位。前端跨页同步：角色 / 设定用 [`bumpCastRevision()`](src/stores/appState.js)；情节库用 `tropeRevision` / [`refreshTropeIndex`](src/services/tropeIndex.js)。大纲侧栏、总谱、设定页在 watch / `onActivated` 时重载。
 
 ---
 
@@ -144,15 +150,15 @@ kk_novel_ai/
 ├── src/                      # Vue 3
 │   ├── App.vue               # 侧栏 / KeepAlive 导航 / 跟随 ui_locale
 │   ├── i18n/                 # vue-i18n 入口与 zh-CN / en / ja 文案
-│   ├── views/                # 作品 / 知识库 / 写作 / 对话 / 大纲 / 总谱 / 设定 / 分析 / 日志 / 设置
+│   ├── views/                # 作品 / 知识库 / 写作 / 对话 / 大纲 / 总谱 / 情节库 / 设定 / 分析 / 日志 / 设置
 │   ├── components/           # AiPanel、编辑块、插图对话框、更新对话框、壳、思维导图、CastSidePanel 等
-│   ├── services/             # Tauri / LLM / 作品 / 对话 / 插图 / 更新 / GUI 桥 / 抽角色 / 按纲队列
-│   ├── stores/               # appState（含 castRevision）/ aiPanelState / chatState / genJobs 等
-│   └── utils/                # 用量 / DeepSeek 单价 / lore 视觉 / LLM JSON / 拆章 / 按纲快照 / 生成块
+│   ├── services/             # Tauri / LLM / 作品 / 对话 / 插图 / 更新 / GUI 桥 / 抽角色 / 情节抽取 / 按纲队列
+│   ├── stores/               # appState（castRevision / tropeRevision）/ aiPanelState / chatState / genJobs 等
+│   └── utils/                # 用量 / DeepSeek 单价 / lore 视觉 / LLM JSON / 拆章 / 按纲快照 / 生成块 / tropeKinds
 ├── src-tauri/                # Tauri + Rust
-│   ├── src/                  # 后端模块（含 writing/continuity、i18n、prompt_i18n、chat、image、update）
+│   ├── src/                  # 后端模块（含 writing、i18n、prompt_i18n、chat、image、update、import distill）
 │   ├── locales/              # 后端用户文案 zh-CN / en / ja
-│   ├── prompts/              # 写作 Prompt（含 scene_complete / length_fill；根=zh-CN；en/、ja/）
+│   ├── prompts/              # 写作 Prompt（含 trope_extract / scene_complete / length_fill；根=zh-CN；en/、ja/）
 │   ├── tauri.conf.json
 │   └── tauri.android.conf.json
 ├── scripts/                  # android-setup、发版 README 提示词、LLM JSON / 按纲快照验收等
@@ -166,33 +172,35 @@ kk_novel_ai/
 
 ## 6. 前端视图与关键路径
 
-侧栏定义：[`src/App.vue`](src/App.vue)（作品、知识库、角色定义、总谱、大纲、写作、**对话**、设定、分析、日志、设置；主内容区 `KeepAlive`；文案随 `ui_locale`）。
+侧栏定义：[`src/App.vue`](src/App.vue)（作品、知识库、角色定义、总谱、大纲、写作、**对话**、**情节库**、设定、分析、日志、设置；主内容区 `KeepAlive`；文案随 `ui_locale`）。
 
 | 界面 | 路径 | 职责 |
 |---|---|---|
 | 壳 / 侧栏 / 页眉 | [`src/components/shell/AppSidebar.vue`](src/components/shell/AppSidebar.vue)、[`PageHeader.vue`](src/components/shell/PageHeader.vue)、[`PageBackground.vue`](src/components/shell/PageBackground.vue) | 布局、主题、移动抽屉；i18n 键 |
 | 作品 | [`src/views/ProjectHome.vue`](src/views/ProjectHome.vue) | 新建/打开/最近、仪表盘、书名建议 |
 | 知识库 | [`src/views/KnowledgeHome.vue`](src/views/KnowledgeHome.vue) | 一书一库、通用库；导入走此页 |
-| 写作 | [`src/views/EditorView.vue`](src/views/EditorView.vue)、[`src/components/AiPanel.vue`](src/components/AiPanel.vue)、[`ChapterBlockEditor.vue`](src/components/ChapterBlockEditor.vue) | 章树、块编辑（含插图块）、按纲队列、流式预览；指令按任务分槽 |
+| 写作 | [`src/views/EditorView.vue`](src/views/EditorView.vue)、[`src/components/AiPanel.vue`](src/components/AiPanel.vue)、[`ChapterBlockEditor.vue`](src/components/ChapterBlockEditor.vue) | 章树、块编辑（含插图块）、按纲队列、流式预览；情节多选；指令按任务分槽 |
 | 对话 | [`src/views/ChatView.vue`](src/views/ChatView.vue)、[`chatClient.js`](src/services/chatClient.js)、[`chatState.js`](src/stores/chatState.js) | 本作 / 自由聊；助手人设落盘；气泡显示名；不写章节 |
 | 大纲 | [`src/views/OutlineView.vue`](src/views/OutlineView.vue)、[`CastSidePanel.vue`](src/components/CastSidePanel.vue)、[`MindMapBoard.vue`](src/components/MindMapBoard.vue) | 结构导图 / 大纲编辑分栏；导图 `fill` 全高；拆章走 `outlineChapters` |
-| 总谱 | [`src/views/StoryView.vue`](src/views/StoryView.vue)、[`MindMapBoard.vue`](src/components/MindMapBoard.vue) | 故事线 / 时间线 / 关系 / Canon / 分镜；lore 随 `castRevision` 重载 |
-| 设定 / 角色仓 | [`src/views/LoreView.vue`](src/views/LoreView.vue)、[`CharacterRosterView.vue`](src/views/CharacterRosterView.vue) | lore 与全局角色；保存/删除后 `bumpCastRevision` |
+| 总谱 | [`src/views/StoryView.vue`](src/views/StoryView.vue)、[`MindMapBoard.vue`](src/components/MindMapBoard.vue) | 故事线 / 时间线 / 关系 / Canon / 分镜；本章焦点含情节多选；lore 随 `castRevision` 重载 |
+| 情节库 | [`src/views/TropeLibraryView.vue`](src/views/TropeLibraryView.vue)、[`tropeIndex.js`](src/services/tropeIndex.js)、[`tropeKinds.js`](src/utils/tropeKinds.js) | 全局 trope / kink 卡；与设定 / 角色仓分离 |
+| 设定 / 角色仓 | [`src/views/LoreView.vue`](src/views/LoreView.vue)、[`CharacterRosterView.vue`](src/views/CharacterRosterView.vue) | lore 与全局角色（排除 trope/kink）；保存/删除后 `bumpCastRevision` |
 | 分析 | [`src/views/UsageAnalyticsView.vue`](src/views/UsageAnalyticsView.vue)、[`src/components/analytics/`](src/components/analytics/) | 余额、KPI、折线/柱状、履历详情 |
 | 日志 | [`src/views/GenLogView.vue`](src/views/GenLogView.vue) | 轻量历史与导出 |
-| 设置 | [`src/views/SettingsView.vue`](src/views/SettingsView.vue) | **界面/写作语言**、端点、DeepSeek 预设、文生图、检查更新、多模型槽 |
+| 设置 | [`src/views/SettingsView.vue`](src/views/SettingsView.vue) | **界面/写作语言**、端点、DeepSeek 预设、`writing_auto_trope`、文生图、检查更新、多模型槽 |
 | 插图 / 更新 UI | [`IllustrationPromptDialog.vue`](src/components/IllustrationPromptDialog.vue)、[`UpdateDialog.vue`](src/components/UpdateDialog.vue) | 提示词确认出图；更新说明与进度 |
 | i18n | [`src/i18n/index.js`](src/i18n/index.js)、[`src/i18n/locales/zh-CN.json`](src/i18n/locales/zh-CN.json)、[`en.json`](src/i18n/locales/en.json)、[`ja.json`](src/i18n/locales/ja.json) | 文案目录、`applyUiLocale`、跨语言消息匹配 |
 | 用量工具 | [`usageFormat.js`](src/utils/usageFormat.js)、[`usageSeries.js`](src/utils/usageSeries.js)、[`usageEstimate.js`](src/utils/usageEstimate.js)、[`deepseekPricing.js`](src/utils/deepseekPricing.js) | 格式化、按日聚合、无履历约算、官方单价 |
 | LLM JSON / 拆章 | [`llmJson.js`](src/utils/llmJson.js)、[`outlineChapters.js`](src/utils/outlineChapters.js)、[`check-llm-json.mjs`](scripts/check-llm-json.mjs) | 近似 JSON 修复；拆章解析与 token 估算；本地回归 |
 | 按纲快照 | [`outlineSnapshot.js`](src/utils/outlineSnapshot.js)、[`check-outline-snapshot.mjs`](scripts/check-outline-snapshot.mjs) | 拒脏占位、正文实质门槛；本地验收 |
 | 按纲队列 | [`outlineQueue.js`](src/services/outlineQueue.js)、[`bookOutlineQueue.js`](src/services/bookOutlineQueue.js)、[`sectionQueue.js`](src/services/sectionQueue.js) | 整章按纲、`outline_run`、落盘校验 |
-| 草稿落盘 | [`draftAccept.js`](src/services/draftAccept.js)、[`genJobs.js`](src/stores/genJobs.js) | `targetChapterId` / `skipAutoAccept`；错章拒写 |
-| 插图 / lore 视觉 | [`illustration.js`](src/services/illustration.js)、[`loreVisual.js`](src/utils/loreVisual.js)、[`genBlock.js`](src/utils/genBlock.js) | 分镜生成、出图落盘、插图块模型 |
+| 草稿落盘 | [`draftAccept.js`](src/services/draftAccept.js)、[`genJobs.js`](src/stores/genJobs.js) | `targetChapterId` / `skipAutoAccept`；错章拒写；可触发情节抽取 |
+| 情节抽取 | [`tropeExtract.js`](src/services/tropeExtract.js)、[`writingTasks.js`](src/utils/writingTasks.js) | 写后 `trope_extract`；设置开关 |
+| 插图 / lore 视觉 | [`illustration.js`](src/services/illustration.js)、[`loreVisual.js`](src/utils/loreVisual.js)、[`genBlock.js`](src/utils/genBlock.js) | 分镜生成、出图落盘、插图块模型；context 可带 tropes |
 | 抽角色 | [`castExtract.js`](src/services/castExtract.js) | 自动抽角落盘后 `bumpCastRevision` |
 | 应用更新 | [`appUpdate.js`](src/services/appUpdate.js)、[`updateFlow.js`](src/services/updateFlow.js) | 检查 / 下载 / 启动流程 |
-| 全局状态 | [`src/stores/appState.js`](src/stores/appState.js)、[`aiPanelState.js`](src/stores/aiPanelState.js) | 当前作品与导航；`castRevision` / `storyRevision`；AI 面板按任务指令槽 |
-| 客户端 | [`src/services/tauri.js`](src/services/tauri.js)、[`llmClient.js`](src/services/llmClient.js)、[`projectClient.js`](src/services/projectClient.js)、[`storyClient.js`](src/services/storyClient.js)、[`guiBridge.js`](src/services/guiBridge.js) | invoke / 事件桥 / 分镜读写 |
+| 全局状态 | [`src/stores/appState.js`](src/stores/appState.js)、[`aiPanelState.js`](src/stores/aiPanelState.js) | 当前作品与导航；`castRevision` / `tropeRevision` / `storyRevision`；AI 面板按任务指令槽与 `selectedTropeIds` |
+| 客户端 | [`src/services/tauri.js`](src/services/tauri.js)、[`llmClient.js`](src/services/llmClient.js)、[`projectClient.js`](src/services/projectClient.js)、[`storyClient.js`](src/services/storyClient.js)、[`guiBridge.js`](src/services/guiBridge.js) | invoke / 事件桥 / 分镜读写 / `updateChapterMeta` |
 
 ---
 
@@ -200,30 +208,30 @@ kk_novel_ai/
 
 | 模块 | 路径 | 职责 |
 |---|---|---|
-| 共享 API | [`src-tauri/src/api.rs`](src-tauri/src/api.rs) | GUI / CLI / RPC 共用业务、`dispatch_rpc`；分镜、出图、对话会话入口 |
+| 共享 API | [`src-tauri/src/api.rs`](src-tauri/src/api.rs) | GUI / CLI / RPC 共用业务、`dispatch_rpc`；分镜、出图、对话会话、`chapter_update_meta` |
 | Tauri 命令 | [`src-tauri/src/commands.rs`](src-tauri/src/commands.rs) | `#[tauri::command]` 薄封装（含 update / image / storyboard / chat / llm_chat 流式） |
 | 对话会话 | [`src-tauri/src/chat.rs`](src-tauri/src/chat.rs) | 本作 `chat/novel.json`、自由聊 `%APPDATA%/kk_novel_ai/chat/free.json`；含人设字段 |
 | GUI 流式 | [`src-tauri/src/gui_writing.rs`](src-tauri/src/gui_writing.rs) | emit `llm-chunk` / `done` / `error` |
-| 写作引擎 | [`src-tauri/src/writing/mod.rs`](src-tauri/src/writing/mod.rs) | 任务、上下文、`run_writing`；完整度补写；`outline_run`；Prompt 经 `prompt_i18n` |
+| 写作引擎 | [`src-tauri/src/writing/mod.rs`](src-tauri/src/writing/mod.rs) | 任务、上下文、`run_writing`；完整度补写；`outline_run`；`{{tropes}}` 注入；Prompt 经 `prompt_i18n` |
 | 连贯 / 收束 | [`src-tauri/src/writing/continuity.rs`](src-tauri/src/writing/continuity.rs) | 半句检测、按纲钩子、总结压缩、拒脏占位 |
 | 方向锚点 | [`src-tauri/src/writing/advance.rs`](src-tauri/src/writing/advance.rs) | 按纲「写完即停」与自由续写升级锚点 |
-| Prompt i18n | [`src-tauri/src/prompt_i18n.rs`](src-tauri/src/prompt_i18n.rs) | 按 `writing_locale` 选中 / 英 / 日模板（含 `scene_complete`） |
+| Prompt i18n | [`src-tauri/src/prompt_i18n.rs`](src-tauri/src/prompt_i18n.rs) | 按 `writing_locale` 选中 / 英 / 日模板（含 `scene_complete`、`trope_extract`） |
 | 用户文案 i18n | [`src-tauri/src/i18n.rs`](src-tauri/src/i18n.rs)、[`src-tauri/locales/`](src-tauri/locales/) | 按 `ui_locale` 取错误与提示 |
 | 节拍 | [`src-tauri/src/writing/beat_engine.rs`](src-tauri/src/writing/beat_engine.rs) | 按纲进度状态机 |
-| 召回 / 去重 | [`retrieve.rs`](src-tauri/src/writing/retrieve.rs)、[`dedupe.rs`](src-tauri/src/writing/dedupe.rs) | lore 召回、复读抑制 |
-| 作品磁盘 | [`src-tauri/src/project/mod.rs`](src-tauri/src/project/mod.rs) | 章 / lore / memory / 进度；滚动摘要过滤脏快照 |
+| 召回 / 去重 | [`retrieve.rs`](src-tauri/src/writing/retrieve.rs)、[`dedupe.rs`](src-tauri/src/writing/dedupe.rs) | lore 召回（可排除未勾选 trope）、复读抑制 |
+| 作品磁盘 | [`src-tauri/src/project/mod.rs`](src-tauri/src/project/mod.rs) | 章 / lore / memory / 进度；`kind_dir`；`ChapterMeta.trope_ids`；滚动摘要过滤脏快照 |
 | 总谱 / 分镜 | [`src-tauri/src/story/mod.rs`](src-tauri/src/story/mod.rs) | plot / timeline / relations / canon / storyboard |
 | 文生图 | [`src-tauri/src/image.rs`](src-tauri/src/image.rs) | OpenAI 兼容出图、读 data URL |
 | 应用更新 | [`src-tauri/src/update.rs`](src-tauri/src/update.rs) | 查 Release、下载、启动并退出 |
 | LLM | [`src-tauri/src/llm/mod.rs`](src-tauri/src/llm/mod.rs)、[`stream.rs`](src-tauri/src/llm/stream.rs)、[`balance.rs`](src-tauri/src/llm/balance.rs) | OpenAI 兼容流式、取消、thinking 关闭；DeepSeek 余额 |
-| 知识库 | [`src-tauri/src/kb/mod.rs`](src-tauri/src/kb/mod.rs) | 通用库聚合 |
-| 导入蒸馏 | [`src-tauri/src/import/mod.rs`](src-tauri/src/import/mod.rs) | TXT 切章、lore_extract（带 usage 记账） |
+| 知识库 | [`src-tauri/src/kb/mod.rs`](src-tauri/src/kb/mod.rs) | 通用库聚合；角色仓与情节库目录保障 |
+| 导入蒸馏 | [`src-tauri/src/import/mod.rs`](src-tauri/src/import/mod.rs) | TXT 切章、lore_extract（含 tropes 落地与 usage 记账） |
 | 导出 | [`src-tauri/src/export/mod.rs`](src-tauri/src/export/mod.rs) | TXT / EPUB / PDF；正文与插图段交错；导出语言随写作 locale |
 | IPC | [`src-tauri/src/ipc/mod.rs`](src-tauri/src/ipc/mod.rs) | loopback NDJSON，`ipc.json` |
-| 设置 / 路径 | [`settings.rs`](src-tauri/src/settings.rs)、[`paths.rs`](src-tauri/src/paths.rs) | `%APPDATA%/kk_novel_ai/`；`ui_locale` / `writing_locale`；DeepSeek 与图像端点 |
+| 设置 / 路径 | [`settings.rs`](src-tauri/src/settings.rs)、[`paths.rs`](src-tauri/src/paths.rs) | `%APPDATA%/kk_novel_ai/`；`ui_locale` / `writing_locale` / `writing_auto_trope`；DeepSeek 与图像端点 |
 | 日志 / 用量 | [`genlog.rs`](src-tauri/src/genlog.rs)、[`usage.rs`](src-tauri/src/usage.rs)、[`project_genlog.rs`](src-tauri/src/project_genlog.rs) | 全局 `gen_log.jsonl`、账本；作品内履历 |
 
-Prompt 模板目录：[`src-tauri/prompts/`](src-tauri/prompts/)（根目录为中文；[`en/`](src-tauri/prompts/en/)、[`ja/`](src-tauri/prompts/ja/) 为英文 / 日文；如 `continue_chapter.md`、`length_fill.md`、`scene_complete.md`、`outline_to_chapters.md`、`beats_to_storyboard.md`）。
+Prompt 模板目录：[`src-tauri/prompts/`](src-tauri/prompts/)（根目录为中文；[`en/`](src-tauri/prompts/en/)、[`ja/`](src-tauri/prompts/ja/) 为英文 / 日文；如 `continue_chapter.md`、`length_fill.md`、`scene_complete.md`、`trope_extract.md`、`outline_to_chapters.md`、`beats_to_storyboard.md`）。
 
 ---
 
@@ -233,7 +241,7 @@ Prompt 模板目录：[`src-tauri/prompts/`](src-tauri/prompts/)（根目录为�
 
 ```text
 MyNovel/
-  project.json
+  project.json               # 章节列表；章元数据可含 trope_ids
   memory.json
   stats.json
   gen_activity.jsonl         # 作品级 AI / 保存履历索引（新生成后出现）
@@ -248,11 +256,13 @@ MyNovel/
   assets/illustrations/      # 插图文件（相对路径写入块）
   lore/characters/*.json
   lore/world/*.json
+  lore/tropes/*.json         # 情节套路卡（kind=trope）
+  lore/kinks/*.json          # 性癖写法卡（kind=kink）
 ```
 
-应用数据（Windows 典型 `%APPDATA%\kk_novel_ai\`，[`paths.rs`](src-tauri/src/paths.rs)）：`settings.json`（含 `ui_locale` / `writing_locale`）、`ipc.json`、`gen_log.jsonl`、用量账本、`chat/free.json`（自由聊会话，含人设字段）。旧作品无 `gen_activity` 时分析页回退全局日志或按配置约算。滚动摘要重建时会跳过不可用的写后快照（过短 / 过长 / 脏占位），见 [`project/mod.rs`](src-tauri/src/project/mod.rs)。
+应用数据（Windows 典型 `%APPDATA%\kk_novel_ai\`，[`paths.rs`](src-tauri/src/paths.rs)）：`settings.json`（含 `ui_locale` / `writing_locale` / `writing_auto_trope`）、`ipc.json`、`gen_log.jsonl`、用量账本、`chat/free.json`（自由聊会话，含人设字段）。旧作品无 `gen_activity` 时分析页回退全局日志或按配置约算。滚动摘要重建时会跳过不可用的写后快照（过短 / 过长 / 脏占位），见 [`project/mod.rs`](src-tauri/src/project/mod.rs)。
 
-相关命令：`gen_log_list`、`project_gen_log_list`、`usage_summary`、`provider_balance`、`story_storyboard_get` / `story_storyboard_save`、`image_generate`、`chat_session_get` / `chat_session_save`（见 [`cli.rs`](src-tauri/src/cli.rs)、[`api.rs`](src-tauri/src/api.rs)）。
+相关命令：`gen_log_list`、`project_gen_log_list`、`usage_summary`、`provider_balance`、`story_storyboard_get` / `story_storyboard_save`、`image_generate`、`chat_session_get` / `chat_session_save`、`chapter_update_meta`（见 [`cli.rs`](src-tauri/src/cli.rs)、[`api.rs`](src-tauri/src/api.rs)）。
 
 ---
 
@@ -309,7 +319,7 @@ CLI 调试优先用 `kk_novel_cli`（构建后在 `src-tauri/target/...`）。�
 |---|---|---|
 | 本 README | [`README.md`](README.md) | 仓库入口与结构总览 |
 | 项目分析 | [`docs/project-analysis.md`](docs/project-analysis.md) | 架构图、模块、数据模型、缺口 |
-| 里程碑 TODO | [`docs/todo.md`](docs/todo.md) | M1–M53 及明细（均带代码路径） |
+| 里程碑 TODO | [`docs/todo.md`](docs/todo.md) | M1–M54 及明细（均带代码路径） |
 | LM Studio / CLI | [`docs/lmstudio.md`](docs/lmstudio.md) | 本地服务、按纲流程、RPC |
 | Android | [`docs/android-setup.md`](docs/android-setup.md) | JDK/SDK 引导、签名、产物 |
 | 移动 QA | [`docs/mobile-qa-checklist.md`](docs/mobile-qa-checklist.md) | 触控与布局抽检 |
@@ -320,7 +330,7 @@ CLI 调试优先用 `kk_novel_cli`（构建后在 `src-tauri/target/...`）。�
 
 ## 11. 后续可做（建议 TODO）
 
-已完成的产品里程碑见 [`docs/todo.md`](docs/todo.md)（M1–M53）。本仓库会继续收集 Issue / 用户反馈，把有效建议排进迭代。分析文档里仍开放的工程向建议：
+已完成的产品里程碑见 [`docs/todo.md`](docs/todo.md)（M1–M54）。本仓库会继续收集 Issue / 用户反馈，把有效建议排进迭代。分析文档里仍开放的工程向建议：
 
 | # | 建议项 | 说明 | 涉及路径 |
 |---|---|---|---|
@@ -336,5 +346,6 @@ CLI 调试优先用 `kk_novel_cli`（构建后在 `src-tauri/target/...`）。�
 | N16 | 对话页多会话 / 导出 | 现每模式单文件会话；人设已可配置 | [`ChatView.vue`](src/views/ChatView.vue)、[`chat.rs`](src-tauri/src/chat.rs) |
 | N17 | i18n 文案覆盖率与校对 | 主流程已覆盖；边角 Toast / CLI 可继续补译 | [`src/i18n/locales/`](src/i18n/locales/)、[`src-tauri/locales/`](src-tauri/locales/)、[`src-tauri/prompts/`](src-tauri/prompts/) |
 | N18 | 按纲收束钩子启发式再精 | 现依章纲末句压缩匹配正文尾部 | [`continuity.rs`](src-tauri/src/writing/continuity.rs)、[`writing/mod.rs`](src-tauri/src/writing/mod.rs) |
+| N19 | 情节库跨作品复用 / 导入导出 | 现按作品 lore 目录存放 | [`TropeLibraryView.vue`](src/views/TropeLibraryView.vue)、[`project/mod.rs`](src-tauri/src/project/mod.rs)、[`kb/mod.rs`](src-tauri/src/kb/mod.rs) |
 
-已知约束：Debug GUI 依赖 Vite `5173`；Release 读 `frontend-dist/`；蒸馏依赖可用的分析模型（推荐 DeepSeek）+ `analysis_model`，长书请用 `--from` / `--to` 分段。DeepSeek 官方仅提供余额 API，无 Bearer 可查的「今日已用 token」；今日/累计消耗以本应用履历与账本为准。插图需自行配置兼容文生图端点；未配置时仍可写正文，不可出图。本作对话需先打开作品；自由聊写在应用数据目录。界面与写作语言默认 `zh-CN`；未译键回退中文。按纲完整度补写有次数与章长上限，极端短写仍可能需手动续写。
+已知约束：Debug GUI 依赖 Vite `5173`；Release 读 `frontend-dist/`；蒸馏依赖可用的分析模型（推荐 DeepSeek）+ `analysis_model`，长书请用 `--from` / `--to` 分段。DeepSeek 官方仅提供余额 API，无 Bearer 可查的「今日已用 token」；今日/累计消耗以本应用履历与账本为准。插图需自行配置兼容文生图端点；未配置时仍可写正文，不可出图。本作对话需先打开作品；自由聊写在应用数据目录。界面与写作语言默认 `zh-CN`；未译键回退中文。按纲完整度补写有次数与章长上限，极端短写仍可能需手动续写。情节 / 性癖注入以本章 `trope_ids` 为准；未勾选条目不会当必达，写后抽取可在设置中关闭。

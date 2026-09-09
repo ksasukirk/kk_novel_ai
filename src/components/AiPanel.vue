@@ -3,12 +3,13 @@
   代码路径: kk_novel_ai/src/components/AiPanel.vue
 -->
 <script setup>
-import { computed, nextTick, ref, toRefs, watch } from "vue";
+import { computed, nextTick, onMounted, ref, toRefs, watch } from "vue";
 import { appState } from "../stores/appState.js";
 import { aiPanelForm, instrCaret, activeStepId, createInstructionStep } from "../stores/aiPanelState.js";
 import { runWriting } from "../services/llmClient.js";
 import { withBranchContext } from "../services/draftAccept.js";
 import { saveChapter, updateChapterMeta } from "../services/projectClient.js";
+import { refreshTropeIndex } from "../services/tropeIndex.js";
 import { undoLastAi } from "../services/aiUndo.js";
 import { applyStoryPatch } from "../services/storyClient.js";
 import { lineDiff } from "../utils/lineDiff.js";
@@ -64,6 +65,7 @@ const {
   syncMsg,
   error,
   floatExpanded,
+  selectedTropeIds,
 } = toRefs(aiPanelForm);
 
 const instructionEl = ref(null);
@@ -99,6 +101,74 @@ const characterTags = computed(() => {
     out.push({ id: e.id || title, title });
   }
   return out;
+});
+
+const tropeTags = computed(() => appState.tropeList || []);
+const tropeTagsPlot = computed(() =>
+  tropeTags.value.filter((x) => x && x.kind === "trope")
+);
+const tropeTagsKink = computed(() =>
+  tropeTags.value.filter((x) => x && x.kind === "kink")
+);
+const showTropeRow = computed(() => tropeTags.value.length > 0);
+
+function tropeIdsSig(ids) {
+  return JSON.stringify([...(ids || [])].map(String).sort());
+}
+
+function hydrateTropesFromChapter() {
+  const ch = ((appState.project && appState.project.chapters) || []).find(
+    (c) => c.id === appState.chapterId
+  );
+  const ids = ch && Array.isArray(ch.trope_ids) ? ch.trope_ids.map(String) : [];
+  if (tropeIdsSig(ids) !== tropeIdsSig(selectedTropeIds.value)) {
+    selectedTropeIds.value = ids;
+  }
+}
+
+async function persistSelectedTropes() {
+  if (!appState.projectRoot || !appState.chapterId) return;
+  try {
+    await updateChapterMeta(appState.chapterId, {
+      trope_ids: [...(selectedTropeIds.value || [])],
+    });
+  } catch (e) {
+    console.warn("[AiPanel] persist tropes", e);
+  }
+}
+
+function isTropeSelected(id) {
+  return (selectedTropeIds.value || []).includes(id);
+}
+
+function toggleTrope(id) {
+  const ids = [...(selectedTropeIds.value || [])];
+  const i = ids.indexOf(id);
+  if (i >= 0) ids.splice(i, 1);
+  else ids.push(id);
+  selectedTropeIds.value = ids;
+  void persistSelectedTropes();
+}
+
+watch(() => appState.chapterId, hydrateTropesFromChapter);
+watch(
+  () => {
+    const ch = ((appState.project && appState.project.chapters) || []).find(
+      (c) => c.id === appState.chapterId
+    );
+    return ch ? tropeIdsSig(ch.trope_ids) : "";
+  },
+  hydrateTropesFromChapter
+);
+watch(
+  () => appState.tropeRevision,
+  () => {
+    void refreshTropeIndex();
+  }
+);
+onMounted(() => {
+  hydrateTropesFromChapter();
+  void refreshTropeIndex();
 });
 
 function rememberInstrCaret() {
@@ -437,6 +507,7 @@ async function onRun() {
       task: task.value,
       instruction: instruction.value,
       selection: selection.value,
+      selected_trope_ids: [...(selectedTropeIds.value || [])],
     };
     const req =
       task.value === "continue" || task.value === "outline"
@@ -732,6 +803,34 @@ function onToggleLayout() {
             class="char-tag"
             :title="$t('ai.insertChar', { title: c.title })"
             @click="insertCharacterName(c.title)"
+          >
+            {{ c.title }}
+          </button>
+        </div>
+        <div
+          v-if="showTropeRow && floatExpanded && !floatBusy"
+          class="char-tag-row float-char-tags"
+          :aria-label="$t('ai.localTropes')"
+        >
+          <button
+            v-for="c in tropeTagsPlot"
+            :key="c.id"
+            type="button"
+            class="char-tag"
+            :class="{ 'is-on': isTropeSelected(c.id) }"
+            :title="$t('trope.selectHint')"
+            @click="toggleTrope(c.id)"
+          >
+            {{ c.title }}
+          </button>
+          <button
+            v-for="c in tropeTagsKink"
+            :key="c.id"
+            type="button"
+            class="char-tag is-kink"
+            :class="{ 'is-on': isTropeSelected(c.id) }"
+            :title="$t('trope.selectHint')"
+            @click="toggleTrope(c.id)"
           >
             {{ c.title }}
           </button>
@@ -1188,6 +1287,30 @@ function onToggleLayout() {
             {{ c.title }}
           </button>
         </div>
+        <div v-if="showTropeRow" class="char-tag-row" :aria-label="$t('ai.localTropes')">
+          <button
+            v-for="c in tropeTagsPlot"
+            :key="c.id"
+            type="button"
+            class="char-tag"
+            :class="{ 'is-on': isTropeSelected(c.id) }"
+            :title="$t('trope.selectHint')"
+            @click="toggleTrope(c.id)"
+          >
+            {{ c.title }}
+          </button>
+          <button
+            v-for="c in tropeTagsKink"
+            :key="c.id"
+            type="button"
+            class="char-tag is-kink"
+            :class="{ 'is-on': isTropeSelected(c.id) }"
+            :title="$t('trope.selectHint')"
+            @click="toggleTrope(c.id)"
+          >
+            {{ c.title }}
+          </button>
+        </div>
       </div>
       <div v-if="task === 'continue'" class="field queue-field">
         <CapsuleSwitch
@@ -1460,6 +1583,18 @@ function onToggleLayout() {
 .char-tag:hover {
   background: var(--accent-soft);
   color: var(--accent-hover);
+}
+.char-tag.is-on {
+  background: var(--accent);
+  color: #fff;
+}
+.char-tag.is-on:hover {
+  background: var(--accent-hover);
+  color: #fff;
+}
+.char-tag.is-kink:not(.is-on) {
+  outline: 1px dashed color-mix(in srgb, var(--accent) 40%, transparent);
+  outline-offset: -1px;
 }
 .queue-field {
   display: flex;

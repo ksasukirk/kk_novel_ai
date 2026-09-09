@@ -51,6 +51,9 @@ pub struct ChapterMeta {
     pub character_knows: String,
     #[serde(default)]
     pub beats: Vec<SceneBeat>,
+    /// 本章勾选的情节/性癖库条目 id（生成强制注入，不进普通 lore RAG）
+    #[serde(default)]
+    pub trope_ids: Vec<String>,
 }
 fn default_status() -> String {
     "draft".into()
@@ -81,6 +84,7 @@ pub struct ChapterMetaPatch {
     pub reader_knows: Option<String>,
     pub character_knows: Option<String>,
     pub beats: Option<Vec<SceneBeat>>,
+    pub trope_ids: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -354,6 +358,8 @@ pub fn create_project(root: &Path, title: &str) -> AppResult<OpenedProject> {
     fs::create_dir_all(chapters_dir(root))?;
     fs::create_dir_all(lore_dir(root).join("characters"))?;
     fs::create_dir_all(lore_dir(root).join("world"))?;
+    fs::create_dir_all(lore_dir(root).join("tropes"))?;
+    fs::create_dir_all(lore_dir(root).join("kinks"))?;
     let chapter_id = Uuid::new_v4().to_string();
     let file = "0001-第一章.md".to_string();
     let project = NovelProject {
@@ -385,6 +391,7 @@ pub fn create_project(root: &Path, title: &str) -> AppResult<OpenedProject> {
             reader_knows: String::new(),
             character_knows: String::new(),
             beats: vec![],
+            trope_ids: vec![],
         }],
         outline_mindmap: None,
         created_at: now(),
@@ -418,6 +425,8 @@ pub fn create_knowledge_base(
     fs::create_dir_all(chapters_dir(root))?;
     fs::create_dir_all(lore_dir(root).join("characters"))?;
     fs::create_dir_all(lore_dir(root).join("world"))?;
+    fs::create_dir_all(lore_dir(root).join("tropes"))?;
+    fs::create_dir_all(lore_dir(root).join("kinks"))?;
     fs::create_dir_all(root.join("story"))?;
     let project = NovelProject {
         id: Uuid::new_v4().to_string(),
@@ -751,6 +760,7 @@ pub fn create_chapter(root: &Path, title: &str, summary: &str) -> AppResult<Chap
         reader_knows: String::new(),
         character_knows: String::new(),
         beats: vec![],
+        trope_ids: vec![],
     };
     fs::write(
         chapters_dir(root).join(&file),
@@ -824,6 +834,9 @@ pub fn update_chapter_meta(
     }
     if let Some(beats) = patch.beats {
         meta.beats = beats;
+    }
+    if let Some(ids) = patch.trope_ids {
+        meta.trope_ids = ids;
     }
     let out = meta.clone();
     save_project_meta(root, &opened.project)?;
@@ -1439,6 +1452,8 @@ pub fn upsert_lore(root: &Path, mut entry: LoreEntry) -> AppResult<LoreEntry> {
     }
     let kind_dir = match entry.kind.as_str() {
         "character" => "characters",
+        "trope" => "tropes",
+        "kink" => "kinks",
         _ => "world",
     };
     let dir = lore_dir(root).join(kind_dir);
@@ -1560,6 +1575,7 @@ pub fn replace_all_chapters(root: &Path, chapters: &[(String, String)]) -> AppRe
             reader_knows: String::new(),
             character_knows: String::new(),
             beats: vec![],
+            trope_ids: vec![],
         });
     }
     opened.project.chapters = metas;

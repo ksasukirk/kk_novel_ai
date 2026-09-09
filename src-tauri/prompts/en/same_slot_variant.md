@@ -13,6 +13,7 @@ Hard rules:
 - Do not repeat sentence patterns or plot in two consecutive paragraphs
 - Action subjects must be clear; anatomy ownership and dialogue must match the action happening now
 - Rhetoric ban: no stacked "not A, but B" / "it isn't… it's…" contrast
+- **Trope / kink library**: if selected tropes are not "(none)", fulfill them as process; do not name-drop; do not treat unselected entries as must-dos
 
 Style:
 {{style}}
@@ -31,6 +32,9 @@ Canon (locked, must not be broken):
 
 Related lore:
 {{lore}}
+
+Selected tropes and kinks (fulfill as process; ignore if empty):
+{{tropes}}
 
 Chapter outline:
 {{outline}}

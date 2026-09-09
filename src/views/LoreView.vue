@@ -16,6 +16,7 @@ import {
   mergeVisualIntoAttrs,
   visualFromAttrs,
 } from "../utils/loreVisual.js";
+import { isTropeKind } from "../utils/tropeKinds.js";
 
 defineProps({
   embedded: { type: Boolean, default: false },
@@ -51,7 +52,7 @@ const isNovel = computed(() => {
 const globalOnly = computed(() => !isNovel.value);
 
 const visibleItems = computed(() => {
-  let list = items.value;
+  let list = items.value.filter((it) => !isTropeKind(it.kind));
   if (isNovel.value) {
     list = list.filter((it) => it.scope === tab.value);
   }

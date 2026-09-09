@@ -359,6 +359,8 @@ const SOURCE_KIND_KEYS = {
   must_do: "block.kindMust",
   beat: "block.kindBeat",
   lore: "block.kindLore",
+  trope: "block.kindTrope",
+  kink: "block.kindKink",
 };
 
 function sourceKindLabel(kind) {
@@ -417,6 +419,11 @@ export function formatBlockSources(block, opts = {}) {
     parts.push(
       `${t(loreKey, { title: titles })}${lore.length > 6 ? t("block.loreMore", { n: lore.length }) : ""}`
     );
+  }
+
+  const tropes = [...byKind("trope"), ...byKind("kink")].map((x) => x.title).filter(Boolean);
+  if (tropes.length) {
+    parts.push(t("block.tropesLine", { title: tropes.slice(0, 6).join(sep) }));
   }
 
   const beats = byKind("beat").map((x) => x.title).filter(Boolean);
