@@ -6,7 +6,7 @@
 
 | 项 | 值 |
 |---|---|
-| 当前版本 | `0.2.35`（`package.json` / `src-tauri/Cargo.toml` / `src-tauri/tauri.conf.json` 同步） |
+| 当前版本 | `0.2.36`（`package.json` / `src-tauri/Cargo.toml` / `src-tauri/tauri.conf.json` 同步） |
 | 标识符 | `com.kk.kk-novel-ai` |
 | 仓库 | [https://github.com/ksasukirk/kk_novel_ai](https://github.com/ksasukirk/kk_novel_ai) |
 | 作者 | kk |
@@ -52,21 +52,21 @@
 | R21 | v0.2.33 情节库独立目录 + 列表自动保存 + 扫描用量进度 | 完成 | [`paths.rs`](src-tauri/src/paths.rs)、[`kb/mod.rs`](src-tauri/src/kb/mod.rs)、[`project/mod.rs`](src-tauri/src/project/mod.rs)、[`import/mod.rs`](src-tauri/src/import/mod.rs)、[`TropeLibraryView.vue`](src/views/TropeLibraryView.vue)、[`tropeScan.js`](src/services/tropeScan.js)、[`GenProgressBar.vue`](src/components/GenProgressBar.vue) |
 | R22 | v0.2.34 近义合并补充 + 作品卡总结三态 | 完成 | [`trope_merge.rs`](src-tauri/src/project/trope_merge.rs)、[`trope_summary.rs`](src-tauri/src/project/trope_summary.rs)、[`ProjectHome.vue`](src/views/ProjectHome.vue)、[`tropeMatch.js`](src/utils/tropeMatch.js)、[`trope_extract.md`](src-tauri/prompts/trope_extract.md) |
 | R23 | v0.2.35 一键总结排队 / 批量进度 / 可取消 | 完成 | [`tropeScan.js`](src/services/tropeScan.js) `scanTropesQueue`、[`ProjectHome.vue`](src/views/ProjectHome.vue)、[`GenProgressBar.vue`](src/components/GenProgressBar.vue)、[`trope_summary.rs`](src-tauri/src/project/trope_summary.rs) `has_prose` |
+| R24 | v0.2.36 发版版本号对齐（npm / Cargo / Tauri） | 完成 | [`package.json`](package.json)、[`src-tauri/Cargo.toml`](src-tauri/Cargo.toml)、[`src-tauri/Cargo.lock`](src-tauri/Cargo.lock)、[`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json)、本文 |
 
 ---
 
-## 1. 本版（0.2.35）做了什么
+## 1. 本版（0.2.36）做了什么
 
-相对 `0.2.34`，本版让多本书的情节 / 性癖总结不必一本本点：作品首页可**一键总结**所有未总结或已修改的书，按顺序排队扫描进全局库，进度条显示「第几本 / 共几本 · 书名 · 百分比 · 章进度」，随时可取消；没有正文的空书不会进队。
+相对 `0.2.35`，本版是一次**发版版本对齐**：前端 npm、Rust crate 与 Tauri 产品版本统一到 `0.2.36`，便于安装包、应用内更新与 GitHub Release 标签一致。本版**没有新增功能改动**；用户可感知的写作 / 情节库能力与 `0.2.35` 相同。
 
-- **一键总结排队**：首页工具栏「一键总结 (n)」收集未总结 / 已修改且有正文的书，确认后按顺序调用全书扫描；一本失败继续下一本；取消则停。见 [`src/views/ProjectHome.vue`](src/views/ProjectHome.vue) `onSummarizeAllPending`、[`src/services/tropeScan.js`](src/services/tropeScan.js) `scanTropesQueue` / `isTropeScanBusy` / `cancelTropeScan`。
-- **批量进度与页眉**：`batchRunning` / `batchIndex` / `batchTotal` / `batchTitle` 驱动进度条与状态文案；页眉在批量扫时也保持进度条。见 [`src/components/GenProgressBar.vue`](src/components/GenProgressBar.vue)、[`src/App.vue`](src/App.vue)、i18n `trope.scanMeterBatch` / `project.tropeSummaryAll*`（[`zh-CN.json`](src/i18n/locales/zh-CN.json)、[`en.json`](src/i18n/locales/en.json)、[`ja.json`](src/i18n/locales/ja.json)）。
-- **空书跳过排队**：状态 API 增加 `has_prose`；无章正文的书不计入待总结列表。见 [`src-tauri/src/project/trope_summary.rs`](src-tauri/src/project/trope_summary.rs)。
-- **卡片按钮更干净**：已总结（`current`）的书不再显示单卡「总结」按钮；批量进行中其它书的总结按钮会禁用。见 [`src/views/ProjectHome.vue`](src/views/ProjectHome.vue)。
-- **版本号同步**：[`package.json`](package.json)、[`src-tauri/Cargo.toml`](src-tauri/Cargo.toml)（及 [`Cargo.lock`](src-tauri/Cargo.lock)）、[`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json) 均为 `0.2.35`。
+- **版本号同步**：[`package.json`](package.json)、[`src-tauri/Cargo.toml`](src-tauri/Cargo.toml)（及 [`Cargo.lock`](src-tauri/Cargo.lock)）、[`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json) 均为 `0.2.36`。
+- **文档落盘**：本文按发版 diff 重写，标明本版仅为版本对齐，并保留上一版已交付能力说明。
 
-**上一版（0.2.34）及更早已交付、本版继续可用的体验**：
+**上一版（0.2.35）及更早已交付、本版继续可用的体验**：
 
+- **一键总结排队**：作品首页「一键总结」收集未总结 / 已修改且有正文的书，确认后按顺序全书扫描进全局库；一本失败继续下一本；随时可取消；进度条显示「第几本 / 共几本 · 书名 · 百分比 · 章进度」。见 [`ProjectHome.vue`](src/views/ProjectHome.vue)、[`tropeScan.js`](src/services/tropeScan.js) `scanTropesQueue`、[`GenProgressBar.vue`](src/components/GenProgressBar.vue)。
+- **空书跳过排队**：状态含 `has_prose`；无章正文的书不进待总结列表。见 [`trope_summary.rs`](src-tauri/src/project/trope_summary.rs)。
 - **近义合并、不新开、不覆盖**：扫描 / 抽取命中近义玩法只补写法；打开库时 compact；`trope_extract` 三语 Prompt 禁止近义新开卡。
 - **作品卡总结三态**：未总结 / 已总结 / 已修改；单卡「总结」对该书全书扫描；改正文打 dirty；扫描成功盖章。
 - **独立全局库目录**：`novels/_library` 列表 JSON；编辑自动保存；扫描进度含分块百分比与用量。
