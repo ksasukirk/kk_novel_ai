@@ -173,6 +173,9 @@ pub struct WritingRequest {
     /// 本轮勾选的情节/性癖 id；Some（含空数组）覆盖本章；None 回退 chapter.trope_ids
     #[serde(default)]
     pub selected_trope_ids: Option<Vec<String>>,
+    /// 扫描时冻结的情节/性癖名单；Some 时 `trope_extract` 不再读盘，前缀可跨块缓存
+    #[serde(default)]
+    pub known_tropes_snapshot: Option<String>,
 }
 
 /// 单次生成实际注入的上下文来源（挂到生成块，便于回看情节依据）
@@ -609,21 +612,44 @@ fn tropes_to_text(entries: &[&LoreEntry]) -> String {
         .join("\n")
 }
 
-fn known_tropes_catalog(entries: &[LoreEntry]) -> String {
-    let mut lines: Vec<String> = entries
-        .iter()
-        .filter(|e| is_trope_kind(&e.kind))
-        .map(|e| {
-            let kind_label = if e.kind == "kink" { "kink" } else { "trope" };
-            format!("- {} ({})", e.title, kind_label)
-        })
-        .collect();
-    if lines.is_empty() {
+/// 压缩名单：按 kind 各一行，库内「最新在前」翻成「旧→新」以便新卡只追加在行尾，保住 DeepSeek 前缀缓存。
+pub(crate) fn format_known_tropes_compact(entries: &[LoreEntry]) -> String {
+    let mut kinks: Vec<String> = Vec::new();
+    let mut tropes: Vec<String> = Vec::new();
+    for e in entries {
+        if !is_trope_kind(&e.kind) {
+            continue;
+        }
+        let title = e.title.trim();
+        if title.is_empty() {
+            continue;
+        }
+        let bucket = if e.kind == "kink" {
+            &mut kinks
+        } else {
+            &mut tropes
+        };
+        if !bucket.iter().any(|x| x == title) {
+            bucket.push(title.to_string());
+        }
+    }
+    kinks.reverse();
+    tropes.reverse();
+    if kinks.is_empty() && tropes.is_empty() {
         return "（无）".into();
     }
-    lines.sort();
-    lines.dedup();
-    lines.join("\n")
+    let mut parts = Vec::new();
+    if !kinks.is_empty() {
+        parts.push(format!("kink: {}", kinks.join(" / ")));
+    }
+    if !tropes.is_empty() {
+        parts.push(format!("trope: {}", tropes.join(" / ")));
+    }
+    parts.join("\n")
+}
+
+fn known_tropes_catalog(entries: &[LoreEntry]) -> String {
+    format_known_tropes_compact(entries)
 }
 
 fn resolve_selected_trope_ids(req: &WritingRequest, chapter: &project::ChapterMeta) -> Vec<String> {
@@ -735,9 +761,11 @@ fn resolve_writing_options(
         }
     });
     // 写作任务：max_tokens 始终与规定字数同量级；分析任务用较短上限
-    let max_tokens = if matches!(
+    let max_tokens = if matches!(task, WritingTask::TropeExtract) {
+        req.max_tokens.or(Some(1024))
+    } else if matches!(
         task,
-        WritingTask::BlockDigest | WritingTask::CastExtract | WritingTask::TropeExtract
+        WritingTask::BlockDigest | WritingTask::CastExtract
     ) {
         req.max_tokens.or(Some(512))
     } else if matches!(
@@ -820,14 +848,10 @@ pub fn assemble_messages_with_scores(
         } else {
             req.instruction.as_str()
         };
-        let known_digest = {
-            let list = collect_known_trope_titles(root, &opened.project);
-            if list.is_empty() {
-                "（无）".into()
-            } else {
-                list.join("\n")
-            }
-        };
+        let known_digest = format_known_tropes_compact(&collect_known_trope_entries(
+            root,
+            &opened.project,
+        ));
         let user = render_template(
             task.template(),
             &[
@@ -895,40 +919,42 @@ pub fn assemble_messages_with_scores(
         });
     }
 
-    // 情节/性癖抽取：对照已知名单，不拉 RAG
+    // 情节/性癖抽取：对照已知名单，不拉 RAG。规则+名单放 system，正文单独 user，便于前缀缓存。
     if task == WritingTask::TropeExtract {
         let block_text = if !req.selection.trim().is_empty() {
             req.selection.clone()
         } else {
-            take_tail(&content, 4000)
+            take_tail(&content, 8000)
         };
-        let known_list = collect_known_trope_titles(root, &opened.project);
-        let known_tropes = if known_list.is_empty() {
-            "（无）".into()
+        let known_tropes = if let Some(snap) = &req.known_tropes_snapshot {
+            if snap.trim().is_empty() {
+                "（无）".into()
+            } else {
+                snap.clone()
+            }
         } else {
-            known_list.join("\n")
+            format_known_tropes_compact(&collect_known_trope_entries(root, &opened.project))
         };
         let instruction = if req.instruction.is_empty() {
             "（无）"
         } else {
             req.instruction.as_str()
         };
-        let user = render_template(
+        let system = render_template(
             task.template(),
             &[
                 ("known_tropes", &known_tropes),
-                ("block_text", &block_text),
                 ("instruction", instruction),
             ],
         );
         let messages = vec![
             ChatMessage {
                 role: "system".into(),
-                content: "你是小说设定助理，只输出规定 JSON，不要解释。".into(),
+                content: system,
             },
             ChatMessage {
                 role: "user".into(),
-                content: user,
+                content: block_text,
             },
         ];
         return Ok(AssembledWriting {
@@ -1650,18 +1676,20 @@ fn collect_known_character_names(root: &Path, project: &project::NovelProject) -
     names
 }
 
-/// 收集本篇 + 挂接库中的情节/性癖标题，供 digest / trope_extract 对照
-fn collect_known_trope_titles(root: &Path, project: &project::NovelProject) -> Vec<String> {
-    let mut lines: Vec<String> = Vec::new();
+/// 收集本篇 + 全局库 + 挂接库中的情节/性癖条目，供 digest / 写后抽取对照
+fn collect_known_trope_entries(root: &Path, project: &project::NovelProject) -> Vec<LoreEntry> {
+    let mut out: Vec<LoreEntry> = Vec::new();
     let mut push_entry = |e: &LoreEntry| {
         if !is_trope_kind(&e.kind) {
             return;
         }
-        let kind_label = if e.kind == "kink" { "kink" } else { "trope" };
-        let line = format!("- {} ({})", e.title.trim(), kind_label);
-        if !line.contains("-  ()") && !lines.iter().any(|x| x == &line) {
-            lines.push(line);
+        if e.title.trim().is_empty() {
+            return;
         }
+        if out.iter().any(|x| x.id == e.id && !e.id.is_empty()) {
+            return;
+        }
+        out.push(e.clone());
     };
     if let Ok(local) = project::list_lore(root) {
         for e in &local {
@@ -1689,9 +1717,7 @@ fn collect_known_trope_titles(root: &Path, project: &project::NovelProject) -> V
             }
         }
     }
-    lines.sort();
-    lines.dedup();
-    lines
+    out
 }
 
 pub async fn run_writing(
@@ -2355,7 +2381,25 @@ fn resolve_fallback_model(
 
 #[cfg(test)]
 mod tests {
-    use super::{outline_continue_max_tokens, outline_split_max_tokens};
+    use super::{
+        format_known_tropes_compact, outline_continue_max_tokens, outline_split_max_tokens,
+    };
+    use crate::project::LoreEntry;
+
+    fn dummy_lore(id: &str, kind: &str, title: &str) -> LoreEntry {
+        LoreEntry {
+            id: id.into(),
+            kind: kind.into(),
+            title: title.into(),
+            content: String::new(),
+            keywords: vec![],
+            links: vec![],
+            attrs: Default::default(),
+            sources: vec![],
+            unique: false,
+            updated_at: String::new(),
+        }
+    }
 
     #[test]
     fn split_tokens_floor_on_short_prompt() {
@@ -2380,5 +2424,40 @@ mod tests {
         assert!(n >= 1844, "got {n}");
         assert!(n <= 8192);
         assert_eq!(outline_continue_max_tokens(7000, 50_000), 8192);
+    }
+
+    #[test]
+    fn compact_catalog_empty() {
+        assert_eq!(format_known_tropes_compact(&[]), "（无）");
+    }
+
+    #[test]
+    fn compact_catalog_appends_newest_at_end() {
+        let old = dummy_lore("1", "kink", "旧卡");
+        let newer = dummy_lore("2", "kink", "新卡");
+        // 库文件最新在前
+        let before = format_known_tropes_compact(std::slice::from_ref(&old));
+        let after = format_known_tropes_compact(&[newer, old]);
+        assert_eq!(before, "kink: 旧卡");
+        assert!(
+            after.starts_with("kink: 旧卡"),
+            "prefix must stay stable, got {after}"
+        );
+        assert!(
+            after.ends_with("新卡"),
+            "newest title appends at end, got {after}"
+        );
+    }
+
+    #[test]
+    fn compact_catalog_groups_kinds() {
+        let t = dummy_lore("t", "trope", "套路甲");
+        let k = dummy_lore("k", "kink", "玩法乙");
+        let s = format_known_tropes_compact(&[t, k]);
+        assert!(s.contains("kink: 玩法乙"));
+        assert!(s.contains("trope: 套路甲"));
+        let kink_at = s.find("kink:").unwrap();
+        let trope_at = s.find("trope:").unwrap();
+        assert!(kink_at < trope_at);
     }
 }

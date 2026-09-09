@@ -61,6 +61,16 @@
 | M57 | 情节库落到运行目录 novels/_library | 完成 | `paths::trope_library_dir`、`kb::ensure_trope_library`；旧角色仓 tropes 迁移 |
 | M58 | 近义情节/性癖合并补充（不新开、不覆盖） | 完成 | `project/trope_merge.rs`、`upsert_trope_list_entry`、`ensure_trope_library` compact、`tropeMatch.js`、`trope_extract.md` |
 | M59 | 作品卡情节/性癖总结按钮与三态标记 | 完成 | `project/trope_summary.rs`、`tropes_scan` 盖章、`trope_summary_status`、`ProjectHome.vue` |
+| M60 | 情节扫描降本：冻结名单 + 前缀缓存 + 大切块 | 完成 | `writing/mod.rs` `format_known_tropes_compact` / `known_tropes_snapshot`；`import/mod.rs` `chunk_prose`；`prompts/trope_extract.md` |
+
+### M60 明细 TODO
+
+| # | 项 | 状态 | 路径 |
+|---|---|---|---|
+| 1 | 扫描开书冻结全局库名单，块间不再读盘重排 | 完成 | [`src-tauri/src/writing/mod.rs`](../src-tauri/src/writing/mod.rs) `WritingRequest.known_tropes_snapshot`；[`src-tauri/src/import/mod.rs`](../src-tauri/src/import/mod.rs) `tropes_scan_range` |
+| 2 | 名单压成 `kink:` / `trope:` 两行，新卡只追加行尾 | 完成 | [`src-tauri/src/writing/mod.rs`](../src-tauri/src/writing/mod.rs) `format_known_tropes_compact` |
+| 3 | 规则+名单进 system，正文单独 user；每块最多 8 条 | 完成 | [`src-tauri/prompts/trope_extract.md`](../src-tauri/prompts/trope_extract.md)（及 `en/` `ja/`） |
+| 4 | 切块 7000/8000；抽取 `max_tokens` 1024 | 完成 | [`src-tauri/src/import/mod.rs`](../src-tauri/src/import/mod.rs) `chunk_prose`；[`src-tauri/src/writing/mod.rs`](../src-tauri/src/writing/mod.rs) `ChatOptions` |
 
 ### M59 明细 TODO
 

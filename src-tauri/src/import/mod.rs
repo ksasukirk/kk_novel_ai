@@ -1056,6 +1056,7 @@ pub async fn distill_range(
             outline_run: None,
             split_mode: None,
             selected_trope_ids: None,
+            known_tropes_snapshot: None,
         };
         let sync_patch = match writing::run_writing(&client, &settings, &sync_req, None, |_| {}).await
         {
@@ -1340,8 +1341,8 @@ fn chunk_prose(text: &str) -> Vec<String> {
     if trimmed.is_empty() {
         return vec![];
     }
-    const SOFT: usize = 3500;
-    const HARD: usize = 4000;
+    const SOFT: usize = 7000;
+    const HARD: usize = 8000;
     if trimmed.chars().count() <= SOFT {
         return vec![trimmed.to_string()];
     }
@@ -1641,6 +1642,10 @@ pub async fn tropes_scan_range(
 
     emit(0, "", 0, 0, 0, 0, 0, 0, &acc_usage, acc_calls, acc_cost, &last_model);
 
+    let known_tropes_snapshot = Some(writing::format_known_tropes_compact(
+        &crate::kb::list_trope_library_entries(),
+    ));
+
     for (i, ch) in prepared.iter().enumerate() {
         if cancel.load(Ordering::Relaxed) {
             report.cancelled = true;
@@ -1718,6 +1723,7 @@ pub async fn tropes_scan_range(
                 task: "trope_extract".into(),
                 selection: chunk.clone(),
                 retry_on_loop: Some(false),
+                known_tropes_snapshot: known_tropes_snapshot.clone(),
                 ..Default::default()
             };
             match writing::run_writing(&client, &settings, &req, Some(cancel.clone()), |_| {}).await {
@@ -1854,6 +1860,21 @@ mod tests {
         let chunks = chunk_prose("短正文");
         assert_eq!(chunks, vec!["短正文".to_string()]);
         assert!(chunk_prose("   \n\n  ").is_empty());
+    }
+
+    #[test]
+    fn chunk_prose_keeps_medium_chapter() {
+        let text = "甲".repeat(5000);
+        let chunks = chunk_prose(&text);
+        assert_eq!(chunks.len(), 1, "5000 chars should stay one chunk");
+    }
+
+    #[test]
+    fn chunk_prose_splits_over_hard() {
+        let text = "乙".repeat(9000);
+        let chunks = chunk_prose(&text);
+        assert!(chunks.len() >= 2, "9000 chars should split, got {}", chunks.len());
+        assert!(chunks.iter().all(|c| c.chars().count() <= 8000));
     }
 
     #[test]
