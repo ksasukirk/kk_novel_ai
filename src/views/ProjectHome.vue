@@ -15,7 +15,7 @@ import { createBackdropDismiss } from "../utils/backdropDismiss.js";
 import { isMobileUx } from "../utils/platform.js";
 import { useToastError } from "../services/toast.js";
 import { msgMatchesKey, t } from "../i18n/index.js";
-import { scanTropesFromRoot, tropeScanState } from "../services/tropeScan.js";
+import { scanTropesFromRoot, scanTropesQueue, cancelTropeScan, isTropeScanBusy, tropeScanState } from "../services/tropeScan.js";
 
 const title = ref(t("project.untitled"));
 const error = useToastError();
@@ -227,15 +227,36 @@ function isSummaryBusy(path) {
 }
 
 function isSummaryDisabled(path) {
-  return !!(tropeScanState.running && tropeScanState.root !== path);
+  return !!(isTropeScanBusy() && !isSummaryBusy(path));
 }
+
+const pendingSummaryItems = computed(() =>
+  recentList.value.filter((item) => {
+    const s = summaryStatus(item.path);
+    if (s === "stale") return true;
+    if (s !== "none") return false;
+    const row = summaryByPath[item.path];
+    return !row || row.has_prose !== false;
+  })
+);
+
+const summarizeAllLabel = computed(() => {
+  if (tropeScanState.batchRunning) {
+    return t("project.tropeSummaryAllBusy", {
+      current: tropeScanState.batchIndex || 1,
+      total: tropeScanState.batchTotal || pendingSummaryItems.value.length,
+    });
+  }
+  const n = pendingSummaryItems.value.length;
+  return n ? t("project.tropeSummaryAllN", { n }) : t("project.tropeSummaryAll");
+});
 
 async function onSummarizeTropes(item, ev) {
   if (ev) {
     ev.preventDefault();
     ev.stopPropagation();
   }
-  if (!item || !item.path || tropeScanState.running) return;
+  if (!item || !item.path || isTropeScanBusy()) return;
   error.value = "";
   try {
     const r = await scanTropesFromRoot(item.path);
@@ -246,6 +267,46 @@ async function onSummarizeTropes(item, ev) {
     await refreshSummaryStatus();
   } catch (e) {
     error.value = String(e.message || e);
+  }
+}
+
+async function onSummarizeAllPending() {
+  if (isTropeScanBusy()) return;
+  error.value = "";
+  await refreshSummaryStatus();
+  const items = pendingSummaryItems.value.map((it) => ({
+    path: it.path,
+    title: it.title || "",
+  }));
+  if (!items.length) {
+    error.value = t("project.tropeSummaryAllNone");
+    return;
+  }
+  const ok = await appConfirm(t("project.tropeSummaryAllConfirm", { n: items.length }), {
+    title: t("project.tropeSummaryAll"),
+    confirmText: t("common.start"),
+    cancelText: t("common.cancel"),
+  });
+  if (!ok) return;
+  try {
+    const r = await scanTropesQueue(items);
+    await refreshSummaryStatus();
+    if (!r) return;
+    if (r.cancelled) {
+      appState.statusMessage = t("project.tropeSummaryAllCancelled", {
+        ok: r.ok,
+        total: r.total,
+      });
+    } else {
+      appState.statusMessage = t("project.tropeSummaryAllDone", {
+        ok: r.ok,
+        empty: r.empty,
+        failed: r.failed,
+      });
+    }
+  } catch (e) {
+    error.value = String(e.message || e);
+    await refreshSummaryStatus();
   }
 }
 
@@ -756,6 +817,23 @@ function heatCellTitle(d) {
       >
         {{ selectMode ? $t("project.doneSelect") : $t("project.multiSelect") }}
       </button>
+      <button
+        type="button"
+        class="app-btn"
+        :disabled="isTropeScanBusy() || (!tropeScanState.batchRunning && !pendingSummaryItems.length)"
+        :title="$t('project.tropeSummaryAllHint')"
+        @click="onSummarizeAllPending"
+      >
+        {{ summarizeAllLabel }}
+      </button>
+      <button
+        v-if="tropeScanState.batchRunning"
+        type="button"
+        class="app-btn"
+        @click="cancelTropeScan"
+      >
+        {{ $t("common.cancel") }}
+      </button>
       <template v-if="selectMode">
         <span class="select-hint muted">
           {{ $t("project.selectedCount", { n: selectedCount, total: recentList.length }) }}
@@ -829,6 +907,7 @@ function heatCellTitle(d) {
             <span v-if="isActive(item.path)" class="row-active-tag">{{ $t("project.current") }}</span>
             <div v-if="!selectMode" class="row-actions" @click.stop>
               <span
+                v-if="summaryStatus(item.path) !== 'current'"
                 class="card-ai-title card-trope-summary"
                 :class="{
                   busy: isSummaryBusy(item.path),

@@ -329,8 +329,8 @@ onUnmounted(() => {
           :llm-model="appState.llmModel || ''"
           :has-project="!!appState.projectRoot"
           :status-message="appState.statusMessage || ''"
-          :show-gen-progress="appState.generating || appState.genProgressPct > 0 || tropeScanState.running"
-          :keep-status-with-progress="tropeScanState.running"
+          :show-gen-progress="appState.generating || appState.genProgressPct > 0 || tropeScanState.running || tropeScanState.batchRunning"
+          :keep-status-with-progress="tropeScanState.running || tropeScanState.batchRunning"
           @toggle-sidebar="toggleSidebar"
         />
         <div

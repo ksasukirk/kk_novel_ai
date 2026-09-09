@@ -11,6 +11,10 @@ import { formatCost, formatTokens, usageTotalTokens } from "../utils/usageFormat
 
 export const tropeScanState = reactive({
   running: false,
+  batchRunning: false,
+  batchIndex: 0,
+  batchTotal: 0,
+  batchTitle: "",
   cancelled: false,
   requestId: "",
   root: "",
@@ -160,10 +164,80 @@ async function unbindEvents() {
   }
 }
 
+let batchAbort = false;
+
+export function isTropeScanBusy() {
+  return !!(tropeScanState.running || tropeScanState.batchRunning);
+}
+
 export function cancelTropeScan() {
+  batchAbort = true;
   const rid = tropeScanState.requestId;
   if (!rid) return;
   void invoke("llm_cancel", { requestId: rid }).catch(() => {});
+}
+
+/**
+ * 按顺序扫描多本（未总结 / 已修改）。一本失败继续下一本；取消则停。
+ * @param {{ path: string, title?: string }[]|string[]} entries
+ */
+export async function scanTropesQueue(entries) {
+  const list = (entries || [])
+    .map((e) => (typeof e === "string" ? { path: e, title: "" } : e))
+    .filter((e) => e && String(e.path || "").trim());
+  if (!list.length) {
+    return { ok: 0, empty: 0, failed: 0, cancelled: false, total: 0 };
+  }
+  if (tropeScanState.running || tropeScanState.batchRunning) return null;
+
+  batchAbort = false;
+  tropeScanState.batchRunning = true;
+  tropeScanState.batchTotal = list.length;
+  tropeScanState.batchIndex = 0;
+  tropeScanState.batchTitle = "";
+  const result = { ok: 0, empty: 0, failed: 0, cancelled: false, total: list.length };
+  try {
+    for (let i = 0; i < list.length; i += 1) {
+      if (batchAbort) {
+        result.cancelled = true;
+        break;
+      }
+      const item = list[i];
+      const path = String(item.path).trim();
+      tropeScanState.batchIndex = i + 1;
+      tropeScanState.batchTitle = item.title || "";
+      appState.statusMessage = t("project.tropeSummaryAllProgress", {
+        current: i + 1,
+        total: list.length,
+        title: item.title || path,
+      });
+      try {
+        const r = await scanTropesFromRoot(path);
+        if (batchAbort || (r && r.cancelled)) {
+          result.cancelled = true;
+          break;
+        }
+        if (!r) {
+          result.failed += 1;
+          continue;
+        }
+        if (Number(r.scanned || 0) === 0) result.empty += 1;
+        else result.ok += 1;
+      } catch {
+        result.failed += 1;
+        if (batchAbort) {
+          result.cancelled = true;
+          break;
+        }
+      }
+    }
+  } finally {
+    tropeScanState.batchRunning = false;
+    tropeScanState.batchIndex = 0;
+    tropeScanState.batchTotal = 0;
+    tropeScanState.batchTitle = "";
+  }
+  return result;
 }
 
 /**

@@ -13,7 +13,10 @@ defineProps({
   variant: { type: String, default: "compact" },
 });
 
-const scanRunning = computed(() => !!tropeScanState.running && !appState.generating);
+const scanRunning = computed(
+  () =>
+    (!!tropeScanState.running || !!tropeScanState.batchRunning) && !appState.generating
+);
 const visible = computed(
   () => !!appState.generating || appState.genProgressPct >= 100 || scanRunning.value
 );
@@ -31,6 +34,16 @@ const pct = computed(() => {
 });
 const label = computed(() => {
   if (scanRunning.value) {
+    if (tropeScanState.batchTotal > 1) {
+      return t("trope.scanMeterBatch", {
+        book: tropeScanState.batchIndex || 1,
+        books: tropeScanState.batchTotal,
+        title: tropeScanState.batchTitle || "",
+        pct: pct.value,
+        current: tropeScanState.current,
+        total: tropeScanState.total,
+      });
+    }
     return t("trope.scanMeter", {
       pct: pct.value,
       current: tropeScanState.current,

@@ -89,11 +89,13 @@ fn status_for_project(root: &Path) -> AppResult<Value> {
         }));
     }
     if !has_summary(&opened.project) {
+        let prose = has_chapter_prose(root, &opened.project);
         return Ok(json!({
             "root": root.to_string_lossy(),
             "status": "none",
             "summary_at": serde_json::Value::Null,
             "dirty": false,
+            "has_prose": prose,
         }));
     }
     let live = content_fingerprint(root, &opened.project);
@@ -113,6 +115,7 @@ fn status_for_project(root: &Path) -> AppResult<Value> {
         "status": if stale { "stale" } else { "current" },
         "summary_at": opened.project.trope_summary_at,
         "dirty": opened.project.trope_summary_dirty,
+        "has_prose": has_chapter_prose(root, &opened.project),
     }))
 }
 

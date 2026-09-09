@@ -70,6 +70,7 @@
 | 2 | 改正文/增删章打 dirty；扫描成功盖章；空书不盖 | 完成 | [`src-tauri/src/project/mod.rs`](../src-tauri/src/project/mod.rs) `write_chapter` / `create_chapter` / `delete_chapter` / `replace_all_chapters`；[`src-tauri/src/import/mod.rs`](../src-tauri/src/import/mod.rs) `tropes_scan_range` |
 | 3 | 批量状态 API（指纹漂移补 dirty） | 完成 | [`src-tauri/src/api.rs`](../src-tauri/src/api.rs) `trope_summary_status`；[`src-tauri/src/commands.rs`](../src-tauri/src/commands.rs)；[`src-tauri/src/cli.rs`](../src-tauri/src/cli.rs) |
 | 4 | 作品卡「总结」+ 未总结/已总结/已修改；点下直接扫 | 完成 | [`src/views/ProjectHome.vue`](../src/views/ProjectHome.vue)；[`src/services/projectClient.js`](../src/services/projectClient.js) `listTropeSummaryStatus`；[`src/services/tropeScan.js`](../src/services/tropeScan.js)；[`src/i18n/locales/{zh-CN,en,ja}.json`](../src/i18n/locales/zh-CN.json) |
+| 5 | 一键总结所有未总结/已修改（排队、可取消） | 完成 | [`src/services/tropeScan.js`](../src/services/tropeScan.js) `scanTropesQueue`；[`src/views/ProjectHome.vue`](../src/views/ProjectHome.vue)；[`src/components/GenProgressBar.vue`](../src/components/GenProgressBar.vue) |
 
 ### M58 明细 TODO
 
