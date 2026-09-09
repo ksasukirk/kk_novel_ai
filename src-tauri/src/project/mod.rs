@@ -2,8 +2,15 @@
 //! 代码路径: kk_novel_ai/src-tauri/src/project/mod.rs
 mod digest_sanitize;
 pub mod backup;
+mod trope_merge;
+mod trope_summary;
 
 pub use digest_sanitize::sanitize_block_digest;
+pub use trope_merge::{
+    compact_similar_tropes, find_similar_trope, merge_trope_lore, remap_chapter_trope_ids,
+    tropes_are_similar,
+};
+pub use trope_summary::{mark_trope_summary_dirty, stamp_trope_summary, trope_summary_status_list};
 
 use crate::error::{AppError, AppResult};
 use chrono::Utc;
@@ -117,6 +124,15 @@ pub struct NovelProject {
     pub outline_mindmap: Option<OutlineMindMap>,
     pub created_at: String,
     pub updated_at: String,
+    /// 上次成功全书情节/性癖扫描完成时间（RFC3339）；空=未总结
+    #[serde(default)]
+    pub trope_summary_at: Option<String>,
+    /// 总结时各章 id+正文的 SHA-256
+    #[serde(default)]
+    pub trope_summary_fingerprint: Option<String>,
+    /// 总结后正文已变，待重扫
+    #[serde(default)]
+    pub trope_summary_dirty: bool,
 }
 fn default_kind_novel() -> String {
     "novel".into()
@@ -397,6 +413,9 @@ pub fn create_project(root: &Path, title: &str) -> AppResult<OpenedProject> {
         outline_mindmap: None,
         created_at: now(),
         updated_at: now(),
+        trope_summary_at: None,
+        trope_summary_fingerprint: None,
+        trope_summary_dirty: false,
     };
     save_project_meta(root, &project)?;
     let _ = crate::kb::ensure_character_roster();
@@ -449,6 +468,9 @@ pub fn create_knowledge_base(
         outline_mindmap: None,
         created_at: now(),
         updated_at: now(),
+        trope_summary_at: None,
+        trope_summary_fingerprint: None,
+        trope_summary_dirty: false,
     };
     save_project_meta(root, &project)?;
     fs::write(
@@ -620,6 +642,9 @@ pub fn write_chapter(root: &Path, chapter_id: &str, content: &str) -> AppResult<
     let new_chars = count_non_ws(content);
     fs::write(&path, content)?;
     opened.project.updated_at = now();
+    if old != content {
+        mark_trope_summary_dirty(&mut opened.project);
+    }
     save_project_meta(root, &opened.project)?;
     if new_chars > old_chars {
         let _ = add_daily_chars(root, (new_chars - old_chars) as u64);
@@ -772,6 +797,7 @@ pub fn create_chapter(root: &Path, title: &str, summary: &str) -> AppResult<Chap
         vol.chapter_ids.push(meta.id.clone());
     }
     opened.project.chapters.push(meta.clone());
+    mark_trope_summary_dirty(&mut opened.project);
     save_project_meta(root, &opened.project)?;
     Ok(meta)
 }
@@ -791,6 +817,7 @@ pub fn delete_chapter(root: &Path, chapter_id: &str) -> AppResult<()> {
     for vol in &mut opened.project.volumes {
         vol.chapter_ids.retain(|id| id != chapter_id);
     }
+    mark_trope_summary_dirty(&mut opened.project);
     save_project_meta(root, &opened.project)?;
     Ok(())
 }
@@ -1545,21 +1572,35 @@ fn prune_legacy_trope_files(root: &Path, lore_id: &str) -> AppResult<()> {
 
 fn upsert_trope_list_entry(root: &Path, entry: LoreEntry) -> AppResult<LoreEntry> {
     migrate_trope_kind_lists(root)?;
-    for kind in ["trope", "kink"] {
-        let mut items = read_lore_kind_list(root, kind)?;
-        let before = items.len();
-        items.retain(|e| e.id != entry.id);
-        if items.len() != before {
+    let kind = if entry.kind == "kink" { "kink" } else { "trope" };
+    let other = if kind == "kink" { "trope" } else { "kink" };
+    let mut other_items = read_lore_kind_list(root, other)?;
+    let before = other_items.len();
+    other_items.retain(|e| e.id != entry.id);
+    if other_items.len() != before {
+        write_lore_kind_list(root, other, &other_items)?;
+    }
+    let mut items = read_lore_kind_list(root, kind)?;
+    if !entry.id.is_empty() {
+        if let Some(pos) = items.iter().position(|e| e.id == entry.id) {
+            items[pos] = entry.clone();
             write_lore_kind_list(root, kind, &items)?;
+            prune_legacy_trope_files(root, &entry.id)?;
+            return Ok(entry);
         }
     }
-    let kind = if entry.kind == "kink" { "kink" } else { "trope" };
-    let mut items = read_lore_kind_list(root, kind)?;
-    if let Some(pos) = items.iter().position(|e| e.id == entry.id) {
-        items[pos] = entry.clone();
-    } else {
-        items.insert(0, entry.clone());
+    if let Some(pos) = items.iter().position(|e| tropes_are_similar(e, &entry)) {
+        let merged = merge_trope_lore(&items[pos], &entry);
+        items[pos] = merged.clone();
+        write_lore_kind_list(root, kind, &items)?;
+        prune_legacy_trope_files(root, &merged.id)?;
+        return Ok(merged);
     }
+    let mut entry = entry;
+    if entry.id.is_empty() {
+        entry.id = Uuid::new_v4().to_string();
+    }
+    items.insert(0, entry.clone());
     write_lore_kind_list(root, kind, &items)?;
     prune_legacy_trope_files(root, &entry.id)?;
     Ok(entry)
@@ -1629,11 +1670,11 @@ pub fn upsert_lore(root: &Path, mut entry: LoreEntry) -> AppResult<LoreEntry> {
         entry.attrs.remove("unique");
     }
     entry.updated_at = now();
-    if entry.id.is_empty() {
-        entry.id = Uuid::new_v4().to_string();
-    }
     if is_trope_kind(&entry.kind) {
         return upsert_trope_list_entry(root, entry);
+    }
+    if entry.id.is_empty() {
+        entry.id = Uuid::new_v4().to_string();
     }
     let kind_dir = match entry.kind.as_str() {
         "character" => "characters",
@@ -1797,6 +1838,7 @@ pub fn replace_all_chapters(root: &Path, chapters: &[(String, String)]) -> AppRe
             arc_summary: String::new(),
         });
     }
+    mark_trope_summary_dirty(&mut opened.project);
     save_project_meta(root, &opened.project)?;
     Ok(())
 }
@@ -1919,5 +1961,56 @@ mod tests {
         upsert_lore(&root, e).unwrap();
         assert!(read_lore_kind_list(&root, "trope").unwrap().is_empty());
         assert_eq!(read_lore_kind_list(&root, "kink").unwrap().len(), 1);
+    }
+
+    #[test]
+    fn tropes_similar_upsert_merges_without_replacing_title() {
+        let root = tmp_lore_root("similar_merge");
+        let mut keep = sample_kink("裙下暴露", "k1");
+        keep.keywords = vec!["短裙".into(), "真空".into(), "不穿内裤".into()];
+        upsert_lore(&root, keep).unwrap();
+        let mut add = sample_kink("真空短裙", "");
+        add.content = "凉风钻入腿心".into();
+        add.keywords = vec!["真空".into(), "短裙".into()];
+        let saved = upsert_lore(&root, add).unwrap();
+        assert_eq!(saved.id, "k1");
+        assert_eq!(saved.title, "裙下暴露");
+        assert!(saved.content.contains("body"));
+        assert!(saved.content.contains("凉风钻入腿心"));
+        assert!(saved.keywords.iter().any(|k| k == "真空短裙"));
+        assert_eq!(list_lore(&root).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn tropes_id_replace_keeps_user_edit() {
+        let root = tmp_lore_root("id_replace");
+        upsert_lore(&root, sample_kink("裙下暴露", "k1")).unwrap();
+        let mut edited = sample_kink("裙下暴露改名", "k1");
+        edited.content = "user rewrite".into();
+        let saved = upsert_lore(&root, edited).unwrap();
+        assert_eq!(saved.id, "k1");
+        assert_eq!(saved.title, "裙下暴露改名");
+        assert_eq!(saved.content, "user rewrite");
+        assert!(!saved.content.contains("body"));
+        assert_eq!(list_lore(&root).unwrap().len(), 1);
+    }
+
+    #[test]
+    fn tropes_compact_similar_maps_dropped_id() {
+        let root = tmp_lore_root("compact");
+        let mut keep = sample_kink("裙下暴露", "keep");
+        keep.keywords = vec!["短裙".into(), "真空".into()];
+        keep.content = "long body here".into();
+        let mut drop = sample_kink("真空短裙", "drop");
+        drop.content = "extra note".into();
+        write_lore_kind_list(&root, "kink", &[keep, drop]).unwrap();
+        let map = compact_similar_tropes(&root).unwrap();
+        assert_eq!(map.get("drop").map(String::as_str), Some("keep"));
+        let listed = list_lore(&root).unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].id, "keep");
+        assert_eq!(listed[0].title, "裙下暴露");
+        assert!(listed[0].content.contains("long body here"));
+        assert!(listed[0].content.contains("extra note"));
     }
 }

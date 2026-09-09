@@ -2245,7 +2245,7 @@ dependencies = [
 
 [[package]]
 name = "kk_novel_ai"
-version = "0.2.33"
+version = "0.2.34"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -2260,6 +2260,7 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
+ "sha2",
  "tauri",
  "tauri-build",
  "thiserror 1.0.69",

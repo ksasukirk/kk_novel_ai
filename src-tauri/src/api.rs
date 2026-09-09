@@ -897,6 +897,10 @@ pub fn trope_library_ensure() -> AppResult<Value> {
     }))
 }
 
+pub fn trope_summary_status(roots: Vec<String>) -> AppResult<Value> {
+    Ok(project::trope_summary_status_list(&roots))
+}
+
 /// 确保作品挂接了 @characters；已有则不动
 pub fn project_ensure_characters_link(root: &str) -> AppResult<Value> {
     let mut opened = project::open_project(Path::new(root))?;
@@ -1506,6 +1510,25 @@ pub async fn dispatch_rpc(req: Value) -> AppResult<Value> {
         "lore_list_scoped" => lore_list_scoped(req_str(&req, "root")?),
         "character_roster_ensure" => character_roster_ensure(),
         "trope_library_ensure" => trope_library_ensure(),
+        "trope_summary_status" => {
+            let mut roots: Vec<String> = req
+                .get("roots")
+                .and_then(|v| v.as_array())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|x| x.as_str().map(|s| s.to_string()))
+                        .collect()
+                })
+                .unwrap_or_default();
+            if roots.is_empty() {
+                if let Ok(one) = req_str(&req, "root") {
+                    if !one.is_empty() {
+                        roots.push(one.to_string());
+                    }
+                }
+            }
+            trope_summary_status(roots)
+        }
         "project_ensure_characters_link" => {
             project_ensure_characters_link(req_str(&req, "root")?)
         }

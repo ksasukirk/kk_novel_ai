@@ -15,6 +15,7 @@ import { createBackdropDismiss } from "../utils/backdropDismiss.js";
 import { isMobileUx } from "../utils/platform.js";
 import { useToastError } from "../services/toast.js";
 import { msgMatchesKey, t } from "../i18n/index.js";
+import { scanTropesFromRoot, tropeScanState } from "../services/tropeScan.js";
 
 const title = ref(t("project.untitled"));
 const error = useToastError();
@@ -28,6 +29,8 @@ const mobileUx = ref(isMobileUx());
 const backupInput = ref(null);
 /** path -> 正在 AI 生成书名 */
 const titleBusy = reactive({});
+/** path -> { status, summary_at, dirty } */
+const summaryByPath = reactive({});
 /** 多选模式 */
 const selectMode = ref(false);
 const selectedPaths = ref([]);
@@ -174,10 +177,76 @@ async function refreshStats() {
 }
 
 watch(() => appState.projectRoot, refreshStats, { immediate: true });
-onMounted(refreshSettings);
+watch(
+  () => recentList.value.map((item) => item.path).join("\n"),
+  refreshSummaryStatus
+);
+watch(() => appState.tropeRevision, refreshSummaryStatus);
+onMounted(async () => {
+  await refreshSettings();
+  await refreshSummaryStatus();
+});
 
 function isActive(path) {
   return path && appState.projectRoot && path === appState.projectRoot;
+}
+
+async function refreshSummaryStatus() {
+  const roots = recentList.value.map((item) => item.path).filter(Boolean);
+  if (!roots.length) {
+    Object.keys(summaryByPath).forEach((k) => delete summaryByPath[k]);
+    return;
+  }
+  try {
+    const r = await project.listTropeSummaryStatus(roots);
+    Object.keys(summaryByPath).forEach((k) => delete summaryByPath[k]);
+    for (const row of (r && r.items) || []) {
+      if (row && row.root) summaryByPath[row.root] = row;
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+function summaryStatus(path) {
+  const row = summaryByPath[path];
+  const s = row && row.status;
+  if (s === "current" || s === "stale" || s === "none") return s;
+  return "none";
+}
+
+function summaryLabel(path) {
+  const s = summaryStatus(path);
+  if (s === "current") return t("project.tropeSummaryOk");
+  if (s === "stale") return t("project.tropeSummaryDirty");
+  return t("project.tropeSummaryNone");
+}
+
+function isSummaryBusy(path) {
+  return !!(tropeScanState.running && tropeScanState.root === path);
+}
+
+function isSummaryDisabled(path) {
+  return !!(tropeScanState.running && tropeScanState.root !== path);
+}
+
+async function onSummarizeTropes(item, ev) {
+  if (ev) {
+    ev.preventDefault();
+    ev.stopPropagation();
+  }
+  if (!item || !item.path || tropeScanState.running) return;
+  error.value = "";
+  try {
+    const r = await scanTropesFromRoot(item.path);
+    if (!r) return;
+    if (!r.cancelled && Number(r.scanned || 0) === 0) {
+      error.value = t("project.tropeSummaryEmpty");
+    }
+    await refreshSummaryStatus();
+  } catch (e) {
+    error.value = String(e.message || e);
+  }
 }
 
 function shortPath(path) {
@@ -753,8 +822,21 @@ function heatCellTitle(d) {
         <div class="bar-body">
           <div class="bar-head">
             <span class="row-badge">{{ $t("project.novel") }}</span>
+            <span
+              class="row-summary-tag"
+              :class="'is-' + summaryStatus(item.path)"
+            >{{ summaryLabel(item.path) }}</span>
             <span v-if="isActive(item.path)" class="row-active-tag">{{ $t("project.current") }}</span>
             <div v-if="!selectMode" class="row-actions" @click.stop>
+              <span
+                class="card-ai-title card-trope-summary"
+                :class="{
+                  busy: isSummaryBusy(item.path),
+                  disabled: isSummaryDisabled(item.path),
+                }"
+                :title="$t('project.tropeSummaryHint')"
+                @click="onSummarizeTropes(item, $event)"
+              >{{ isSummaryBusy(item.path) ? "…" : $t("project.tropeSummary") }}</span>
               <span
                 class="card-ai-title"
                 :class="{ busy: titleBusy[item.path] }"
@@ -1005,6 +1087,7 @@ function heatCellTitle(d) {
 .bar-head {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
 }
 .plus {
@@ -1026,6 +1109,25 @@ function heatCellTitle(d) {
   background: var(--accent-soft);
   border-radius: 999px;
   padding: 1px 7px;
+}
+.row-summary-tag {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 1px 7px;
+}
+.row-summary-tag.is-none {
+  color: var(--muted);
+  background: rgba(128, 128, 128, 0.12);
+}
+.row-summary-tag.is-current {
+  color: var(--accent-hover);
+  background: var(--accent-soft);
+}
+.row-summary-tag.is-stale {
+  color: var(--error);
+  background: rgba(180, 60, 80, 0.12);
 }
 .row-title {
   font-size: 14px;
@@ -1075,6 +1177,13 @@ function heatCellTitle(d) {
 .card-ai-title.busy {
   opacity: 0.65;
   pointer-events: none;
+}
+.card-ai-title.disabled {
+  opacity: 0.4;
+  pointer-events: none;
+}
+.card-trope-summary {
+  min-width: 36px;
 }
 .card-forget {
   width: 22px;

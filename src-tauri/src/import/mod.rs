@@ -1275,21 +1275,9 @@ fn trope_key(title: &str) -> String {
     project::normalize_lore_title(title)
 }
 
-fn find_existing_trope(root: &Path, title: &str) -> AppResult<Option<LoreEntry>> {
-    let key = trope_key(title);
-    if key.is_empty() {
-        return Ok(None);
-    }
+fn find_existing_trope(root: &Path, title: &str, keywords: &[String], kind: &str) -> AppResult<Option<LoreEntry>> {
     let list = project::list_lore(root)?;
-    Ok(list.into_iter().find(|e| {
-        if e.kind != "trope" && e.kind != "kink" {
-            return false;
-        }
-        if trope_key(&e.title) == key {
-            return true;
-        }
-        e.keywords.iter().any(|k| trope_key(k) == key)
-    }))
+    Ok(project::find_similar_trope(&list, title, keywords, kind).cloned())
 }
 
 /// 按标题去重写入指定仓（情节/性癖）。返回 (条目, 是否新建)
@@ -1309,57 +1297,34 @@ pub fn upsert_trope_entry(
     };
     let found = match existing {
         Some(e) => Some(e),
-        None => find_existing_trope(root, title)?,
+        None => find_existing_trope(root, title, &draft.keywords, kind)?,
     };
     let created = found.is_none();
-    let mut entry = found.unwrap_or_else(|| LoreEntry {
-        id: Uuid::new_v4().to_string(),
+    let mut incoming = LoreEntry {
+        id: String::new(),
         kind: kind.into(),
         title: title.to_string(),
-        content: String::new(),
-        keywords: vec![],
+        content: draft.content.trim().to_string(),
+        keywords: draft.keywords.clone(),
         links: vec![],
         attrs: BTreeMap::new(),
         sources: vec![],
         unique: true,
         updated_at: String::new(),
-    });
-    if created {
-        entry.kind = kind.into();
-        entry.title = title.to_string();
-    }
-    entry.unique = true;
-    let content = draft.content.trim();
-    if !content.is_empty() {
-        if entry.content.is_empty() {
-            entry.content = content.to_string();
-        } else if !entry.content.contains(content) {
-            entry.content = format!("{}\n{}", entry.content, content);
-        }
-    }
+    };
     let evidence = draft.evidence.trim();
     if !evidence.is_empty() {
-        let prev = entry.attrs.get("evidence").cloned().unwrap_or_default();
-        if prev.is_empty() {
-            entry.attrs.insert("evidence".into(), evidence.to_string());
-        } else if !prev.contains(evidence) {
-            entry
-                .attrs
-                .insert("evidence".into(), format!("{prev}; {evidence}"));
-        }
+        incoming.attrs.insert("evidence".into(), evidence.to_string());
     }
-    for k in &draft.keywords {
-        let k = k.trim();
-        if k.is_empty() {
-            continue;
+    let entry = if let Some(keep) = found {
+        project::merge_trope_lore(&keep, &incoming)
+    } else {
+        incoming.id = Uuid::new_v4().to_string();
+        if !incoming.keywords.iter().any(|x| trope_key(x) == trope_key(title)) {
+            incoming.keywords.push(title.to_string());
         }
-        if !entry.keywords.iter().any(|x| x == k) {
-            entry.keywords.push(k.to_string());
-        }
-    }
-    if !entry.keywords.iter().any(|x| trope_key(x) == trope_key(title)) {
-        entry.keywords.push(title.to_string());
-    }
+        incoming
+    };
     let saved = project::upsert_lore(root, entry)?;
     Ok((saved, created))
 }
@@ -1850,6 +1815,9 @@ pub async fn tropes_scan_range(
     }
 
     apply_usage_to_scan_report(&mut report, &acc_usage, acc_calls, acc_cost, &last_model);
+    if !report.cancelled && report.scanned > 0 {
+        let _ = project::stamp_trope_summary(root);
+    }
     Ok(report)
 }
 

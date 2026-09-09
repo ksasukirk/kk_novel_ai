@@ -7,6 +7,7 @@ import { appState, bumpTropeRevision } from "../stores/appState.js";
 import { upsertLoreAt, ensureTropeLibrary } from "./projectClient.js";
 import { refreshTropeIndex } from "./tropeIndex.js";
 import { isTropeKind } from "../utils/tropeKinds.js";
+import { findSimilarTrope } from "../utils/tropeMatch.js";
 import { t } from "../i18n/index.js";
 
 const inFlightKeys = new Set();
@@ -16,13 +17,6 @@ function autoTropeEnabled() {
   if (!s) return true;
   if (s.writing_auto_trope === false) return false;
   return true;
-}
-
-function normalizeName(s) {
-  return String(s || "")
-    .trim()
-    .replace(/^\[.*?\]\s*/, "")
-    .toLowerCase();
 }
 
 function stripJsonFence(raw) {
@@ -60,16 +54,8 @@ function parseTropes(raw) {
   }
 }
 
-function findExisting(title) {
-  const key = normalizeName(title);
-  if (!key) return null;
-  for (const e of appState.tropeList || []) {
-    if (normalizeName(e.title) === key) return e;
-    for (const k of e.keywords || []) {
-      if (normalizeName(k) === key) return e;
-    }
-  }
-  return null;
+function findExisting(title, keywords, kind) {
+  return findSimilarTrope(appState.tropeList || [], title, keywords, kind);
 }
 
 /**
@@ -117,7 +103,7 @@ export async function runTropeExtract(opts) {
     const updated = [];
     let rosterRoot = "";
     for (const row of candidates.slice(0, 5)) {
-      const existing = findExisting(row.title);
+      const existing = findExisting(row.title, row.keywords, row.kind);
       const keywords = [...(existing?.keywords || [])];
       for (const k of [row.title, ...row.keywords]) {
         if (k && !keywords.includes(k)) keywords.push(k);
@@ -145,7 +131,7 @@ export async function runTropeExtract(opts) {
           root = rosterRoot;
         }
         if (!root) continue;
-        await upsertLoreAt(root, {
+        const saved = await upsertLoreAt(root, {
           id: existing?.id || "",
           kind: existing?.kind || row.kind,
           title: existing?.title || row.title,
@@ -157,8 +143,12 @@ export async function runTropeExtract(opts) {
           sources: existing?.sources || [],
           updated_at: "",
         });
-        if (existing) updated.push(existing.title || row.title);
-        else added.push(row.title);
+        const item = saved && saved.item;
+        if (existing || (item && item.title && item.title !== row.title)) {
+          updated.push((item && item.title) || (existing && existing.title) || row.title);
+        } else {
+          added.push((item && item.title) || row.title);
+        }
       } catch {
         /* 单条失败继续 */
       }

@@ -417,6 +417,12 @@ export async function ensureTropeLibrary() {
   return await invoke("trope_library_ensure");
 }
 
+export async function listTropeSummaryStatus(roots) {
+  const list = Array.isArray(roots) ? roots.filter(Boolean) : [];
+  if (!list.length) return { ok: true, items: [] };
+  return await invoke("trope_summary_status", { roots: list });
+}
+
 export async function upsertLore(entry) {
   return await upsertLoreAt(appState.projectRoot, entry);
 }

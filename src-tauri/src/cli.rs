@@ -420,6 +420,10 @@ enum TropesCmd {
         #[arg(long, default_value_t = 0)]
         to: u64,
     },
+    /// 批量读作品情节/性癖总结状态
+    Status {
+        roots: Vec<String>,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -1095,6 +1099,13 @@ async fn run_cmd(cli: Cli) -> i32 {
                 }))
                 .await
             }
+            TropesCmd::Status { roots } => {
+                dispatch_rpc(json!({
+                    "cmd": "trope_summary_status",
+                    "roots": roots
+                }))
+                .await
+            }
         },
         Commands::Stats { action } => match action {
             StatsCmd::Get { root } => dispatch_rpc(json!({ "cmd": "stats_get", "root": root })).await,
@@ -1325,6 +1336,7 @@ fn tools_manifest() -> Value {
             {"cmd": "import_txt", "args": ["root", "file", "title?"], "desc": "导入 TXT 为知识库（kind=knowledge_base）"},
             {"cmd": "import_distill", "args": ["root", "from?", "to?", "apply?", "resume?", "job_id?", "instruction?"], "desc": "按章蒸馏知识库"},
             {"cmd": "tropes_scan", "args": ["root", "from?", "to?"], "desc": "按章抽取情节/性癖到全局仓（to=0 扫完全书）"},
+            {"cmd": "trope_summary_status", "args": ["roots"], "desc": "批量读作品情节/性癖总结状态（未总结/已总结/已修改）"},
             {"cmd": "import_apply_pending", "args": ["root", "job_id"], "desc": "应用 distill pending"},
             {"cmd": "kb_registry_list", "desc": "列出小说知识库 + 通用库"},
             {"cmd": "kb_universal_open", "desc": "打开/初始化通用知识库"},

@@ -59,6 +59,26 @@
 | M55 | 全书/导入提取情节性癖到全局库 | 完成 | `tropes_scan`、`TropeLibraryView` 扫描按钮、蒸馏 tropes 双写全局仓 |
 | M56 | 情节/性癖列表存储 + 自动保存 | 完成 | `lore/tropes.json`、`lore/kinks.json`；情节库编辑 debounce 保存 |
 | M57 | 情节库落到运行目录 novels/_library | 完成 | `paths::trope_library_dir`、`kb::ensure_trope_library`；旧角色仓 tropes 迁移 |
+| M58 | 近义情节/性癖合并补充（不新开、不覆盖） | 完成 | `project/trope_merge.rs`、`upsert_trope_list_entry`、`ensure_trope_library` compact、`tropeMatch.js`、`trope_extract.md` |
+| M59 | 作品卡情节/性癖总结按钮与三态标记 | 完成 | `project/trope_summary.rs`、`tropes_scan` 盖章、`trope_summary_status`、`ProjectHome.vue` |
+
+### M59 明细 TODO
+
+| # | 项 | 状态 | 路径 |
+|---|---|---|---|
+| 1 | `project.json` 总结游标：时间、指纹、dirty | 完成 | [`src-tauri/src/project/mod.rs`](../src-tauri/src/project/mod.rs) `NovelProject`；[`src-tauri/src/project/trope_summary.rs`](../src-tauri/src/project/trope_summary.rs) |
+| 2 | 改正文/增删章打 dirty；扫描成功盖章；空书不盖 | 完成 | [`src-tauri/src/project/mod.rs`](../src-tauri/src/project/mod.rs) `write_chapter` / `create_chapter` / `delete_chapter` / `replace_all_chapters`；[`src-tauri/src/import/mod.rs`](../src-tauri/src/import/mod.rs) `tropes_scan_range` |
+| 3 | 批量状态 API（指纹漂移补 dirty） | 完成 | [`src-tauri/src/api.rs`](../src-tauri/src/api.rs) `trope_summary_status`；[`src-tauri/src/commands.rs`](../src-tauri/src/commands.rs)；[`src-tauri/src/cli.rs`](../src-tauri/src/cli.rs) |
+| 4 | 作品卡「总结」+ 未总结/已总结/已修改；点下直接扫 | 完成 | [`src/views/ProjectHome.vue`](../src/views/ProjectHome.vue)；[`src/services/projectClient.js`](../src/services/projectClient.js) `listTropeSummaryStatus`；[`src/services/tropeScan.js`](../src/services/tropeScan.js)；[`src/i18n/locales/{zh-CN,en,ja}.json`](../src/i18n/locales/zh-CN.json) |
+
+### M58 明细 TODO
+
+| # | 项 | 状态 | 路径 |
+|---|---|---|---|
+| 1 | 近义判断 + 合并补充（保留原 id/标题，只追加未见正文/关键词/证据） | 完成 | [`src-tauri/src/project/trope_merge.rs`](../src-tauri/src/project/trope_merge.rs) `titles_similar` / `tropes_are_similar` / `merge_trope_lore` |
+| 2 | 扫描/抽取 upsert 走近义合并；有 id 的编辑仍整卡替换 | 完成 | [`src-tauri/src/project/mod.rs`](../src-tauri/src/project/mod.rs) `upsert_trope_list_entry`；[`src-tauri/src/import/mod.rs`](../src-tauri/src/import/mod.rs) `find_existing_trope` / `upsert_trope_entry` |
+| 3 | 打开库时压缩近义重复，并回写各书 `trope_ids` | 完成 | [`src-tauri/src/kb/mod.rs`](../src-tauri/src/kb/mod.rs) `ensure_trope_library` / `migrate_tropes_between`；`compact_similar_tropes` / `remap_chapter_trope_ids` |
+| 4 | 前端抽取近义命中；prompt 禁止近义新开卡 | 完成 | [`src/utils/tropeMatch.js`](../src/utils/tropeMatch.js)；[`src/services/tropeExtract.js`](../src/services/tropeExtract.js)；[`src-tauri/prompts/trope_extract.md`](../src-tauri/prompts/trope_extract.md)（及 `en/` `ja/`） |
 
 ### M57 明细 TODO
 

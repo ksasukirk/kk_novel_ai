@@ -13,6 +13,7 @@ export const tropeScanState = reactive({
   running: false,
   cancelled: false,
   requestId: "",
+  root: "",
   current: 0,
   total: 0,
   title: "",
@@ -175,6 +176,7 @@ export async function scanTropesFromRoot(root, opts = {}) {
   if (tropeScanState.running) return null;
 
   tropeScanState.running = true;
+  tropeScanState.root = projectRoot;
   tropeScanState.cancelled = false;
   tropeScanState.requestId = "";
   tropeScanState.current = 0;
@@ -233,5 +235,6 @@ export async function scanTropesFromRoot(root, opts = {}) {
   } finally {
     await unbindEvents();
     tropeScanState.running = false;
+    tropeScanState.root = "";
   }
 }

@@ -410,6 +410,11 @@ pub fn trope_library_ensure() -> Result<Value, String> {
 }
 
 #[tauri::command]
+pub fn trope_summary_status(roots: Vec<String>) -> Result<Value, String> {
+    api::trope_summary_status(roots).map_err(Into::into)
+}
+
+#[tauri::command]
 pub fn project_ensure_characters_link(root: String) -> Result<Value, String> {
     api::project_ensure_characters_link(&root).map_err(Into::into)
 }

@@ -128,6 +128,9 @@ pub fn ensure_universal() -> AppResult<OpenedKb> {
         outline_mindmap: None,
         created_at: now(),
         updated_at: now(),
+        trope_summary_at: None,
+        trope_summary_fingerprint: None,
+        trope_summary_dirty: false,
     };
     project::save_project_meta(&root, &project)?;
     fs::write(
@@ -174,6 +177,9 @@ pub fn ensure_character_roster() -> AppResult<OpenedKb> {
         outline_mindmap: None,
         created_at: now(),
         updated_at: now(),
+        trope_summary_at: None,
+        trope_summary_fingerprint: None,
+        trope_summary_dirty: false,
     };
     project::save_project_meta(&root, &project)?;
     fs::write(
@@ -183,7 +189,7 @@ pub fn ensure_character_roster() -> AppResult<OpenedKb> {
     Ok(OpenedKb { root, project })
 }
 
-/// 把 src 仓里的情节/性癖搬到 dest（按 id/标题去重），并从 src 删除。
+/// 把 src 仓里的情节/性癖搬到 dest（按 id / 近义合并去重），并从 src 删除。
 pub fn migrate_tropes_between(src: &Path, dest: &Path) -> AppResult<u32> {
     if !src.exists() {
         return Ok(0);
@@ -196,24 +202,21 @@ pub fn migrate_tropes_between(src: &Path, dest: &Path) -> AppResult<u32> {
     if src_items.is_empty() {
         return Ok(0);
     }
-    let dest_items = project::list_lore(dest).unwrap_or_default();
-    let mut seen_id: std::collections::HashSet<String> =
-        dest_items.iter().map(|e| e.id.clone()).collect();
-    let mut seen_title: std::collections::HashSet<String> = dest_items
-        .iter()
-        .map(|e| project::normalize_lore_title(&e.title))
-        .filter(|s| !s.is_empty())
-        .collect();
+    let mut dest_items = project::list_lore(dest).unwrap_or_default();
     let mut moved = 0u32;
     for e in src_items {
-        let title_key = project::normalize_lore_title(&e.title);
-        let dup = seen_id.contains(&e.id) || (!title_key.is_empty() && seen_title.contains(&title_key));
-        if !dup {
-            let saved = project::upsert_lore(dest, e.clone())?;
-            seen_id.insert(saved.id.clone());
-            if !title_key.is_empty() {
-                seen_title.insert(title_key);
+        if let Some(keep) = dest_items
+            .iter()
+            .find(|d| d.id == e.id || project::tropes_are_similar(d, &e))
+            .cloned()
+        {
+            let merged = project::merge_trope_lore(&keep, &e);
+            if let Ok(saved) = project::upsert_lore(dest, merged) {
+                dest_items.retain(|d| d.id != saved.id);
+                dest_items.push(saved);
             }
+        } else if let Ok(saved) = project::upsert_lore(dest, e.clone()) {
+            dest_items.push(saved);
             moved += 1;
         }
         let _ = project::delete_lore(src, &e.id);
@@ -228,6 +231,17 @@ pub fn ensure_trope_library() -> AppResult<PathBuf> {
     fs::create_dir_all(root.join("lore"))?;
     if let Ok(roster) = character_roster_dir() {
         let _ = migrate_tropes_between(&roster, &root);
+    }
+    if let Ok(id_map) = project::compact_similar_tropes(&root) {
+        if !id_map.is_empty() {
+            if let Ok(novels) = crate::paths::novels_dir() {
+                if let Ok(projects) = project::discover_project_roots(&novels, 1) {
+                    for p in projects {
+                        let _ = project::remap_chapter_trope_ids(&p, &id_map);
+                    }
+                }
+            }
+        }
     }
     Ok(root)
 }
@@ -522,6 +536,26 @@ mod tests {
         let dest_items = crate::project::list_lore(&dest).unwrap();
         assert_eq!(dest_items.len(), 1);
         assert_eq!(dest_items[0].id, "k1");
+        let src_items = crate::project::list_lore(&src).unwrap();
+        assert!(src_items.iter().all(|e| e.kind != "kink"));
+    }
+
+    #[test]
+    fn migrate_tropes_merges_similar_instead_of_duplicating() {
+        let (src, dest) = tmp_pair("merge_sim");
+        let mut dest_e = sample_kink("裙下暴露", "keep");
+        dest_e.keywords = vec!["短裙".into(), "真空".into()];
+        crate::project::upsert_lore(&dest, dest_e).unwrap();
+        let mut src_e = sample_kink("真空短裙", "drop");
+        src_e.content = "cool wind".into();
+        crate::project::upsert_lore(&src, src_e).unwrap();
+        let n = migrate_tropes_between(&src, &dest).unwrap();
+        assert_eq!(n, 0);
+        let dest_items = crate::project::list_lore(&dest).unwrap();
+        assert_eq!(dest_items.len(), 1);
+        assert_eq!(dest_items[0].id, "keep");
+        assert_eq!(dest_items[0].title, "裙下暴露");
+        assert!(dest_items[0].content.contains("cool wind"));
         let src_items = crate::project::list_lore(&src).unwrap();
         assert!(src_items.iter().all(|e| e.kind != "kink"));
     }
