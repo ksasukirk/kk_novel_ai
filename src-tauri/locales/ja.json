@@ -89,6 +89,7 @@
     "pendingJsonRootMustBeObject": "pending json の根はオブジェクトである必要があります",
     "fromToMustBeChapterIndex": "from/to は 1 始まりの章番号で、to >= from である必要があります",
     "fromExceedsChapters": "from={from} が総章数 {total} を超えています",
+    "tropeNeedTitle": "筋／性癖のタイトルは空にできません",
     "jobMissing": "job が存在しません: {path}",
     "modelNotSpecified": "モデルが指定されていません。設定で選ぶか model を渡してください",
     "modelNotInLmStudio": "モデルが LM Studio /v1/models 一覧にありません: `{model}`（id を確認するか、先にモデルをダウンロードしてください）",

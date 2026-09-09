@@ -1665,6 +1665,13 @@ fn collect_known_trope_titles(root: &Path, project: &project::NovelProject) -> V
             push_entry(e);
         }
     }
+    if let Ok(roster) = crate::kb::ensure_character_roster() {
+        if let Ok(entries) = project::list_lore(&roster.root) {
+            for e in &entries {
+                push_entry(e);
+            }
+        }
+    }
     for link in &project.linked_kb_roots {
         let kb_path = match crate::kb::resolve_kb_root(link) {
             Ok(p) => p,

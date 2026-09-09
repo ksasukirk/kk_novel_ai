@@ -1067,6 +1067,24 @@ pub fn import_apply_pending(root: &str, job_id: &str) -> AppResult<Value> {
     import::apply_pending_job(Path::new(root), job_id)
 }
 
+pub async fn tropes_scan(
+    root: &str,
+    from: u64,
+    to: u64,
+    cancel: Arc<AtomicBool>,
+    on_progress: impl FnMut(Value),
+) -> AppResult<Value> {
+    let report = import::tropes_scan_range(
+        Path::new(root),
+        from as usize,
+        to as usize,
+        cancel,
+        on_progress,
+    )
+    .await?;
+    Ok(serde_json::to_value(report)?)
+}
+
 pub fn kb_registry_list() -> AppResult<Value> {
     crate::kb::registry_list_json()
 }
@@ -1526,6 +1544,20 @@ pub async fn dispatch_rpc(req: Value) -> AppResult<Value> {
                 resume,
                 job_id,
                 instruction,
+            )
+            .await
+        }
+        "tropes_scan" => {
+            let from = req.get("from").and_then(|v| v.as_u64()).unwrap_or(1);
+            let to = req.get("to").and_then(|v| v.as_u64()).unwrap_or(0);
+            tropes_scan(
+                req_str(&req, "root")?,
+                from,
+                to,
+                Arc::new(AtomicBool::new(false)),
+                |p| {
+                    eprintln!("[tropes scan] {p}");
+                },
             )
             .await
         }

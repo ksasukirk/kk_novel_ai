@@ -817,7 +817,16 @@
     "deleteQ": "删除「{title}」？",
     "deleteTitle": "删除情节/性癖",
     "selectHint": "勾选后写入本章并注入生成",
-    "noneSelected": "未勾选情节/性癖"
+    "noneSelected": "未勾选情节/性癖",
+    "scanCurrent": "从当前作品提取",
+    "scanImport": "导入 TXT 后提取",
+    "scanConfirm": "将扫描 {n} 章，写入全局情节库，不会勾选本章。可能较久并消耗模型额度。继续？",
+    "scanProgress": "正在提取第 {current}/{total} 章 · 新增 {added} · 更新 {updated}",
+    "scanDone": "提取完成：新增 {added} · 更新 {updated} · 跳过 {skipped}",
+    "scanCancelled": "已取消提取（已入库保留）：新增 {added} · 更新 {updated}",
+    "scanFailed": "提取失败：{msg}",
+    "scanNeedProject": "请先打开有章节的作品，或改用导入 TXT",
+    "importTitle": "导入后的知识库标题（可空）"
   },
   "analytics": {
     "title": "分析",

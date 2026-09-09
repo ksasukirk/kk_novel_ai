@@ -497,6 +497,56 @@ pub async fn import_distill(
 }
 
 #[tauri::command]
+pub async fn tropes_scan(
+    app: AppHandle,
+    cancel_reg: State<'_, Arc<CancelRegistry>>,
+    root: String,
+    from: Option<u64>,
+    to: Option<u64>,
+) -> Result<Value, String> {
+    let request_id = Uuid::new_v4().to_string();
+    let cancel = cancel_reg.register(&request_id);
+    let from = from.unwrap_or(1).max(1);
+    let to = to.unwrap_or(0);
+    let _ = app.emit(
+        "tropes-scan-start",
+        json!({
+            "request_id": request_id,
+            "root": root,
+        }),
+    );
+    let app2 = app.clone();
+    let rid = request_id.clone();
+    let result = api::tropes_scan(&root, from, to, cancel, move |p| {
+        let mut payload = p;
+        if let Some(obj) = payload.as_object_mut() {
+            obj.insert("request_id".into(), json!(rid.clone()));
+        }
+        let _ = app2.emit("tropes-scan-progress", payload);
+    })
+    .await;
+    cancel_reg.remove(&request_id);
+    match result {
+        Ok(mut v) => {
+            if let Some(obj) = v.as_object_mut() {
+                obj.insert("request_id".into(), json!(request_id));
+            }
+            Ok(v)
+        }
+        Err(e) => {
+            let _ = app.emit(
+                "tropes-scan-error",
+                json!({
+                    "request_id": request_id,
+                    "error": e.to_string(),
+                }),
+            );
+            Err(e.to_string())
+        }
+    }
+}
+
+#[tauri::command]
 pub fn import_apply_pending(root: String, job_id: String) -> Result<Value, String> {
     api::import_apply_pending(&root, &job_id).map_err(Into::into)
 }

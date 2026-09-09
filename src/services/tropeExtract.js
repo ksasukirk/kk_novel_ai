@@ -79,16 +79,22 @@ function findExisting(title) {
 export async function runTropeExtract(opts) {
   const blockKey = (opts && opts.blockKey) || `trope-${Date.now()}`;
   const text = ((opts && opts.text) || "").trim();
-  if (!text || !appState.projectRoot || !appState.chapterId) return null;
+  const projectRoot = (opts && opts.projectRoot) || appState.projectRoot;
+  const chapterId = (opts && opts.chapterId) || appState.chapterId;
+  const force = !!(opts && opts.force);
+  const quiet = !!(opts && opts.quiet);
+  if (!text || !projectRoot || !chapterId) return null;
   if (opts && (opts.blockType === "illustration" || opts.blockType === "illus")) {
     return null;
   }
-  if (!autoTropeEnabled()) return null;
+  if (!force && !autoTropeEnabled()) return null;
   if (inFlightKeys.has(blockKey)) return null;
 
   inFlightKeys.add(blockKey);
   const prevStatus = appState.statusMessage;
-  appState.statusMessage = t("autoTrope.recognizing");
+  if (!quiet) {
+    appState.statusMessage = t("autoTrope.recognizing");
+  }
   try {
     try {
       await refreshTropeIndex();
@@ -97,8 +103,8 @@ export async function runTropeExtract(opts) {
     }
     const result = await invoke("writing_run", {
       request: {
-        project_root: appState.projectRoot,
-        chapter_id: appState.chapterId,
+        project_root: projectRoot,
+        chapter_id: chapterId,
         task: "trope_extract",
         selection: text,
         instruction: (opts && opts.instruction) || "",
@@ -164,21 +170,25 @@ export async function runTropeExtract(opts) {
         /* ignore */
       }
       bumpTropeRevision();
-      if (added.length) {
-        appState.statusMessage = t("autoTrope.added", {
-          names: added.join(t("common.listSep")),
-        });
-      } else {
-        appState.statusMessage = t("autoTrope.updated", {
-          names: updated.join(t("common.listSep")),
-        });
+      if (!quiet) {
+        if (added.length) {
+          appState.statusMessage = t("autoTrope.added", {
+            names: added.join(t("common.listSep")),
+          });
+        } else {
+          appState.statusMessage = t("autoTrope.updated", {
+            names: updated.join(t("common.listSep")),
+          });
+        }
       }
-    } else {
+    } else if (!quiet) {
       appState.statusMessage = prevStatus || t("autoTrope.none");
     }
     return added;
   } catch (e) {
-    appState.statusMessage = t("autoTrope.failed", { msg: e.message || e });
+    if (!quiet) {
+      appState.statusMessage = t("autoTrope.failed", { msg: e.message || e });
+    }
     return null;
   } finally {
     inFlightKeys.delete(blockKey);

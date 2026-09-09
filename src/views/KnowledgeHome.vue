@@ -4,7 +4,7 @@
 -->
 <script setup>
 import { computed, onMounted, ref, watch } from "vue";
-import { appState, isKbProject } from "../stores/appState.js";
+import { appState, bumpTropeRevision, isKbProject } from "../stores/appState.js";
 import { loadSettings } from "../services/llmClient.js";
 import { invoke } from "../services/tauri.js";
 import * as project from "../services/projectClient.js";
@@ -164,6 +164,7 @@ async function onDistill() {
       resume: true,
     });
     await refresh();
+    bumpTropeRevision();
     appState.statusMessage = t("knowledge.distillDone", { n: r.entity_count ?? 0 });
   } catch (e) {
     error.value = String(e.message || e);

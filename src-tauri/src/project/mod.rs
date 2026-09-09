@@ -237,7 +237,7 @@ impl LoreEntry {
         Some(normalize_lore_title(&self.title))
     }
 }
-fn normalize_lore_title(title: &str) -> String {
+pub fn normalize_lore_title(title: &str) -> String {
     let t = title.trim();
     let stripped = if t.starts_with('[') {
         if let Some(end) = t.find(']') {

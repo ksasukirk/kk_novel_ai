@@ -56,6 +56,17 @@
 | M52 | 跨章连续阅读 + 目录滚动激活 | 完成 | `EditorView.vue`、`ContinuousChapterRead.vue`、`editorReadingProgress.js` |
 | M53 | 作品卡片 AI 生成书名 | 完成 | `project_suggest_title` / `project_apply_title`、`suggest_book_title.md`、`ProjectHome.vue` |
 | M54 | 情节/性癖库：全局页 + 本章多选注入 + 写后抽取 | 完成 | `TropeLibraryView.vue`、`ChapterMeta.trope_ids`、`writing` tropes 注入、`tropeExtract.js` |
+| M55 | 全书/导入提取情节性癖到全局库 | 完成 | `tropes_scan`、`TropeLibraryView` 扫描按钮、蒸馏 tropes 双写全局仓 |
+
+### M55 明细 TODO
+
+| # | 项 | 状态 | 路径 |
+|---|---|---|---|
+| 1 | 后端全书扫描 + 全局仓 upsert + 进度/取消 | 完成 | `src-tauri/src/import/mod.rs` `tropes_scan_range` / `upsert_trope_to_roster`；`src-tauri/src/api.rs`；`src-tauri/src/commands.rs` `tropes_scan` |
+| 2 | 写后抽取支持 force/指定 root | 完成 | `src/services/tropeExtract.js`；`src/services/projectClient.js` `readChapterAt` |
+| 3 | 情节库：从当前作品提取 + 导入 TXT 后提取 | 完成 | `src/views/TropeLibraryView.vue`；`src/services/tropeScan.js`；`src/i18n/locales/{zh-CN,en,ja}.json` |
+| 4 | 知识库蒸馏 tropes 双写全局仓 | 完成 | `src-tauri/src/import/mod.rs` `apply_chapter_extract`；`src/views/KnowledgeHome.vue` |
+| 5 | CLI | 完成 | `src-tauri/src/cli.rs` `tropes scan` |
 
 ### M54 明细 TODO
 

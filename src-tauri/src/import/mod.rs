@@ -14,6 +14,8 @@ use std::collections::{BTreeMap, HashMap};
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::sync::OnceLock;
 use uuid::Uuid;
 
@@ -65,6 +67,30 @@ pub struct DistillReport {
     pub edge_count: usize,
     pub event_count: usize,
     pub applied: bool,
+}
+
+/// 情节/性癖扫描结果（只写入全局仓，不改本章 trope_ids）
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct TropesScanReport {
+    pub ok: bool,
+    pub root: String,
+    pub from: usize,
+    pub to: usize,
+    pub scanned: usize,
+    pub skipped: usize,
+    pub added: Vec<String>,
+    pub updated: Vec<String>,
+    pub failed: Vec<String>,
+    pub cancelled: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct TropeDraft {
+    pub kind: String,
+    pub title: String,
+    pub content: String,
+    pub keywords: Vec<String>,
+    pub evidence: String,
 }
 
 fn eq_heading() -> &'static Regex {
@@ -782,51 +808,21 @@ fn apply_chapter_extract(
             let existing = if let Some(id) = &existing_id {
                 project::list_lore(root)?
                     .into_iter()
-                    .find(|e| &e.id == id)
+                    .find(|e| &e.id == id && (e.kind == "trope" || e.kind == "kink"))
             } else {
-                project::list_lore(root)?
-                    .into_iter()
-                    .find(|e| e.title.trim() == title && (e.kind == "trope" || e.kind == "kink"))
+                None
             };
-            let mut entry = existing.unwrap_or_else(|| LoreEntry {
-                id: Uuid::new_v4().to_string(),
+            let draft = TropeDraft {
                 kind: kind.into(),
                 title: title.to_string(),
-                content: String::new(),
-                keywords: vec![],
-                links: vec![],
-                attrs: BTreeMap::new(),
-                sources: vec![],
-                unique: true,
-                updated_at: String::new(),
-            });
-            entry.kind = kind.into();
-            entry.unique = true;
-            if !content.is_empty() {
-                if entry.content.is_empty() {
-                    entry.content = content.to_string();
-                } else if !entry.content.contains(content) {
-                    entry.content = format!("{}\n{}", entry.content, content);
-                }
-            }
-            if !evidence.is_empty() {
-                let prev = entry.attrs.get("evidence").cloned().unwrap_or_default();
-                if prev.is_empty() {
-                    entry.attrs.insert("evidence".into(), evidence.to_string());
-                } else if !prev.contains(evidence) {
-                    entry
-                        .attrs
-                        .insert("evidence".into(), format!("{prev}; {evidence}"));
-                }
-            }
-            for k in keywords {
-                if !entry.keywords.iter().any(|x| x == &k) {
-                    entry.keywords.push(k);
-                }
-            }
-            let saved = project::upsert_lore(root, entry)?;
+                content: content.to_string(),
+                keywords,
+                evidence: evidence.to_string(),
+            };
+            let (saved, _) = upsert_trope_entry(root, &draft, existing)?;
             index.register(&saved.title, &saved.id, &[]);
             entity_n += 1;
+            let _ = upsert_trope_to_roster(&draft);
         }
     }
 
@@ -1251,6 +1247,385 @@ pub fn apply_pending_job(root: &Path, job_id: &str) -> AppResult<Value> {
     }))
 }
 
+fn trope_key(title: &str) -> String {
+    project::normalize_lore_title(title)
+}
+
+fn find_existing_trope(root: &Path, title: &str) -> AppResult<Option<LoreEntry>> {
+    let key = trope_key(title);
+    if key.is_empty() {
+        return Ok(None);
+    }
+    let list = project::list_lore(root)?;
+    Ok(list.into_iter().find(|e| {
+        if e.kind != "trope" && e.kind != "kink" {
+            return false;
+        }
+        if trope_key(&e.title) == key {
+            return true;
+        }
+        e.keywords.iter().any(|k| trope_key(k) == key)
+    }))
+}
+
+/// 按标题去重写入指定仓（情节/性癖）。返回 (条目, 是否新建)
+pub fn upsert_trope_entry(
+    root: &Path,
+    draft: &TropeDraft,
+    existing: Option<LoreEntry>,
+) -> AppResult<(LoreEntry, bool)> {
+    let title = draft.title.trim();
+    if title.is_empty() {
+        return Err(AppError::t("errors.tropeNeedTitle"));
+    }
+    let kind = if draft.kind.trim() == "kink" {
+        "kink"
+    } else {
+        "trope"
+    };
+    let found = match existing {
+        Some(e) => Some(e),
+        None => find_existing_trope(root, title)?,
+    };
+    let created = found.is_none();
+    let mut entry = found.unwrap_or_else(|| LoreEntry {
+        id: Uuid::new_v4().to_string(),
+        kind: kind.into(),
+        title: title.to_string(),
+        content: String::new(),
+        keywords: vec![],
+        links: vec![],
+        attrs: BTreeMap::new(),
+        sources: vec![],
+        unique: true,
+        updated_at: String::new(),
+    });
+    if created {
+        entry.kind = kind.into();
+        entry.title = title.to_string();
+    }
+    entry.unique = true;
+    let content = draft.content.trim();
+    if !content.is_empty() {
+        if entry.content.is_empty() {
+            entry.content = content.to_string();
+        } else if !entry.content.contains(content) {
+            entry.content = format!("{}\n{}", entry.content, content);
+        }
+    }
+    let evidence = draft.evidence.trim();
+    if !evidence.is_empty() {
+        let prev = entry.attrs.get("evidence").cloned().unwrap_or_default();
+        if prev.is_empty() {
+            entry.attrs.insert("evidence".into(), evidence.to_string());
+        } else if !prev.contains(evidence) {
+            entry
+                .attrs
+                .insert("evidence".into(), format!("{prev}; {evidence}"));
+        }
+    }
+    for k in &draft.keywords {
+        let k = k.trim();
+        if k.is_empty() {
+            continue;
+        }
+        if !entry.keywords.iter().any(|x| x == k) {
+            entry.keywords.push(k.to_string());
+        }
+    }
+    if !entry.keywords.iter().any(|x| trope_key(x) == trope_key(title)) {
+        entry.keywords.push(title.to_string());
+    }
+    let saved = project::upsert_lore(root, entry)?;
+    Ok((saved, created))
+}
+
+/// 写入全局角色仓的 tropes/kinks
+pub fn upsert_trope_to_roster(draft: &TropeDraft) -> AppResult<(LoreEntry, bool)> {
+    let opened = crate::kb::ensure_character_roster()?;
+    upsert_trope_entry(&opened.root, draft, None)
+}
+
+fn chunk_prose(text: &str) -> Vec<String> {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return vec![];
+    }
+    const SOFT: usize = 3500;
+    const HARD: usize = 4000;
+    if trimmed.chars().count() <= SOFT {
+        return vec![trimmed.to_string()];
+    }
+    let paras: Vec<&str> = trimmed.split("\n\n").collect();
+    let mut chunks: Vec<String> = Vec::new();
+    let mut buf = String::new();
+    let flush = |buf: &mut String, chunks: &mut Vec<String>| {
+        let t = buf.trim();
+        if !t.is_empty() {
+            chunks.push(t.to_string());
+        }
+        buf.clear();
+    };
+    for p in paras {
+        let extra = if buf.is_empty() { 0 } else { 2 };
+        let next = buf.chars().count() + extra + p.chars().count();
+        if !buf.is_empty() && next > HARD {
+            flush(&mut buf, &mut chunks);
+        }
+        if !buf.is_empty() {
+            buf.push_str("\n\n");
+        }
+        buf.push_str(p);
+        while buf.chars().count() > HARD {
+            let take: String = buf.chars().take(HARD).collect();
+            chunks.push(take);
+            buf = buf.chars().skip(HARD).collect();
+        }
+    }
+    flush(&mut buf, &mut chunks);
+    chunks
+}
+
+fn parse_trope_drafts(raw: &str) -> Vec<TropeDraft> {
+    let cleaned = strip_json_fence(raw);
+    if cleaned.is_empty() {
+        return vec![];
+    }
+    let obj: Value = match serde_json::from_str(&cleaned) {
+        Ok(v) => v,
+        Err(_) => return vec![],
+    };
+    let list = if let Some(arr) = obj.get("tropes").and_then(|v| v.as_array()) {
+        arr.clone()
+    } else if let Some(arr) = obj.as_array() {
+        arr.clone()
+    } else {
+        return vec![];
+    };
+    let mut out = Vec::new();
+    for row in list {
+        let matched = row
+            .get("matched_title")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim();
+        let title = if !matched.is_empty() {
+            matched.to_string()
+        } else {
+            row.get("title")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .trim()
+                .to_string()
+        };
+        if title.is_empty() || title.chars().count() > 24 {
+            continue;
+        }
+        let kind_raw = row
+            .get("kind")
+            .and_then(|v| v.as_str())
+            .unwrap_or("trope")
+            .trim();
+        let kind = if kind_raw == "kink" { "kink" } else { "trope" };
+        let keywords: Vec<String> = row
+            .get("keywords")
+            .and_then(|v| v.as_array())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|x| x.as_str().map(|s| s.trim().to_string()))
+                    .filter(|s| !s.is_empty())
+                    .collect()
+            })
+            .unwrap_or_default();
+        out.push(TropeDraft {
+            kind: kind.into(),
+            title,
+            content: row
+                .get("content")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .trim()
+                .to_string(),
+            keywords,
+            evidence: row
+                .get("evidence")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .trim()
+                .to_string(),
+        });
+    }
+    out
+}
+
+fn push_unique_name(list: &mut Vec<String>, name: &str) {
+    let n = name.trim();
+    if n.is_empty() {
+        return;
+    }
+    if !list.iter().any(|x| trope_key(x) == trope_key(n)) {
+        list.push(n.to_string());
+    }
+}
+
+/// 按章扫描正文，抽取情节/性癖写入全局仓。`to==0` 表示扫到最后一章。
+pub async fn tropes_scan_range(
+    root: &Path,
+    from: usize,
+    to: usize,
+    cancel: Arc<AtomicBool>,
+    mut on_progress: impl FnMut(Value),
+) -> AppResult<TropesScanReport> {
+    if from == 0 {
+        return Err(AppError::t("errors.fromToMustBeChapterIndex"));
+    }
+    let opened = project::open_project(root)?;
+    let total_chapters = opened.project.chapters.len();
+    if total_chapters == 0 {
+        return Ok(TropesScanReport {
+            ok: true,
+            root: root.to_string_lossy().to_string(),
+            from,
+            to: 0,
+            skipped: 0,
+            ..Default::default()
+        });
+    }
+    if from > total_chapters {
+        return Err(AppError::t_fmt(
+            "errors.fromExceedsChapters",
+            &[
+                ("from", &from.to_string()),
+                ("total", &total_chapters.to_string()),
+            ],
+        ));
+    }
+    let to = if to == 0 {
+        total_chapters
+    } else {
+        to.min(total_chapters)
+    };
+    if to < from {
+        return Err(AppError::t("errors.fromToMustBeChapterIndex"));
+    }
+
+    let settings = crate::settings::load_settings()?;
+    let client = LmStudioClient::new();
+    let slice: Vec<_> = opened.project.chapters[(from - 1)..to].to_vec();
+    let n = slice.len();
+    let mut report = TropesScanReport {
+        ok: true,
+        root: root.to_string_lossy().to_string(),
+        from,
+        to,
+        ..Default::default()
+    };
+
+    on_progress(json!({
+        "current": 0,
+        "total": n,
+        "title": "",
+        "added": 0,
+        "updated": 0,
+        "skipped": 0
+    }));
+
+    for (i, ch) in slice.iter().enumerate() {
+        if cancel.load(Ordering::Relaxed) {
+            report.cancelled = true;
+            break;
+        }
+        let chap_no = from + i;
+        let _ = writeln!(
+            std::io::stderr(),
+            "[tropes scan] {}/{} chapter {chap_no} {}",
+            i + 1,
+            n,
+            ch.title
+        );
+        on_progress(json!({
+            "current": i + 1,
+            "total": n,
+            "title": ch.title,
+            "added": report.added.len(),
+            "updated": report.updated.len(),
+            "skipped": report.skipped
+        }));
+
+        let (_, content) = match project::read_chapter(root, &ch.id) {
+            Ok(v) => v,
+            Err(e) => {
+                report.failed.push(format!("{chap_no}: read {e}"));
+                continue;
+            }
+        };
+        let chunks = chunk_prose(&content);
+        if chunks.is_empty() {
+            report.skipped += 1;
+            continue;
+        }
+
+        let mut chapter_ok = false;
+        for (ci, chunk) in chunks.iter().enumerate() {
+            if cancel.load(Ordering::Relaxed) {
+                report.cancelled = true;
+                break;
+            }
+            let req = WritingRequest {
+                project_root: root.to_string_lossy().to_string(),
+                chapter_id: ch.id.clone(),
+                task: "trope_extract".into(),
+                selection: chunk.clone(),
+                retry_on_loop: Some(false),
+                ..Default::default()
+            };
+            match writing::run_writing(&client, &settings, &req, Some(cancel.clone()), |_| {}).await {
+                Ok(out) => {
+                    chapter_ok = true;
+                    let drafts = parse_trope_drafts(&out.text);
+                    for draft in drafts.into_iter().take(5) {
+                        match upsert_trope_to_roster(&draft) {
+                            Ok((_, created)) => {
+                                if created {
+                                    push_unique_name(&mut report.added, &draft.title);
+                                } else {
+                                    push_unique_name(&mut report.updated, &draft.title);
+                                }
+                            }
+                            Err(e) => {
+                                report
+                                    .failed
+                                    .push(format!("{chap_no}.{ci}: upsert {} {e}", draft.title));
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    report
+                        .failed
+                        .push(format!("{chap_no}.{ci}: trope_extract {e}"));
+                }
+            }
+        }
+        if report.cancelled {
+            break;
+        }
+        if chapter_ok {
+            report.scanned += 1;
+        }
+        on_progress(json!({
+            "current": i + 1,
+            "total": n,
+            "title": ch.title,
+            "added": report.added.len(),
+            "updated": report.updated.len(),
+            "skipped": report.skipped
+        }));
+    }
+
+    Ok(report)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1277,5 +1652,22 @@ mod tests {
         assert!(ch[0].body.contains("正文甲"));
         assert_eq!(ch[1].title, "第一章 寻仙");
         assert!(ch[1].body.contains("正文乙"));
+    }
+
+    #[test]
+    fn chunk_prose_keeps_short_text() {
+        let chunks = chunk_prose("短正文");
+        assert_eq!(chunks, vec!["短正文".to_string()]);
+        assert!(chunk_prose("   \n\n  ").is_empty());
+    }
+
+    #[test]
+    fn parse_trope_drafts_from_json() {
+        let drafts = parse_trope_drafts(
+            r#"{"tropes":[{"kind":"kink","title":"真空出门","matched_title":"","content":"写过程","keywords":["暴露"],"evidence":"裙摆"}]} "#,
+        );
+        assert_eq!(drafts.len(), 1);
+        assert_eq!(drafts[0].kind, "kink");
+        assert_eq!(drafts[0].title, "真空出门");
     }
 }

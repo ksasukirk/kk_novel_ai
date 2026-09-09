@@ -89,6 +89,7 @@
     "pendingJsonRootMustBeObject": "pending json 根须为对象",
     "fromToMustBeChapterIndex": "from/to 须为从 1 起的章序，且 to >= from",
     "fromExceedsChapters": "from={from} 超出章数 {total}",
+    "tropeNeedTitle": "情节/性癖标题不能为空",
     "jobMissing": "job 不存在: {path}",
     "modelNotSpecified": "未指定模型，请在设置中选择或传入 model",
     "modelNotInLmStudio": "模型不在 LM Studio /v1/models 列表中: `{model}`（请核对 id，或先下载该模型）",

@@ -122,6 +122,7 @@ pub fn run() {
             commands::export_pdf,
             commands::import_txt,
             commands::import_distill,
+            commands::tropes_scan,
             commands::import_apply_pending,
             commands::pick_file,
             commands::kb_registry_list,

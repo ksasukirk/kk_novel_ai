@@ -3,13 +3,15 @@
   代码路径: kk_novel_ai/src/views/TropeLibraryView.vue
 -->
 <script setup>
-import { computed, onActivated, onMounted, ref } from "vue";
-import { bumpTropeRevision } from "../stores/appState.js";
+import { computed, onActivated, onMounted, ref, watch } from "vue";
+import { appState, bumpTropeRevision } from "../stores/appState.js";
 import * as project from "../services/projectClient.js";
-import { appConfirmDelete } from "../services/confirmDialog.js";
+import * as kb from "../services/kbClient.js";
+import { appConfirm, appConfirmDelete } from "../services/confirmDialog.js";
 import { useToastError } from "../services/toast.js";
 import { t } from "../i18n/index.js";
 import { isTropeKind, tropeKindLabelKey } from "../utils/tropeKinds.js";
+import { cancelTropeScan, scanTropesFromRoot, tropeScanState } from "../services/tropeScan.js";
 
 const items = ref([]);
 const rosterPath = ref("");
@@ -18,6 +20,17 @@ const status = ref("");
 /** all | trope | kink */
 const kindFilter = ref("all");
 const form = ref(emptyForm("trope"));
+const importTitle = ref("");
+const scan = tropeScanState;
+
+const chapterCount = computed(() => {
+  const ch = (appState.project && appState.project.chapters) || [];
+  return ch.length;
+});
+
+const canScanCurrent = computed(
+  () => !!appState.projectRoot && chapterCount.value > 0 && !scan.running
+);
 
 function emptyForm(kind) {
   return {
@@ -119,6 +132,67 @@ async function save() {
   }
 }
 
+async function runScan(root) {
+  error.value = "";
+  try {
+    await scanTropesFromRoot(root);
+    await refresh();
+  } catch (e) {
+    error.value = String(e.message || e);
+  }
+}
+
+async function onScanCurrent() {
+  if (!canScanCurrent.value) {
+    error.value = t("trope.scanNeedProject");
+    return;
+  }
+  const n = chapterCount.value;
+  const ok = await appConfirm(t("trope.scanConfirm", { n }), {
+    title: t("trope.scanCurrent"),
+  });
+  if (!ok) return;
+  await runScan(appState.projectRoot);
+}
+
+async function onScanImport() {
+  error.value = "";
+  try {
+    const filePicked = await project.pickFile(t("knowledge.pickTxt"), ["txt", "md"]);
+    const dirPicked = await project.pickDirectory();
+    const filePath = String((filePicked && filePicked.path) || "");
+    const base = filePath.replace(/^.*[\\/]/, "").replace(/\.(txt|md)$/i, "");
+    const name = importTitle.value.trim() || base.trim() || t("knowledge.untitledKb");
+    appState.statusMessage = t("knowledge.importingStatus");
+    const opened = await kb.importIntoKb(dirPicked.path, filePicked.path, name);
+    appState.activeNav = "tropes";
+    const n = ((opened.project && opened.project.chapters) || []).length;
+    const ok = await appConfirm(t("trope.scanConfirm", { n }), {
+      title: t("trope.scanImport"),
+    });
+    if (!ok) {
+      await refresh();
+      return;
+    }
+    await runScan(opened.root || dirPicked.path);
+  } catch (e) {
+    error.value = String(e.message || e);
+  }
+}
+
+watch(
+  () => [scan.current, scan.total, scan.added, scan.updated, scan.running],
+  () => {
+    if (!scan.running) return;
+    appState.statusMessage = t("trope.scanProgress", {
+      current: scan.current,
+      total: scan.total,
+      added: scan.added,
+      updated: scan.updated,
+    });
+  }
+);
+
 async function remove(item) {
   if (!rosterPath.value) return;
   if (
@@ -173,7 +247,18 @@ onActivated(refresh);
         >
           {{ $t("common.kink") }}
         </button>
-        <button type="button" class="app-btn app-btn-light refresh-btn" @click="refresh">{{ $t("common.refresh") }}</button>
+        <button type="button" class="app-btn app-btn-light refresh-btn" :disabled="scan.running" @click="refresh">{{ $t("common.refresh") }}</button>
+        <button type="button" class="app-btn" :disabled="!canScanCurrent" @click="onScanCurrent">{{ $t("trope.scanCurrent") }}</button>
+        <button type="button" class="app-btn" :disabled="scan.running" @click="onScanImport">{{ $t("trope.scanImport") }}</button>
+        <button v-if="scan.running" type="button" class="app-btn" @click="cancelTropeScan">{{ $t("common.cancel") }}</button>
+      </div>
+      <p v-if="scan.running" class="muted scan-progress">
+        {{ $t("trope.scanProgress", { current: scan.current, total: scan.total, added: scan.added, updated: scan.updated }) }}
+        <span v-if="scan.title"> · {{ scan.title }}</span>
+      </p>
+      <div class="field scan-title-field">
+        <label class="field-label">{{ $t("trope.importTitle") }}</label>
+        <input v-model="importTitle" type="text" :disabled="scan.running" :placeholder="$t('knowledge.untitledKb')" />
       </div>
     </div>
 
@@ -194,7 +279,7 @@ onActivated(refresh);
             </div>
             <p class="snippet">{{ (item.content || "").slice(0, 72) }}{{ (item.content || "").length > 72 ? "…" : "" }}</p>
           </div>
-          <button type="button" class="app-btn app-btn-danger" @click.stop="remove(item)">{{ $t("common.delete") }}</button>
+          <button type="button" class="app-btn app-btn-danger" :disabled="scan.running" @click.stop="remove(item)">{{ $t("common.delete") }}</button>
         </div>
         <p v-if="!visibleItems.length" class="muted">{{ $t("trope.empty") }}</p>
       </div>
@@ -242,8 +327,8 @@ onActivated(refresh);
           <textarea v-model="form.content" rows="10" :placeholder="$t('trope.contentPh')" />
         </div>
         <div class="actions">
-          <button type="button" class="app-btn app-btn-primary" @click="save">{{ $t("trope.save") }}</button>
-          <button type="button" class="app-btn" @click="resetForm">{{ $t("trope.new") }}</button>
+          <button type="button" class="app-btn app-btn-primary" :disabled="scan.running" @click="save">{{ $t("trope.save") }}</button>
+          <button type="button" class="app-btn" :disabled="scan.running" @click="resetForm">{{ $t("trope.new") }}</button>
         </div>
         <pre v-if="status" class="out">{{ status }}</pre>
       </div>
@@ -271,6 +356,13 @@ onActivated(refresh);
 }
 .refresh-btn {
   margin-left: auto;
+}
+.scan-progress {
+  margin-top: 8px;
+}
+.scan-title-field {
+  margin-top: 8px;
+  max-width: 360px;
 }
 .lore-grid {
   display: grid;

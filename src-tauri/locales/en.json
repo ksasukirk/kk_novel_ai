@@ -89,6 +89,7 @@
     "pendingJsonRootMustBeObject": "pending json root must be an object",
     "fromToMustBeChapterIndex": "from/to must be 1-based chapter indexes, and to >= from",
     "fromExceedsChapters": "from={from} exceeds chapter count {total}",
+    "tropeNeedTitle": "Trope/kink title cannot be empty",
     "jobMissing": "job not found: {path}",
     "modelNotSpecified": "No model specified. Choose one in Settings or pass model",
     "modelNotInLmStudio": "Model is not in the LM Studio /v1/models list: `{model}` (check the id, or download the model first)",

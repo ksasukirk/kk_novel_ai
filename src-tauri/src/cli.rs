@@ -74,6 +74,10 @@ enum Commands {
         #[command(subcommand)]
         action: KbCmd,
     },
+    Tropes {
+        #[command(subcommand)]
+        action: TropesCmd,
+    },
     Stats {
         #[command(subcommand)]
         action: StatsCmd,
@@ -403,6 +407,19 @@ enum KbCmd {
         sync: bool,
     },
     UniversalDashboard,
+}
+
+#[derive(Subcommand, Debug)]
+enum TropesCmd {
+    /// 按章抽取情节/性癖到全局仓（不改本章勾选）
+    Scan {
+        root: String,
+        #[arg(long, default_value_t = 1)]
+        from: u64,
+        /// 0 表示扫到最后一章
+        #[arg(long, default_value_t = 0)]
+        to: u64,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -1068,6 +1085,17 @@ async fn run_cmd(cli: Cli) -> i32 {
                 }
             }
         },
+        Commands::Tropes { action } => match action {
+            TropesCmd::Scan { root, from, to } => {
+                dispatch_rpc(json!({
+                    "cmd": "tropes_scan",
+                    "root": root,
+                    "from": from,
+                    "to": to
+                }))
+                .await
+            }
+        },
         Commands::Stats { action } => match action {
             StatsCmd::Get { root } => dispatch_rpc(json!({ "cmd": "stats_get", "root": root })).await,
             StatsCmd::SetGoal { root, goal_chars } => {
@@ -1295,6 +1323,7 @@ fn tools_manifest() -> Value {
             {"cmd": "export_pdf", "args": ["root", "output"], "desc": "导出 PDF"},
             {"cmd": "import_txt", "args": ["root", "file", "title?"], "desc": "导入 TXT 为知识库（kind=knowledge_base）"},
             {"cmd": "import_distill", "args": ["root", "from?", "to?", "apply?", "resume?", "job_id?", "instruction?"], "desc": "按章蒸馏知识库"},
+            {"cmd": "tropes_scan", "args": ["root", "from?", "to?"], "desc": "按章抽取情节/性癖到全局仓（to=0 扫完全书）"},
             {"cmd": "import_apply_pending", "args": ["root", "job_id"], "desc": "应用 distill pending"},
             {"cmd": "kb_registry_list", "desc": "列出小说知识库 + 通用库"},
             {"cmd": "kb_universal_open", "desc": "打开/初始化通用知识库"},
@@ -1316,6 +1345,7 @@ fn tools_manifest() -> Value {
             "kk_novel_cli kb list",
             "kk_novel_cli kb import-txt D:/kb/wendao --file test_files/x.txt --title 问道红尘",
             "kk_novel_cli kb distill D:/kb/wendao --from 1 --to 20 --apply auto",
+            "kk_novel_cli tropes scan D:/novels/foo --from 1 --to 0",
             "kk_novel_cli kb sync D:/kb/wendao",
             "kk_novel_cli kb migrate D:/kb/old --sync",
             "kk_novel_ai rpc"

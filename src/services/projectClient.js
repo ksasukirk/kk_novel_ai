@@ -205,6 +205,22 @@ export async function peekChapterBlocks(chapterId) {
   return activePathBlocks(doc);
 }
 
+/** 读取任意工程某章正文，不切换当前编辑章 */
+export async function readChapterAt(root, chapterId) {
+  if (!root || !chapterId) return { content: "", blocks: [] };
+  const r = await invoke("chapter_read", {
+    root,
+    chapterId,
+  });
+  const { doc } = collapseChapterSectionsToWholeChapter(branchDocFromChapterPayload(r));
+  const blocks = activePathBlocks(doc);
+  const content =
+    typeof r.content === "string" && r.content
+      ? r.content
+      : contentFromActivePath(doc);
+  return { content, blocks, meta: r.meta || r.chapter || null };
+}
+
 /** 只读某章分支文档 */
 export async function peekChapterBranchDoc(chapterId) {
   if (!appState.projectRoot || !chapterId) return null;

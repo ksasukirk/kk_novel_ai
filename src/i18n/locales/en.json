@@ -817,7 +817,16 @@
     "deleteQ": "Delete “{title}”?",
     "deleteTitle": "Delete trope / kink",
     "selectHint": "Selected items are saved on this chapter and injected into generation",
-    "noneSelected": "No tropes / kinks selected"
+    "noneSelected": "No tropes / kinks selected",
+    "scanCurrent": "Extract from current work",
+    "scanImport": "Import TXT then extract",
+    "scanConfirm": "Scan {n} chapters into the global trope library. This chapter will not be auto-selected. This can take a while and uses model quota. Continue?",
+    "scanProgress": "Extracting chapter {current}/{total} · added {added} · updated {updated}",
+    "scanDone": "Extract done: added {added} · updated {updated} · skipped {skipped}",
+    "scanCancelled": "Extract cancelled (kept what was saved): added {added} · updated {updated}",
+    "scanFailed": "Extract failed: {msg}",
+    "scanNeedProject": "Open a work with chapters first, or import a TXT",
+    "importTitle": "Knowledge-base title after import (optional)"
   },
   "analytics": {
     "title": "Analytics",

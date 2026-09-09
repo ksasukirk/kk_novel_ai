@@ -817,7 +817,16 @@
     "deleteQ": "「{title}」を削除しますか？",
     "deleteTitle": "筋／性癖を削除",
     "selectHint": "選択すると本章に保存され、生成へ注入されます",
-    "noneSelected": "筋／性癖は未選択"
+    "noneSelected": "筋／性癖は未選択",
+    "scanCurrent": "現在の作品から抽出",
+    "scanImport": "TXT を取り込んで抽出",
+    "scanConfirm": "{n} 章をスキャンしてグローバル筋ライブラリへ書き込みます。本章の選択は変わりません。時間がかかりモデル枠を使います。続けますか？",
+    "scanProgress": "{current}/{total} 章を抽出中 · 追加 {added} · 更新 {updated}",
+    "scanDone": "抽出完了：追加 {added} · 更新 {updated} · スキップ {skipped}",
+    "scanCancelled": "抽出を中止（保存済みは残す）：追加 {added} · 更新 {updated}",
+    "scanFailed": "抽出に失敗：{msg}",
+    "scanNeedProject": "章のある作品を開くか、TXT 取り込みを使ってください",
+    "importTitle": "取り込み後のナレッジタイトル（任意）"
   },
   "analytics": {
     "title": "分析",
