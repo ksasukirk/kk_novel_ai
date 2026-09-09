@@ -1011,6 +1011,9 @@ pub fn assemble_messages_with_scores(
             }
         }
     }
+    for e in crate::kb::list_trope_library_entries() {
+        ranked.push(e);
+    }
     all_lore = project::coalesce_unique_lore(ranked);
     let (entity_lore, trope_pool): (Vec<LoreEntry>, Vec<LoreEntry>) = all_lore
         .into_iter()
@@ -1665,6 +1668,9 @@ fn collect_known_trope_titles(root: &Path, project: &project::NovelProject) -> V
             push_entry(e);
         }
     }
+    for e in crate::kb::list_trope_library_entries() {
+        push_entry(&e);
+    }
     if let Ok(roster) = crate::kb::ensure_character_roster() {
         if let Ok(entries) = project::list_lore(&roster.root) {
             for e in &entries {
@@ -2242,6 +2248,7 @@ fn build_length_fill_context(settings: &AppSettings, req: &WritingRequest) -> Le
                 }
             }
         }
+        pool.extend(crate::kb::list_trope_library_entries());
         pool = project::coalesce_unique_lore(pool);
         let ids = resolve_selected_trope_ids(req, &chapter);
         tropes_to_text(&collect_selected_tropes(&pool, &ids))

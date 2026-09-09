@@ -835,6 +835,8 @@ pub fn lore_list(root: &str) -> AppResult<Value> {
 /// 列出本篇 + 全局角色仓（带 scope），供设定页分栏
 pub fn lore_list_scoped(novel_root: &str) -> AppResult<Value> {
     let local = project::list_lore(Path::new(novel_root))?;
+    let library_root = crate::kb::ensure_trope_library()?;
+    let library = crate::kb::list_trope_library_entries();
     let roster = crate::kb::ensure_character_roster()?;
     let global = project::list_lore(&roster.root)?;
     let local_items: Vec<Value> = local
@@ -847,7 +849,7 @@ pub fn lore_list_scoped(novel_root: &str) -> AppResult<Value> {
             })
         })
         .collect();
-    let global_items: Vec<Value> = global
+    let mut global_items: Vec<Value> = global
         .into_iter()
         .map(|e| {
             json!({
@@ -857,6 +859,13 @@ pub fn lore_list_scoped(novel_root: &str) -> AppResult<Value> {
             })
         })
         .collect();
+    for e in library {
+        global_items.push(json!({
+            "scope": "global",
+            "root": library_root.to_string_lossy(),
+            "entry": e,
+        }));
+    }
     Ok(json!({
         "ok": true,
         "character_roster": {
@@ -876,6 +885,15 @@ pub fn character_roster_ensure() -> AppResult<Value> {
         "root": roster.root.to_string_lossy(),
         "marker": crate::kb::CHARACTERS_MARKER,
         "project": roster.project,
+    }))
+}
+
+pub fn trope_library_ensure() -> AppResult<Value> {
+    let root = crate::kb::ensure_trope_library()?;
+    Ok(json!({
+        "ok": true,
+        "root": root.to_string_lossy(),
+        "novels_dir": crate::paths::novels_dir()?.to_string_lossy(),
     }))
 }
 
@@ -1487,6 +1505,7 @@ pub async fn dispatch_rpc(req: Value) -> AppResult<Value> {
         "lore_list" => lore_list(req_str(&req, "root")?),
         "lore_list_scoped" => lore_list_scoped(req_str(&req, "root")?),
         "character_roster_ensure" => character_roster_ensure(),
+        "trope_library_ensure" => trope_library_ensure(),
         "project_ensure_characters_link" => {
             project_ensure_characters_link(req_str(&req, "root")?)
         }

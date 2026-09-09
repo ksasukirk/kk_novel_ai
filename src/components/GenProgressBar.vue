@@ -5,19 +5,38 @@
 <script setup>
 import { computed } from "vue";
 import { appState } from "../stores/appState.js";
+import { tropeScanState } from "../services/tropeScan.js";
 import { t } from "../i18n/index.js";
 
-const props = defineProps({
+defineProps({
   /** compact：顶栏细条；panel：AI 面板较粗 */
   variant: { type: String, default: "compact" },
 });
 
-const visible = computed(() => !!appState.generating || appState.genProgressPct >= 100);
-const indeterminate = computed(
-  () => !!appState.generating && (appState.genStreamChars || 0) <= 0
+const scanRunning = computed(() => !!tropeScanState.running && !appState.generating);
+const visible = computed(
+  () => !!appState.generating || appState.genProgressPct >= 100 || scanRunning.value
 );
-const pct = computed(() => Math.max(0, Math.min(100, Number(appState.genProgressPct) || 0)));
+const indeterminate = computed(() => {
+  if (scanRunning.value) {
+    return (tropeScanState.steps || 0) <= 0 && (tropeScanState.total || 0) <= 0;
+  }
+  return !!appState.generating && (appState.genStreamChars || 0) <= 0;
+});
+const pct = computed(() => {
+  if (scanRunning.value) {
+    return Math.max(0, Math.min(100, Number(tropeScanState.pct) || 0));
+  }
+  return Math.max(0, Math.min(100, Number(appState.genProgressPct) || 0));
+});
 const label = computed(() => {
+  if (scanRunning.value) {
+    return t("trope.scanMeter", {
+      pct: pct.value,
+      current: tropeScanState.current,
+      total: tropeScanState.total,
+    });
+  }
   if (!appState.generating && pct.value >= 100) return t("progress.done");
   if (indeterminate.value) return t("progress.connecting");
   const chars = appState.genStreamChars || 0;
@@ -34,7 +53,7 @@ const label = computed(() => {
     :aria-valuenow="indeterminate ? undefined : pct"
     aria-valuemin="0"
     aria-valuemax="100"
-    :aria-busy="!!appState.generating"
+    :aria-busy="!!appState.generating || scanRunning"
   >
     <div class="track">
       <div

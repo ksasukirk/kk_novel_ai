@@ -9,6 +9,7 @@ use crate::error::{AppError, AppResult};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use uuid::Uuid;
@@ -510,6 +511,7 @@ fn should_skip_scan_dir(name: &str) -> bool {
             | ".tmp-napcat-shots"
             | "ref"
             | "outputs"
+            | "_library"
     ) || name.starts_with('.')
 }
 
@@ -1411,21 +1413,201 @@ fn uuid_like() -> String {
 }
 
 pub fn list_lore(root: &Path) -> AppResult<Vec<LoreEntry>> {
+    migrate_trope_kind_lists(root)?;
     let mut entries = Vec::new();
     let base = lore_dir(root);
     if !base.exists() {
         return Ok(entries);
     }
     collect_lore_json(&base, &mut entries)?;
+    dedupe_lore_by_id(&mut entries);
     Ok(entries)
 }
+
+pub fn is_trope_kind(kind: &str) -> bool {
+    kind == "trope" || kind == "kink"
+}
+
+fn lore_list_filename(kind: &str) -> &'static str {
+    if kind == "kink" {
+        "kinks.json"
+    } else {
+        "tropes.json"
+    }
+}
+
+fn lore_kind_dirname(kind: &str) -> &'static str {
+    if kind == "kink" {
+        "kinks"
+    } else {
+        "tropes"
+    }
+}
+
+fn lore_list_path(root: &Path, kind: &str) -> PathBuf {
+    lore_dir(root).join(lore_list_filename(kind))
+}
+
+fn parse_lore_list_bytes(text: &str) -> Vec<LoreEntry> {
+    if let Ok(items) = serde_json::from_str::<Vec<LoreEntry>>(text) {
+        return items;
+    }
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(text) {
+        if let Some(arr) = v.get("items").and_then(|x| x.as_array()) {
+            return arr
+                .iter()
+                .filter_map(|x| serde_json::from_value(x.clone()).ok())
+                .collect();
+        }
+        if let Ok(one) = serde_json::from_value::<LoreEntry>(v) {
+            return vec![one];
+        }
+    }
+    vec![]
+}
+
+fn read_lore_kind_list(root: &Path, kind: &str) -> AppResult<Vec<LoreEntry>> {
+    let path = lore_list_path(root, kind);
+    if !path.exists() {
+        return Ok(vec![]);
+    }
+    let text = fs::read_to_string(&path)?;
+    Ok(parse_lore_list_bytes(&text))
+}
+
+fn write_lore_kind_list(root: &Path, kind: &str, items: &[LoreEntry]) -> AppResult<()> {
+    let path = lore_list_path(root, kind);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
+    fs::write(path, serde_json::to_string_pretty(items)?)?;
+    Ok(())
+}
+
+fn dedupe_lore_by_id(items: &mut Vec<LoreEntry>) {
+    let mut seen = HashSet::new();
+    items.retain(|e| {
+        if e.id.is_empty() {
+            return true;
+        }
+        seen.insert(e.id.clone())
+    });
+}
+
+/// 把旧的 lore/tropes/*.json、lore/kinks/*.json 收进 tropes.json / kinks.json 列表。
+fn migrate_trope_kind_lists(root: &Path) -> AppResult<()> {
+    for kind in ["trope", "kink"] {
+        let dir = lore_dir(root).join(lore_kind_dirname(kind));
+        let mut from_files = Vec::new();
+        if dir.exists() {
+            collect_lore_json_files_only(&dir, &mut from_files)?;
+        }
+        if from_files.is_empty() {
+            continue;
+        }
+        let mut list = read_lore_kind_list(root, kind)?;
+        for e in from_files {
+            if !list.iter().any(|x| x.id == e.id) {
+                list.push(e);
+            }
+        }
+        write_lore_kind_list(root, kind, &list)?;
+        if dir.exists() {
+            let mut paths = Vec::new();
+            collect_lore_paths(&dir, &mut paths)?;
+            for p in paths {
+                let _ = fs::remove_file(p);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn prune_legacy_trope_files(root: &Path, lore_id: &str) -> AppResult<()> {
+    for kind in ["trope", "kink"] {
+        let dir = lore_dir(root).join(lore_kind_dirname(kind));
+        if !dir.exists() {
+            continue;
+        }
+        let mut paths = Vec::new();
+        collect_lore_paths(&dir, &mut paths)?;
+        for path in paths {
+            let text = fs::read_to_string(&path).unwrap_or_default();
+            if let Ok(item) = serde_json::from_str::<LoreEntry>(&text) {
+                if item.id == lore_id {
+                    let _ = fs::remove_file(path);
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn upsert_trope_list_entry(root: &Path, entry: LoreEntry) -> AppResult<LoreEntry> {
+    migrate_trope_kind_lists(root)?;
+    for kind in ["trope", "kink"] {
+        let mut items = read_lore_kind_list(root, kind)?;
+        let before = items.len();
+        items.retain(|e| e.id != entry.id);
+        if items.len() != before {
+            write_lore_kind_list(root, kind, &items)?;
+        }
+    }
+    let kind = if entry.kind == "kink" { "kink" } else { "trope" };
+    let mut items = read_lore_kind_list(root, kind)?;
+    if let Some(pos) = items.iter().position(|e| e.id == entry.id) {
+        items[pos] = entry.clone();
+    } else {
+        items.insert(0, entry.clone());
+    }
+    write_lore_kind_list(root, kind, &items)?;
+    prune_legacy_trope_files(root, &entry.id)?;
+    Ok(entry)
+}
+
 fn collect_lore_json(dir: &Path, out: &mut Vec<LoreEntry>) -> AppResult<()> {
+    if !dir.exists() {
+        return Ok(());
+    }
     for entry in fs::read_dir(dir)? {
         let entry = entry?;
         let path = entry.path();
         if path.is_dir() {
             collect_lore_json(&path, out)?;
         } else if path.extension().and_then(|s| s.to_str()) == Some("json") {
+            let text = fs::read_to_string(&path)?;
+            let name = path
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("");
+            if name == "tropes.json" || name == "kinks.json" {
+                out.extend(parse_lore_list_bytes(&text));
+            } else if let Ok(item) = serde_json::from_str::<LoreEntry>(&text) {
+                out.push(item);
+            }
+        }
+    }
+    Ok(())
+}
+
+/// 只收单条 LoreEntry 文件（迁移旧目录用，不把 tropes.json 当列表再读一遍）
+fn collect_lore_json_files_only(dir: &Path, out: &mut Vec<LoreEntry>) -> AppResult<()> {
+    if !dir.exists() {
+        return Ok(());
+    }
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_dir() {
+            collect_lore_json_files_only(&path, out)?;
+        } else if path.extension().and_then(|s| s.to_str()) == Some("json") {
+            let name = path
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("");
+            if name == "tropes.json" || name == "kinks.json" {
+                continue;
+            }
             let text = fs::read_to_string(&path)?;
             if let Ok(item) = serde_json::from_str::<LoreEntry>(&text) {
                 out.push(item);
@@ -1449,6 +1631,9 @@ pub fn upsert_lore(root: &Path, mut entry: LoreEntry) -> AppResult<LoreEntry> {
     entry.updated_at = now();
     if entry.id.is_empty() {
         entry.id = Uuid::new_v4().to_string();
+    }
+    if is_trope_kind(&entry.kind) {
+        return upsert_trope_list_entry(root, entry);
     }
     let kind_dir = match entry.kind.as_str() {
         "character" => "characters",
@@ -1498,9 +1683,31 @@ fn collect_lore_paths(dir: &Path, out: &mut Vec<PathBuf>) -> AppResult<()> {
 }
 
 pub fn delete_lore(root: &Path, lore_id: &str) -> AppResult<()> {
+    migrate_trope_kind_lists(root)?;
+    let mut found = false;
+    for kind in ["trope", "kink"] {
+        let mut items = read_lore_kind_list(root, kind)?;
+        let before = items.len();
+        items.retain(|e| e.id != lore_id);
+        if items.len() != before {
+            write_lore_kind_list(root, kind, &items)?;
+            found = true;
+        }
+    }
+    if found {
+        let _ = prune_legacy_trope_files(root, lore_id);
+        return Ok(());
+    }
     let mut all = Vec::new();
     collect_lore_paths(&lore_dir(root), &mut all)?;
     for path in all {
+        let name = path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("");
+        if name == "tropes.json" || name == "kinks.json" {
+            continue;
+        }
         let text = fs::read_to_string(&path)?;
         if let Ok(item) = serde_json::from_str::<LoreEntry>(&text) {
             if item.id == lore_id {
@@ -1627,5 +1834,90 @@ mod tests {
         let b = sample("NPC", false, "2");
         let out = coalesce_unique_lore(vec![a, b]);
         assert_eq!(out.len(), 2);
+    }
+
+    fn sample_kink(title: &str, id: &str) -> LoreEntry {
+        LoreEntry {
+            id: id.into(),
+            kind: "kink".into(),
+            title: title.into(),
+            content: "body".into(),
+            keywords: vec!["暴露".into()],
+            links: vec![],
+            attrs: Default::default(),
+            sources: vec![],
+            unique: true,
+            updated_at: "t".into(),
+        }
+    }
+
+    fn tmp_lore_root(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir()
+            .join("kk_novel_lore_list_test")
+            .join(name);
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("lore")).unwrap();
+        dir
+    }
+
+    #[test]
+    fn tropes_store_as_json_list() {
+        let root = tmp_lore_root("store_list");
+        let a = sample_kink("真空出门", "k1");
+        let b = sample_kink("憋尿", "k2");
+        upsert_lore(&root, a).unwrap();
+        upsert_lore(&root, b).unwrap();
+        let path = lore_dir(&root).join("kinks.json");
+        assert!(path.exists());
+        let text = fs::read_to_string(&path).unwrap();
+        let items: Vec<LoreEntry> = serde_json::from_str(&text).unwrap();
+        assert_eq!(items.len(), 2);
+        assert!(items.iter().any(|e| e.id == "k1"));
+        assert!(items.iter().any(|e| e.id == "k2"));
+        assert!(!lore_dir(&root).join("kinks").join("真空出门.json").exists());
+        let listed = list_lore(&root).unwrap();
+        assert_eq!(listed.iter().filter(|e| e.kind == "kink").count(), 2);
+    }
+
+    #[test]
+    fn tropes_migrate_legacy_files_into_list() {
+        let root = tmp_lore_root("migrate_list");
+        let dir = lore_dir(&root).join("kinks");
+        fs::create_dir_all(&dir).unwrap();
+        let entry = sample_kink("旧文件", "legacy1");
+        fs::write(
+            dir.join("旧文件.json"),
+            serde_json::to_string_pretty(&entry).unwrap(),
+        )
+        .unwrap();
+        let listed = list_lore(&root).unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].id, "legacy1");
+        assert!(lore_list_path(&root, "kink").exists());
+        assert!(!dir.join("旧文件.json").exists());
+    }
+
+    #[test]
+    fn tropes_delete_from_list() {
+        let root = tmp_lore_root("delete_list");
+        upsert_lore(&root, sample_kink("真空出门", "k1")).unwrap();
+        upsert_lore(&root, sample_kink("憋尿", "k2")).unwrap();
+        delete_lore(&root, "k1").unwrap();
+        let listed = list_lore(&root).unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0].id, "k2");
+    }
+
+    #[test]
+    fn tropes_kind_switch_moves_list() {
+        let root = tmp_lore_root("kind_switch");
+        let mut e = sample_kink("雨夜", "x1");
+        e.kind = "trope".into();
+        upsert_lore(&root, e.clone()).unwrap();
+        assert_eq!(read_lore_kind_list(&root, "trope").unwrap().len(), 1);
+        e.kind = "kink".into();
+        upsert_lore(&root, e).unwrap();
+        assert!(read_lore_kind_list(&root, "trope").unwrap().is_empty());
+        assert_eq!(read_lore_kind_list(&root, "kink").unwrap().len(), 1);
     }
 }

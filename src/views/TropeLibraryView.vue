@@ -3,7 +3,7 @@
   代码路径: kk_novel_ai/src/views/TropeLibraryView.vue
 -->
 <script setup>
-import { computed, onActivated, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onActivated, onMounted, onUnmounted, ref, watch } from "vue";
 import { appState, bumpTropeRevision } from "../stores/appState.js";
 import * as project from "../services/projectClient.js";
 import * as kb from "../services/kbClient.js";
@@ -11,7 +11,7 @@ import { appConfirm, appConfirmDelete } from "../services/confirmDialog.js";
 import { useToastError } from "../services/toast.js";
 import { t } from "../i18n/index.js";
 import { isTropeKind, tropeKindLabelKey } from "../utils/tropeKinds.js";
-import { cancelTropeScan, scanTropesFromRoot, tropeScanState } from "../services/tropeScan.js";
+import { cancelTropeScan, formatScanUsage, scanTropesFromRoot, tropeScanState } from "../services/tropeScan.js";
 
 const items = ref([]);
 const rosterPath = ref("");
@@ -22,6 +22,9 @@ const kindFilter = ref("all");
 const form = ref(emptyForm("trope"));
 const importTitle = ref("");
 const scan = tropeScanState;
+let applyingRemote = false;
+let saveTimer = null;
+let scanRefreshTimer = null;
 
 const chapterCount = computed(() => {
   const ch = (appState.project && appState.project.chapters) || [];
@@ -62,7 +65,7 @@ function attrsOf(item) {
 async function refresh() {
   error.value = "";
   try {
-    const ens = await project.ensureCharacterRoster();
+    const ens = await project.ensureTropeLibrary();
     rosterPath.value = ens.root || "";
     if (!rosterPath.value) throw new Error(t("trope.noRoster"));
     const r = await project.listLoreAt(rosterPath.value);
@@ -73,7 +76,8 @@ async function refresh() {
   }
 }
 
-function edit(item) {
+async function edit(item) {
+  applyingRemote = true;
   const attrs = attrsOf(item);
   form.value = {
     id: item.id,
@@ -87,49 +91,79 @@ function edit(item) {
     tags: attrs.tags || "",
   };
   kindFilter.value = form.value.kind;
+  await nextTick();
+  applyingRemote = false;
 }
 
-function resetForm() {
+async function resetForm() {
+  applyingRemote = true;
   const kind = kindFilter.value === "kink" ? "kink" : "trope";
   form.value = emptyForm(kind);
+  status.value = "";
+  await nextTick();
+  applyingRemote = false;
 }
 
-async function save() {
+function buildPayload() {
+  const kind = form.value.kind === "kink" ? "kink" : "trope";
+  const attrs = {
+    intensity: String(form.value.intensity || "3"),
+  };
+  if (form.value.doText.trim()) attrs.do = form.value.doText.trim();
+  if (form.value.dontText.trim()) attrs.dont = form.value.dontText.trim();
+  if (form.value.tags.trim()) attrs.tags = form.value.tags.trim();
+  return {
+    id: form.value.id || "",
+    kind,
+    title: form.value.title.trim(),
+    content: form.value.content,
+    keywords: form.value.keywords
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean),
+    links: [],
+    attrs,
+    unique: true,
+    sources: [],
+    updated_at: "",
+  };
+}
+
+async function save(opts = {}) {
+  const silent = !!opts.silent;
   error.value = "";
-  status.value = "";
+  if (!silent) status.value = "";
   try {
     if (!rosterPath.value) await refresh();
     if (!rosterPath.value) throw new Error(t("trope.noPath"));
-    if (!form.value.title.trim()) throw new Error(t("trope.needTitle"));
+    if (!form.value.title.trim()) {
+      if (silent) return;
+      throw new Error(t("trope.needTitle"));
+    }
     const kind = form.value.kind === "kink" ? "kink" : "trope";
-    const attrs = {
-      intensity: String(form.value.intensity || "3"),
-    };
-    if (form.value.doText.trim()) attrs.do = form.value.doText.trim();
-    if (form.value.dontText.trim()) attrs.dont = form.value.dontText.trim();
-    if (form.value.tags.trim()) attrs.tags = form.value.tags.trim();
-    await project.upsertLoreAt(rosterPath.value, {
-      id: form.value.id || "",
-      kind,
-      title: form.value.title.trim(),
-      content: form.value.content,
-      keywords: form.value.keywords
-        .split(",")
-        .map((s) => s.trim())
-        .filter(Boolean),
-      links: [],
-      attrs,
-      unique: true,
-      sources: [],
-      updated_at: "",
-    });
-    status.value = kind === "kink" ? t("trope.savedKink") : t("trope.savedTrope");
-    resetForm();
+    const r = await project.upsertLoreAt(rosterPath.value, buildPayload());
+    const saved = r && r.item;
+    if (saved && saved.id) form.value.id = saved.id;
+    status.value = silent
+      ? t("trope.savedAuto")
+      : kind === "kink"
+        ? t("trope.savedKink")
+        : t("trope.savedTrope");
     await refresh();
     bumpTropeRevision();
   } catch (e) {
-    error.value = String(e.message || e);
+    if (!silent) error.value = String(e.message || e);
   }
+}
+
+function scheduleAutoSave() {
+  if (applyingRemote || scan.running) return;
+  if (!form.value.title.trim()) return;
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
+    void save({ silent: true });
+  }, 700);
 }
 
 async function runScan(root) {
@@ -180,16 +214,72 @@ async function onScanImport() {
   }
 }
 
+const scanPct = computed(() => Math.max(0, Math.min(100, Number(scan.pct) || 0)));
+const scanIndeterminate = computed(
+  () => scan.running && (scan.steps || 0) <= 0 && (scan.total || 0) <= 0
+);
+const scanUsageText = computed(() => formatScanUsage(scan));
+const scanMeterLabel = computed(() => {
+  if (scanIndeterminate.value) return t("progress.connecting");
+  if (scan.chunk && scan.chunks) {
+    return t("trope.scanMeterChunk", {
+      pct: scanPct.value,
+      chunk: scan.chunk,
+      chunks: scan.chunks,
+    });
+  }
+  return t("trope.scanMeter", { pct: scanPct.value, current: scan.current, total: scan.total });
+});
+
 watch(
-  () => [scan.current, scan.total, scan.added, scan.updated, scan.running],
+  () => [
+    scan.current,
+    scan.total,
+    scan.added,
+    scan.updated,
+    scan.running,
+    scan.tokens,
+    scan.calls,
+    scan.costCny,
+    scan.chunk,
+    scan.chunks,
+  ],
   () => {
     if (!scan.running) return;
-    appState.statusMessage = t("trope.scanProgress", {
+    const base = t("trope.scanProgress", {
       current: scan.current,
       total: scan.total,
       added: scan.added,
       updated: scan.updated,
     });
+    const usage = formatScanUsage(scan);
+    appState.statusMessage = usage ? `${base} · ${usage}` : base;
+  }
+);
+
+watch(
+  form,
+  () => {
+    scheduleAutoSave();
+  },
+  { deep: true }
+);
+
+watch(
+  () => [scan.added, scan.updated, scan.running],
+  () => {
+    if (!scan.running) {
+      if (scanRefreshTimer) {
+        clearTimeout(scanRefreshTimer);
+        scanRefreshTimer = null;
+      }
+      return;
+    }
+    if (scanRefreshTimer) clearTimeout(scanRefreshTimer);
+    scanRefreshTimer = setTimeout(() => {
+      scanRefreshTimer = null;
+      void refresh();
+    }, 800);
   }
 );
 
@@ -210,6 +300,10 @@ async function remove(item) {
 
 onMounted(refresh);
 onActivated(refresh);
+onUnmounted(() => {
+  if (saveTimer) clearTimeout(saveTimer);
+  if (scanRefreshTimer) clearTimeout(scanRefreshTimer);
+});
 </script>
 
 <template>
@@ -220,6 +314,7 @@ onActivated(refresh);
         {{ $t("trope.introBefore") }}<strong>{{ $t("trope.introStrong") }}</strong>{{ $t("trope.introAfter") }}
         <code v-if="rosterPath">{{ rosterPath }}</code>
         <span v-else>{{ $t("common.loading") }}</span>
+        {{ $t("trope.autoSave") }}
       </p>
 
       <div class="tabs">
@@ -252,10 +347,33 @@ onActivated(refresh);
         <button type="button" class="app-btn" :disabled="scan.running" @click="onScanImport">{{ $t("trope.scanImport") }}</button>
         <button v-if="scan.running" type="button" class="app-btn" @click="cancelTropeScan">{{ $t("common.cancel") }}</button>
       </div>
-      <p v-if="scan.running" class="muted scan-progress">
-        {{ $t("trope.scanProgress", { current: scan.current, total: scan.total, added: scan.added, updated: scan.updated }) }}
-        <span v-if="scan.title"> · {{ scan.title }}</span>
-      </p>
+      <div v-if="scan.running" class="scan-meter-wrap">
+        <div
+          class="scan-meter"
+          :class="{ indeterminate: scanIndeterminate }"
+          role="progressbar"
+          :aria-valuenow="scanIndeterminate ? undefined : scanPct"
+          aria-valuemin="0"
+          aria-valuemax="100"
+          aria-busy="true"
+        >
+          <div class="scan-track">
+            <div
+              class="scan-fill"
+              :style="scanIndeterminate ? undefined : { width: scanPct + '%' }"
+            />
+          </div>
+          <span class="scan-meter-label">{{ scanMeterLabel }}</span>
+        </div>
+        <p class="muted scan-progress">
+          {{ $t("trope.scanProgress", { current: scan.current, total: scan.total, added: scan.added, updated: scan.updated }) }}
+          <span v-if="scan.title"> · {{ scan.title }}</span>
+          <span v-if="scan.chunk && scan.chunks">
+            · {{ $t("trope.scanChunk", { chunk: scan.chunk, chunks: scan.chunks }) }}
+          </span>
+        </p>
+        <p v-if="scanUsageText" class="muted scan-usage">{{ scanUsageText }}</p>
+      </div>
       <div class="field scan-title-field">
         <label class="field-label">{{ $t("trope.importTitle") }}</label>
         <input v-model="importTitle" type="text" :disabled="scan.running" :placeholder="$t('knowledge.untitledKb')" />
@@ -327,7 +445,7 @@ onActivated(refresh);
           <textarea v-model="form.content" rows="10" :placeholder="$t('trope.contentPh')" />
         </div>
         <div class="actions">
-          <button type="button" class="app-btn app-btn-primary" :disabled="scan.running" @click="save">{{ $t("trope.save") }}</button>
+          <button type="button" class="app-btn app-btn-primary" :disabled="scan.running" @click="save()">{{ $t("trope.save") }}</button>
           <button type="button" class="app-btn" :disabled="scan.running" @click="resetForm">{{ $t("trope.new") }}</button>
         </div>
         <pre v-if="status" class="out">{{ status }}</pre>
@@ -357,8 +475,56 @@ onActivated(refresh);
 .refresh-btn {
   margin-left: auto;
 }
-.scan-progress {
-  margin-top: 8px;
+.scan-meter-wrap {
+  margin-top: 10px;
+  max-width: 720px;
+}
+.scan-meter {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  height: 24px;
+}
+.scan-track {
+  flex: 1 1 auto;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--chip-bg, rgba(0, 0, 0, 0.08));
+  overflow: hidden;
+  min-width: 80px;
+}
+.scan-fill {
+  height: 100%;
+  width: 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--accent, #f472b6), var(--accent-hover, #ec4899));
+  transition: width 0.2s ease-out;
+}
+.scan-meter.indeterminate .scan-fill {
+  width: 36%;
+  animation: scan-indet 1.1s ease-in-out infinite;
+}
+.scan-meter-label {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.scan-progress,
+.scan-usage {
+  margin: 6px 0 0;
+  font-variant-numeric: tabular-nums;
+}
+@keyframes scan-indet {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
 }
 .scan-title-field {
   margin-top: 8px;

@@ -14,6 +14,7 @@ import ToastHost from "./components/ToastHost.vue";
 import AppSidebar from "./components/shell/AppSidebar.vue";
 import PageHeader from "./components/shell/PageHeader.vue";
 import PageBackground from "./components/shell/PageBackground.vue";
+import { tropeScanState } from "./services/tropeScan.js";
 import ProjectHome from "./views/ProjectHome.vue";
 import KnowledgeHome from "./views/KnowledgeHome.vue";
 import EditorView from "./views/EditorView.vue";
@@ -328,7 +329,8 @@ onUnmounted(() => {
           :llm-model="appState.llmModel || ''"
           :has-project="!!appState.projectRoot"
           :status-message="appState.statusMessage || ''"
-          :show-gen-progress="appState.generating || appState.genProgressPct > 0"
+          :show-gen-progress="appState.generating || appState.genProgressPct > 0 || tropeScanState.running"
+          :keep-status-with-progress="tropeScanState.running"
           @toggle-sidebar="toggleSidebar"
         />
         <div

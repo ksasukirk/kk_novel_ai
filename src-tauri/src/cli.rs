@@ -1305,6 +1305,7 @@ fn tools_manifest() -> Value {
             {"cmd": "lore_list", "args": ["root"], "desc": "列出设定"},
             {"cmd": "lore_list_scoped", "args": ["root"], "desc": "本篇+全局角色仓分栏列表"},
             {"cmd": "character_roster_ensure", "desc": "确保全局角色仓存在"},
+            {"cmd": "trope_library_ensure", "desc": "确保 novels/_library 情节性癖库存在（并从旧角色仓迁移）"},
             {"cmd": "project_ensure_characters_link", "args": ["root"], "desc": "作品挂接 @characters"},
             {"cmd": "lore_upsert", "args": ["root", "entry"], "desc": "写入设定（含 unique）"},
             {"cmd": "memory_upsert_block_note", "args": ["root", "chapter_id", "block_key", "summary"], "desc": "写入/覆盖块记忆"},

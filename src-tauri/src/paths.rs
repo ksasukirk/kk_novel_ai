@@ -77,6 +77,15 @@ pub fn novels_dir() -> AppResult<PathBuf> {
     Ok(dir)
 }
 
+/// 全局情节/性癖库（与作品并列，不进作品列表）
+/// - 桌面：`{运行根}/novels/_library`
+/// - 移动端：`{应用数据}/novels/_library`
+pub fn trope_library_dir() -> AppResult<PathBuf> {
+    let dir = novels_dir()?.join("_library");
+    std::fs::create_dir_all(&dir)?;
+    Ok(dir)
+}
+
 /// 书名 → 安全文件夹名（去非法字符；空则「未命名小说」）
 pub fn sanitize_folder_name(title: &str) -> String {
     let mut s: String = title
@@ -189,5 +198,13 @@ mod tests {
     #[test]
     fn sanitize_strips_illegal() {
         assert_eq!(sanitize_folder_name("a/b:c"), "a_b_c");
+    }
+
+    #[test]
+    fn trope_library_dir_is_novels_subfolder() {
+        let novels = novels_dir().unwrap();
+        let lib = trope_library_dir().unwrap();
+        assert_eq!(lib.file_name().and_then(|s| s.to_str()), Some("_library"));
+        assert_eq!(lib.parent().unwrap(), novels.as_path());
     }
 }

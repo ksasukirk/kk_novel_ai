@@ -57,6 +57,25 @@
 | M53 | 作品卡片 AI 生成书名 | 完成 | `project_suggest_title` / `project_apply_title`、`suggest_book_title.md`、`ProjectHome.vue` |
 | M54 | 情节/性癖库：全局页 + 本章多选注入 + 写后抽取 | 完成 | `TropeLibraryView.vue`、`ChapterMeta.trope_ids`、`writing` tropes 注入、`tropeExtract.js` |
 | M55 | 全书/导入提取情节性癖到全局库 | 完成 | `tropes_scan`、`TropeLibraryView` 扫描按钮、蒸馏 tropes 双写全局仓 |
+| M56 | 情节/性癖列表存储 + 自动保存 | 完成 | `lore/tropes.json`、`lore/kinks.json`；情节库编辑 debounce 保存 |
+| M57 | 情节库落到运行目录 novels/_library | 完成 | `paths::trope_library_dir`、`kb::ensure_trope_library`；旧角色仓 tropes 迁移 |
+
+### M57 明细 TODO
+
+| # | 项 | 状态 | 路径 |
+|---|---|---|---|
+| 1 | `{运行根}/novels/_library` | 完成 | `src-tauri/src/paths.rs` `trope_library_dir` |
+| 2 | 确保目录 + 从角色仓迁移 | 完成 | `src-tauri/src/kb/mod.rs` `ensure_trope_library` / `migrate_tropes_between` |
+| 3 | 扫描/注入/前端走新目录 | 完成 | `src-tauri/src/import/mod.rs`；`src-tauri/src/writing/mod.rs`；`src-tauri/src/api.rs`；`src/views/TropeLibraryView.vue`；`src/services/tropeIndex.js`；`src/services/tropeExtract.js`；`src/services/projectClient.js` |
+| 4 | 作品扫描跳过 `_library` | 完成 | `src-tauri/src/project/mod.rs` `should_skip_scan_dir` |
+
+### M56 明细 TODO
+
+| # | 项 | 状态 | 路径 |
+|---|---|---|---|
+| 1 | 列表存盘 + 旧单文件迁移 | 完成 | `src-tauri/src/project/mod.rs` `upsert_trope_list_entry` / `migrate_trope_kind_lists` / `list_lore` / `delete_lore` |
+| 2 | 情节库自动保存 + 扫描中刷新列表 | 完成 | `src/views/TropeLibraryView.vue` |
+| 3 | 三语文案 | 完成 | `src/i18n/locales/{zh-CN,en,ja}.json` |
 
 ### M55 明细 TODO
 
@@ -67,6 +86,7 @@
 | 3 | 情节库：从当前作品提取 + 导入 TXT 后提取 | 完成 | `src/views/TropeLibraryView.vue`；`src/services/tropeScan.js`；`src/i18n/locales/{zh-CN,en,ja}.json` |
 | 4 | 知识库蒸馏 tropes 双写全局仓 | 完成 | `src-tauri/src/import/mod.rs` `apply_chapter_extract`；`src/views/KnowledgeHome.vue` |
 | 5 | CLI | 完成 | `src-tauri/src/cli.rs` `tropes scan` |
+| 6 | 扫描进度条 + token/费用记账 | 完成 | `src-tauri/src/import/mod.rs` `tropes_scan_range`/`tropes_scan_progress_json`；`src-tauri/src/llm/mod.rs` `TokenUsage::saturating_add_assign`；`src/services/tropeScan.js`；`src/views/TropeLibraryView.vue`；`src/components/GenProgressBar.vue`；`src/components/shell/PageHeader.vue`；`src/App.vue` |
 
 ### M54 明细 TODO
 

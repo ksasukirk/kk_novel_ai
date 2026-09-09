@@ -50,7 +50,7 @@ export async function refreshTropeIndex() {
   loading = (async () => {
     try {
       if (!appState.projectRoot) {
-        const ens = await project.ensureCharacterRoster();
+        const ens = await project.ensureTropeLibrary();
         const r = await project.listLoreAt(ens.root);
         appState.tropeList = coalesceTropes({
           local: [],

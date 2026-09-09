@@ -4,7 +4,7 @@
  */
 import { invoke } from "./tauri.js";
 import { appState, bumpTropeRevision } from "../stores/appState.js";
-import { upsertLoreAt, ensureCharacterRoster } from "./projectClient.js";
+import { upsertLoreAt, ensureTropeLibrary } from "./projectClient.js";
 import { refreshTropeIndex } from "./tropeIndex.js";
 import { isTropeKind } from "../utils/tropeKinds.js";
 import { t } from "../i18n/index.js";
@@ -139,7 +139,7 @@ export async function runTropeExtract(opts) {
         let root = existing?._root || "";
         if (!root) {
           if (!rosterRoot) {
-            const ens = await ensureCharacterRoster();
+            const ens = await ensureTropeLibrary();
             rosterRoot = ens.root || "";
           }
           root = rosterRoot;

@@ -16,6 +16,7 @@ defineProps({
   hasProject: { type: Boolean, default: false },
   statusMessage: { type: String, default: "" },
   showGenProgress: { type: Boolean, default: false },
+  keepStatusWithProgress: { type: Boolean, default: false },
 });
 
 const emit = defineEmits(["toggle-sidebar"]);
@@ -45,7 +46,7 @@ const emit = defineEmits(["toggle-sidebar"]);
       </span>
       <span class="app-badge">{{ llmModel || $t('header.noModel') }}</span>
       <span v-if="hasProject" class="app-badge">{{ $t('header.projectOpen') }}</span>
-      <span v-if="statusMessage && !showGenProgress" class="status-msg">{{ statusMessage }}</span>
+      <span v-if="statusMessage && (!showGenProgress || keepStatusWithProgress)" class="status-msg">{{ statusMessage }}</span>
     </div>
   </div>
 </template>
@@ -125,7 +126,7 @@ const emit = defineEmits(["toggle-sidebar"]);
 .status-msg {
   color: var(--muted);
   font-size: 12px;
-  max-width: 220px;
+  max-width: min(52vw, 560px);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

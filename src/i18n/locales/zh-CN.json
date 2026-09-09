@@ -826,7 +826,13 @@
     "scanCancelled": "已取消提取（已入库保留）：新增 {added} · 更新 {updated}",
     "scanFailed": "提取失败：{msg}",
     "scanNeedProject": "请先打开有章节的作品，或改用导入 TXT",
-    "importTitle": "导入后的知识库标题（可空）"
+    "importTitle": "导入后的知识库标题（可空）",
+    "scanCalls": "{n} 次",
+    "scanChunk": "片段 {chunk}/{chunks}",
+    "scanMeter": "{pct}% · {current}/{total} 章",
+    "scanMeterChunk": "{pct}% · 片段 {chunk}/{chunks}",
+    "autoSave": "情节与性癖分别写入 novels/_library/lore/tropes.json、kinks.json 列表，编辑后自动保存。",
+    "savedAuto": "已自动保存"
   },
   "analytics": {
     "title": "分析",

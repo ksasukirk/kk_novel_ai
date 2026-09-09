@@ -99,6 +99,33 @@ impl TokenUsage {
     pub fn or_estimate(self_opt: Option<Self>, messages: &[ChatMessage], completion: &str) -> Self {
         self_opt.unwrap_or_else(|| Self::estimate_from_messages(messages, completion))
     }
+
+    fn is_zero(&self) -> bool {
+        self.prompt_tokens == 0
+            && self.completion_tokens == 0
+            && self.total_tokens == 0
+            && self.prompt_cache_hit_tokens == 0
+            && self.prompt_cache_miss_tokens == 0
+    }
+
+    /// 累加多次调用的 usage；来源不一致时降为 estimate。
+    pub fn saturating_add_assign(&mut self, other: &TokenUsage) {
+        let was_empty = self.is_zero();
+        self.prompt_tokens = self.prompt_tokens.saturating_add(other.prompt_tokens);
+        self.completion_tokens = self.completion_tokens.saturating_add(other.completion_tokens);
+        self.total_tokens = self.total_tokens.saturating_add(other.total_tokens);
+        self.prompt_cache_hit_tokens = self
+            .prompt_cache_hit_tokens
+            .saturating_add(other.prompt_cache_hit_tokens);
+        self.prompt_cache_miss_tokens = self
+            .prompt_cache_miss_tokens
+            .saturating_add(other.prompt_cache_miss_tokens);
+        if was_empty {
+            self.source = other.source.clone();
+        } else if self.source != other.source {
+            self.source = "estimate".into();
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -701,5 +728,41 @@ impl LmStudioClient {
             return Err(AppError::t("errors.embeddingsNoVector"));
         }
         Ok(out)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::TokenUsage;
+
+    #[test]
+    fn saturating_add_assign_keeps_api_then_falls_back() {
+        let mut a = TokenUsage {
+            prompt_tokens: 10,
+            completion_tokens: 2,
+            total_tokens: 12,
+            source: "api".into(),
+            ..Default::default()
+        };
+        let b = TokenUsage {
+            prompt_tokens: 3,
+            completion_tokens: 4,
+            total_tokens: 7,
+            source: "api".into(),
+            ..Default::default()
+        };
+        a.saturating_add_assign(&b);
+        assert_eq!(a.prompt_tokens, 13);
+        assert_eq!(a.total_tokens, 19);
+        assert_eq!(a.source, "api");
+        let c = TokenUsage {
+            prompt_tokens: 1,
+            total_tokens: 1,
+            source: "estimate".into(),
+            ..Default::default()
+        };
+        a.saturating_add_assign(&c);
+        assert_eq!(a.total_tokens, 20);
+        assert_eq!(a.source, "estimate");
     }
 }

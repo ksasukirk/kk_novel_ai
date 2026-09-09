@@ -121,6 +121,8 @@ kk_novel_cli kb universal-dashboard
 
 全局角色仓目录：`%APPDATA%/kk_novel_ai/character_roster/`（人物 `lore/characters` + 背景/世界观 `lore/world`）。**侧栏「设定」在无任何写作工程时也可直接编辑全局仓。**
 
+全局情节/性癖库：软件运行根下 `novels/_library/lore/tropes.json` 与 `kinks.json`（移动端在应用数据 `novels/_library`）。旧角色仓里的 tropes/kinks 会在首次打开情节库时迁过去。
+
 验收脚本：[`scripts/test_import_wendao.ps1`](../scripts/test_import_wendao.ps1)
 
 实现：[`src-tauri/src/import/mod.rs`](../src-tauri/src/import/mod.rs)、[`src-tauri/src/kb/mod.rs`](../src-tauri/src/kb/mod.rs)，提示词：[`src-tauri/prompts/lore_extract.md`](../src-tauri/prompts/lore_extract.md)

@@ -2,7 +2,7 @@
 //! 代码路径: kk_novel_ai/src-tauri/src/kb/mod.rs
 
 use crate::error::{AppError, AppResult};
-use crate::paths::{kb_registry_path, universal_kb_dir, character_roster_dir};
+use crate::paths::{kb_registry_path, universal_kb_dir, character_roster_dir, trope_library_dir};
 use crate::project::{self, LoreSource, NovelProject};
 use crate::story;
 use chrono::Utc;
@@ -181,6 +181,67 @@ pub fn ensure_character_roster() -> AppResult<OpenedKb> {
         serde_json::to_string_pretty(&project::MemoryStore::default())?,
     )?;
     Ok(OpenedKb { root, project })
+}
+
+/// 把 src 仓里的情节/性癖搬到 dest（按 id/标题去重），并从 src 删除。
+pub fn migrate_tropes_between(src: &Path, dest: &Path) -> AppResult<u32> {
+    if !src.exists() {
+        return Ok(0);
+    }
+    fs::create_dir_all(dest.join("lore"))?;
+    let src_items: Vec<project::LoreEntry> = project::list_lore(src)?
+        .into_iter()
+        .filter(|e| project::is_trope_kind(&e.kind))
+        .collect();
+    if src_items.is_empty() {
+        return Ok(0);
+    }
+    let dest_items = project::list_lore(dest).unwrap_or_default();
+    let mut seen_id: std::collections::HashSet<String> =
+        dest_items.iter().map(|e| e.id.clone()).collect();
+    let mut seen_title: std::collections::HashSet<String> = dest_items
+        .iter()
+        .map(|e| project::normalize_lore_title(&e.title))
+        .filter(|s| !s.is_empty())
+        .collect();
+    let mut moved = 0u32;
+    for e in src_items {
+        let title_key = project::normalize_lore_title(&e.title);
+        let dup = seen_id.contains(&e.id) || (!title_key.is_empty() && seen_title.contains(&title_key));
+        if !dup {
+            let saved = project::upsert_lore(dest, e.clone())?;
+            seen_id.insert(saved.id.clone());
+            if !title_key.is_empty() {
+                seen_title.insert(title_key);
+            }
+            moved += 1;
+        }
+        let _ = project::delete_lore(src, &e.id);
+    }
+    Ok(moved)
+}
+
+/// 确保全局情节/性癖库存在：`{novels}/_library/lore/{tropes,kinks}.json`
+/// 首次会把旧角色仓里的 tropes/kinks 迁过来。
+pub fn ensure_trope_library() -> AppResult<PathBuf> {
+    let root = trope_library_dir()?;
+    fs::create_dir_all(root.join("lore"))?;
+    if let Ok(roster) = character_roster_dir() {
+        let _ = migrate_tropes_between(&roster, &root);
+    }
+    Ok(root)
+}
+
+pub fn list_trope_library_entries() -> Vec<project::LoreEntry> {
+    let root = match ensure_trope_library() {
+        Ok(p) => p,
+        Err(_) => return vec![],
+    };
+    project::list_lore(&root)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|e| project::is_trope_kind(&e.kind))
+        .collect()
 }
 
 pub struct OpenedKb {
@@ -420,4 +481,48 @@ pub fn migrate_root(root: &Path, source_file: Option<&str>, sync: bool) -> AppRe
         "project": opened.project,
         "sync": sync_report
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::project::LoreEntry;
+
+    fn sample_kink(title: &str, id: &str) -> LoreEntry {
+        LoreEntry {
+            id: id.into(),
+            kind: "kink".into(),
+            title: title.into(),
+            content: "body".into(),
+            keywords: vec![],
+            links: vec![],
+            attrs: Default::default(),
+            sources: vec![],
+            unique: true,
+            updated_at: "t".into(),
+        }
+    }
+
+    fn tmp_pair(name: &str) -> (PathBuf, PathBuf) {
+        let base = std::env::temp_dir().join("kk_novel_trope_lib_test").join(name);
+        let _ = fs::remove_dir_all(&base);
+        let src = base.join("roster");
+        let dest = base.join("library");
+        fs::create_dir_all(src.join("lore")).unwrap();
+        fs::create_dir_all(dest.join("lore")).unwrap();
+        (src, dest)
+    }
+
+    #[test]
+    fn migrate_tropes_moves_off_roster() {
+        let (src, dest) = tmp_pair("move_off");
+        crate::project::upsert_lore(&src, sample_kink("真空出门", "k1")).unwrap();
+        let n = migrate_tropes_between(&src, &dest).unwrap();
+        assert_eq!(n, 1);
+        let dest_items = crate::project::list_lore(&dest).unwrap();
+        assert_eq!(dest_items.len(), 1);
+        assert_eq!(dest_items[0].id, "k1");
+        let src_items = crate::project::list_lore(&src).unwrap();
+        assert!(src_items.iter().all(|e| e.kind != "kink"));
+    }
 }

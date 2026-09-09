@@ -3,7 +3,7 @@
 
 use crate::error::{AppError, AppResult};
 use crate::genlog;
-use crate::llm::{ChatMessage, ChatOptions, LmStudioClient};
+use crate::llm::{ChatMessage, ChatOptions, LmStudioClient, TokenUsage};
 use crate::project::{self, LoreEntry, LoreLink};
 use crate::settings::AppSettings;
 use crate::writing::{self, WritingRequest};
@@ -82,6 +82,24 @@ pub struct TropesScanReport {
     pub updated: Vec<String>,
     pub failed: Vec<String>,
     pub cancelled: bool,
+    #[serde(default)]
+    pub prompt_tokens: u32,
+    #[serde(default)]
+    pub completion_tokens: u32,
+    #[serde(default)]
+    pub total_tokens: u32,
+    #[serde(default)]
+    pub prompt_cache_hit_tokens: u32,
+    #[serde(default)]
+    pub prompt_cache_miss_tokens: u32,
+    #[serde(default)]
+    pub usage_source: String,
+    #[serde(default)]
+    pub calls: u64,
+    #[serde(default)]
+    pub cost_cny: f64,
+    #[serde(default)]
+    pub model_used: String,
 }
 
 #[derive(Debug, Clone)]
@@ -399,11 +417,17 @@ async fn call_lore_extract(
         .cloned()
         .collect();
     let lore_text = lore_catalog_text(&entity_lore);
-    let known_tropes: Vec<String> = lore_entries
+    let mut known_tropes: Vec<String> = lore_entries
         .iter()
         .filter(|e| e.kind == "trope" || e.kind == "kink")
         .map(|e| format!("- {} ({})", e.title, e.kind))
         .collect();
+    for e in crate::kb::list_trope_library_entries() {
+        let line = format!("- {} ({})", e.title, e.kind);
+        if !known_tropes.iter().any(|x| x == &line) {
+            known_tropes.push(line);
+        }
+    }
     let known_tropes_text = if known_tropes.is_empty() {
         "（无）".into()
     } else {
@@ -1340,10 +1364,10 @@ pub fn upsert_trope_entry(
     Ok((saved, created))
 }
 
-/// 写入全局角色仓的 tropes/kinks
+/// 写入全局情节库（`novels/_library`），不改本章 trope_ids
 pub fn upsert_trope_to_roster(draft: &TropeDraft) -> AppResult<(LoreEntry, bool)> {
-    let opened = crate::kb::ensure_character_roster()?;
-    upsert_trope_entry(&opened.root, draft, None)
+    let root = crate::kb::ensure_trope_library()?;
+    upsert_trope_entry(&root, draft, None)
 }
 
 fn chunk_prose(text: &str) -> Vec<String> {
@@ -1468,6 +1492,78 @@ fn push_unique_name(list: &mut Vec<String>, name: &str) {
     }
 }
 
+struct PreparedScanChapter {
+    chap_no: usize,
+    title: String,
+    id: String,
+    chunks: Vec<String>,
+    read_err: Option<String>,
+}
+
+fn tropes_scan_pct(step: usize, steps: usize, current: usize, total: usize) -> u32 {
+    let raw = if steps > 0 {
+        (step as f64 / steps as f64) * 100.0
+    } else if total > 0 {
+        (current as f64 / total as f64) * 100.0
+    } else {
+        0.0
+    };
+    raw.clamp(0.0, 100.0).round() as u32
+}
+
+#[allow(clippy::too_many_arguments)]
+fn tropes_scan_progress_json(
+    current: usize,
+    total: usize,
+    title: &str,
+    added: usize,
+    updated: usize,
+    skipped: usize,
+    chunk: usize,
+    chunks: usize,
+    step: usize,
+    steps: usize,
+    usage: &TokenUsage,
+    calls: u64,
+    cost_cny: f64,
+    model_used: &str,
+) -> Value {
+    json!({
+        "current": current,
+        "total": total,
+        "title": title,
+        "added": added,
+        "updated": updated,
+        "skipped": skipped,
+        "chunk": chunk,
+        "chunks": chunks,
+        "step": step,
+        "steps": steps,
+        "pct": tropes_scan_pct(step, steps, current, total),
+        "tokens": usage.total_tokens,
+        "prompt_tokens": usage.prompt_tokens,
+        "completion_tokens": usage.completion_tokens,
+        "cache_hit": usage.prompt_cache_hit_tokens,
+        "cache_miss": usage.prompt_cache_miss_tokens,
+        "usage_source": usage.source,
+        "calls": calls,
+        "cost_cny": cost_cny,
+        "model_used": model_used,
+    })
+}
+
+fn apply_usage_to_scan_report(report: &mut TropesScanReport, usage: &TokenUsage, calls: u64, cost_cny: f64, model_used: &str) {
+    report.prompt_tokens = usage.prompt_tokens;
+    report.completion_tokens = usage.completion_tokens;
+    report.total_tokens = usage.total_tokens;
+    report.prompt_cache_hit_tokens = usage.prompt_cache_hit_tokens;
+    report.prompt_cache_miss_tokens = usage.prompt_cache_miss_tokens;
+    report.usage_source = usage.source.clone();
+    report.calls = calls;
+    report.cost_cny = cost_cny;
+    report.model_used = model_used.to_string();
+}
+
 /// 按章扫描正文，抽取情节/性癖写入全局仓。`to==0` 表示扫到最后一章。
 pub async fn tropes_scan_range(
     root: &Path,
@@ -1521,56 +1617,136 @@ pub async fn tropes_scan_range(
         ..Default::default()
     };
 
-    on_progress(json!({
-        "current": 0,
-        "total": n,
-        "title": "",
-        "added": 0,
-        "updated": 0,
-        "skipped": 0
-    }));
-
+    let mut prepared = Vec::with_capacity(n);
     for (i, ch) in slice.iter().enumerate() {
+        let chap_no = from + i;
+        match project::read_chapter(root, &ch.id) {
+            Ok((_, content)) => prepared.push(PreparedScanChapter {
+                chap_no,
+                title: ch.title.clone(),
+                id: ch.id.clone(),
+                chunks: chunk_prose(&content),
+                read_err: None,
+            }),
+            Err(e) => prepared.push(PreparedScanChapter {
+                chap_no,
+                title: ch.title.clone(),
+                id: ch.id.clone(),
+                chunks: vec![],
+                read_err: Some(format!("{chap_no}: read {e}")),
+            }),
+        }
+    }
+    let total_steps: usize = prepared.iter().map(|p| p.chunks.len()).sum();
+    let mut acc_usage = TokenUsage::default();
+    let mut acc_cost = 0.0_f64;
+    let mut acc_calls = 0_u64;
+    let mut last_model = String::new();
+    let mut done_steps = 0_usize;
+
+    let mut emit = |current: usize,
+                    title: &str,
+                    chunk: usize,
+                    chunks: usize,
+                    step: usize,
+                    added: usize,
+                    updated: usize,
+                    skipped: usize,
+                    usage: &TokenUsage,
+                    calls: u64,
+                    cost: f64,
+                    model: &str| {
+        on_progress(tropes_scan_progress_json(
+            current,
+            n,
+            title,
+            added,
+            updated,
+            skipped,
+            chunk,
+            chunks,
+            step,
+            total_steps,
+            usage,
+            calls,
+            cost,
+            model,
+        ));
+    };
+
+    emit(0, "", 0, 0, 0, 0, 0, 0, &acc_usage, acc_calls, acc_cost, &last_model);
+
+    for (i, ch) in prepared.iter().enumerate() {
         if cancel.load(Ordering::Relaxed) {
             report.cancelled = true;
             break;
         }
-        let chap_no = from + i;
         let _ = writeln!(
             std::io::stderr(),
-            "[tropes scan] {}/{} chapter {chap_no} {}",
+            "[tropes scan] {}/{} chapter {} {}",
             i + 1,
             n,
+            ch.chap_no,
             ch.title
         );
-        on_progress(json!({
-            "current": i + 1,
-            "total": n,
-            "title": ch.title,
-            "added": report.added.len(),
-            "updated": report.updated.len(),
-            "skipped": report.skipped
-        }));
+        emit(
+            i + 1,
+            &ch.title,
+            0,
+            ch.chunks.len(),
+            done_steps,
+            report.added.len(),
+            report.updated.len(),
+            report.skipped,
+            &acc_usage,
+            acc_calls,
+            acc_cost,
+            &last_model,
+        );
 
-        let (_, content) = match project::read_chapter(root, &ch.id) {
-            Ok(v) => v,
-            Err(e) => {
-                report.failed.push(format!("{chap_no}: read {e}"));
-                continue;
-            }
-        };
-        let chunks = chunk_prose(&content);
-        if chunks.is_empty() {
+        if let Some(err) = &ch.read_err {
+            report.failed.push(err.clone());
+            continue;
+        }
+        if ch.chunks.is_empty() {
             report.skipped += 1;
+            emit(
+                i + 1,
+                &ch.title,
+                0,
+                0,
+                done_steps,
+                report.added.len(),
+                report.updated.len(),
+                report.skipped,
+                &acc_usage,
+                acc_calls,
+                acc_cost,
+                &last_model,
+            );
             continue;
         }
 
         let mut chapter_ok = false;
-        for (ci, chunk) in chunks.iter().enumerate() {
+        for (ci, chunk) in ch.chunks.iter().enumerate() {
             if cancel.load(Ordering::Relaxed) {
                 report.cancelled = true;
                 break;
             }
+            emit(
+                i + 1,
+                &ch.title,
+                ci + 1,
+                ch.chunks.len(),
+                done_steps,
+                report.added.len(),
+                report.updated.len(),
+                report.skipped,
+                &acc_usage,
+                acc_calls,
+                acc_cost,
+                &last_model,
+            );
             let req = WritingRequest {
                 project_root: root.to_string_lossy().to_string(),
                 chapter_id: ch.id.clone(),
@@ -1582,6 +1758,35 @@ pub async fn tropes_scan_range(
             match writing::run_writing(&client, &settings, &req, Some(cancel.clone()), |_| {}).await {
                 Ok(out) => {
                     chapter_ok = true;
+                    let instruction = format!(
+                        "tropes_scan ch{} chunk {}/{}",
+                        ch.chap_no,
+                        ci + 1,
+                        ch.chunks.len()
+                    );
+                    let mut entry = genlog::make_entry_full(
+                        &req.task,
+                        &req.project_root,
+                        &req.chapter_id,
+                        &out.raw_text,
+                        &out.text,
+                        "tropes_scan",
+                        out.truncated,
+                        &out.model_used,
+                        &instruction,
+                        &out.prompt_messages,
+                        Some(out.usage.clone()),
+                        &settings,
+                    );
+                    entry.context_sources = serde_json::to_value(&out.context_sources).ok();
+                    acc_cost += entry.cost_cny;
+                    let _ = genlog::append_log(&entry);
+                    acc_usage.saturating_add_assign(&out.usage);
+                    acc_calls += 1;
+                    if !out.model_used.trim().is_empty() {
+                        last_model = out.model_used.clone();
+                    }
+                    done_steps += 1;
                     let drafts = parse_trope_drafts(&out.text);
                     for draft in drafts.into_iter().take(5) {
                         match upsert_trope_to_roster(&draft) {
@@ -1595,17 +1800,32 @@ pub async fn tropes_scan_range(
                             Err(e) => {
                                 report
                                     .failed
-                                    .push(format!("{chap_no}.{ci}: upsert {} {e}", draft.title));
+                                    .push(format!("{}.{}: upsert {} {e}", ch.chap_no, ci, draft.title));
                             }
                         }
                     }
                 }
                 Err(e) => {
+                    done_steps += 1;
                     report
                         .failed
-                        .push(format!("{chap_no}.{ci}: trope_extract {e}"));
+                        .push(format!("{}.{}: trope_extract {e}", ch.chap_no, ci));
                 }
             }
+            emit(
+                i + 1,
+                &ch.title,
+                ci + 1,
+                ch.chunks.len(),
+                done_steps,
+                report.added.len(),
+                report.updated.len(),
+                report.skipped,
+                &acc_usage,
+                acc_calls,
+                acc_cost,
+                &last_model,
+            );
         }
         if report.cancelled {
             break;
@@ -1613,16 +1833,23 @@ pub async fn tropes_scan_range(
         if chapter_ok {
             report.scanned += 1;
         }
-        on_progress(json!({
-            "current": i + 1,
-            "total": n,
-            "title": ch.title,
-            "added": report.added.len(),
-            "updated": report.updated.len(),
-            "skipped": report.skipped
-        }));
+        emit(
+            i + 1,
+            &ch.title,
+            ch.chunks.len(),
+            ch.chunks.len(),
+            done_steps,
+            report.added.len(),
+            report.updated.len(),
+            report.skipped,
+            &acc_usage,
+            acc_calls,
+            acc_cost,
+            &last_model,
+        );
     }
 
+    apply_usage_to_scan_report(&mut report, &acc_usage, acc_calls, acc_cost, &last_model);
     Ok(report)
 }
 
@@ -1669,5 +1896,36 @@ mod tests {
         assert_eq!(drafts.len(), 1);
         assert_eq!(drafts[0].kind, "kink");
         assert_eq!(drafts[0].title, "真空出门");
+    }
+
+    #[test]
+    fn tropes_scan_progress_includes_usage_and_pct() {
+        let usage = TokenUsage {
+            prompt_tokens: 10,
+            completion_tokens: 5,
+            total_tokens: 15,
+            prompt_cache_hit_tokens: 2,
+            prompt_cache_miss_tokens: 8,
+            source: "api".into(),
+        };
+        let v = tropes_scan_progress_json(
+            2, 3, "回家", 5, 5, 0, 1, 2, 3, 6, &usage, 3, 0.12, "deepseek",
+        );
+        assert_eq!(v["current"], 2);
+        assert_eq!(v["total"], 3);
+        assert_eq!(v["chunk"], 1);
+        assert_eq!(v["steps"], 6);
+        assert_eq!(v["pct"], 50);
+        assert_eq!(v["tokens"], 15);
+        assert_eq!(v["calls"], 3);
+        assert_eq!(v["model_used"], "deepseek");
+        assert!((v["cost_cny"].as_f64().unwrap() - 0.12).abs() < 1e-9);
+    }
+
+    #[test]
+    fn tropes_scan_pct_falls_back_to_chapters() {
+        assert_eq!(tropes_scan_pct(0, 0, 1, 4), 25);
+        assert_eq!(tropes_scan_pct(2, 8, 1, 4), 25);
+        assert_eq!(tropes_scan_pct(8, 8, 4, 4), 100);
     }
 }

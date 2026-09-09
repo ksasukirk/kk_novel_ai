@@ -826,7 +826,13 @@
     "scanCancelled": "Extract cancelled (kept what was saved): added {added} · updated {updated}",
     "scanFailed": "Extract failed: {msg}",
     "scanNeedProject": "Open a work with chapters first, or import a TXT",
-    "importTitle": "Knowledge-base title after import (optional)"
+    "importTitle": "Knowledge-base title after import (optional)",
+    "scanCalls": "{n} calls",
+    "scanChunk": "chunk {chunk}/{chunks}",
+    "scanMeter": "{pct}% · ch {current}/{total}",
+    "scanMeterChunk": "{pct}% · chunk {chunk}/{chunks}",
+    "autoSave": "Tropes and kinks are stored as novels/_library/lore/tropes.json and kinks.json lists, and edits auto-save.",
+    "savedAuto": "Saved automatically"
   },
   "analytics": {
     "title": "Analytics",

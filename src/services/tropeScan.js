@@ -7,6 +7,7 @@ import { invoke, listen } from "./tauri.js";
 import { appState, bumpTropeRevision } from "../stores/appState.js";
 import { refreshTropeIndex } from "./tropeIndex.js";
 import { t } from "../i18n/index.js";
+import { formatCost, formatTokens, usageTotalTokens } from "../utils/usageFormat.js";
 
 export const tropeScanState = reactive({
   running: false,
@@ -19,11 +20,86 @@ export const tropeScanState = reactive({
   updated: 0,
   skipped: 0,
   error: "",
+  chunk: 0,
+  chunks: 0,
+  step: 0,
+  steps: 0,
+  pct: 0,
+  tokens: 0,
+  promptTokens: 0,
+  completionTokens: 0,
+  cacheHit: 0,
+  cacheMiss: 0,
+  usageSource: "",
+  calls: 0,
+  costCny: 0,
+  model: "",
 });
 
 let unlistenStart = null;
 let unlistenProgress = null;
 let unlistenError = null;
+
+export function scanUsageObject(state = tropeScanState) {
+  return {
+    prompt_tokens: Number(state.promptTokens) || 0,
+    completion_tokens: Number(state.completionTokens) || 0,
+    total_tokens: Number(state.tokens) || 0,
+    prompt_cache_hit_tokens: Number(state.cacheHit) || 0,
+    prompt_cache_miss_tokens: Number(state.cacheMiss) || 0,
+    source: state.usageSource || "estimate",
+  };
+}
+
+export function formatScanUsage(state = tropeScanState) {
+  const u = scanUsageObject(state);
+  const calls = Number(state.calls) || 0;
+  if (!calls && !usageTotalTokens(u)) return "";
+  const parts = [formatTokens(u), formatCost(state.costCny)];
+  if (calls) parts.push(t("trope.scanCalls", { n: calls }));
+  return parts.filter(Boolean).join(" · ");
+}
+
+function resetUsageFields() {
+  tropeScanState.chunk = 0;
+  tropeScanState.chunks = 0;
+  tropeScanState.step = 0;
+  tropeScanState.steps = 0;
+  tropeScanState.pct = 0;
+  tropeScanState.tokens = 0;
+  tropeScanState.promptTokens = 0;
+  tropeScanState.completionTokens = 0;
+  tropeScanState.cacheHit = 0;
+  tropeScanState.cacheMiss = 0;
+  tropeScanState.usageSource = "";
+  tropeScanState.calls = 0;
+  tropeScanState.costCny = 0;
+  tropeScanState.model = "";
+}
+
+function applyReportUsage(r) {
+  if (!r) return;
+  if (r.total_tokens != null) tropeScanState.tokens = Number(r.total_tokens) || 0;
+  if (r.prompt_tokens != null) tropeScanState.promptTokens = Number(r.prompt_tokens) || 0;
+  if (r.completion_tokens != null) {
+    tropeScanState.completionTokens = Number(r.completion_tokens) || 0;
+  }
+  if (r.prompt_cache_hit_tokens != null) {
+    tropeScanState.cacheHit = Number(r.prompt_cache_hit_tokens) || 0;
+  }
+  if (r.prompt_cache_miss_tokens != null) {
+    tropeScanState.cacheMiss = Number(r.prompt_cache_miss_tokens) || 0;
+  }
+  if (r.usage_source != null) tropeScanState.usageSource = String(r.usage_source || "");
+  if (r.calls != null) tropeScanState.calls = Number(r.calls) || 0;
+  if (r.cost_cny != null) tropeScanState.costCny = Number(r.cost_cny) || 0;
+  if (r.model_used != null) tropeScanState.model = String(r.model_used || "");
+  if (tropeScanState.steps > 0) {
+    tropeScanState.pct = Math.round((tropeScanState.step / tropeScanState.steps) * 100);
+  } else if (!tropeScanState.cancelled) {
+    tropeScanState.pct = 100;
+  }
+}
 
 function applyProgress(payload) {
   if (!payload) return;
@@ -37,6 +113,22 @@ function applyProgress(payload) {
   if (payload.added != null) tropeScanState.added = Number(payload.added) || 0;
   if (payload.updated != null) tropeScanState.updated = Number(payload.updated) || 0;
   if (payload.skipped != null) tropeScanState.skipped = Number(payload.skipped) || 0;
+  if (payload.chunk != null) tropeScanState.chunk = Number(payload.chunk) || 0;
+  if (payload.chunks != null) tropeScanState.chunks = Number(payload.chunks) || 0;
+  if (payload.step != null) tropeScanState.step = Number(payload.step) || 0;
+  if (payload.steps != null) tropeScanState.steps = Number(payload.steps) || 0;
+  if (payload.pct != null) tropeScanState.pct = Number(payload.pct) || 0;
+  if (payload.tokens != null) tropeScanState.tokens = Number(payload.tokens) || 0;
+  if (payload.prompt_tokens != null) tropeScanState.promptTokens = Number(payload.prompt_tokens) || 0;
+  if (payload.completion_tokens != null) {
+    tropeScanState.completionTokens = Number(payload.completion_tokens) || 0;
+  }
+  if (payload.cache_hit != null) tropeScanState.cacheHit = Number(payload.cache_hit) || 0;
+  if (payload.cache_miss != null) tropeScanState.cacheMiss = Number(payload.cache_miss) || 0;
+  if (payload.usage_source != null) tropeScanState.usageSource = String(payload.usage_source || "");
+  if (payload.calls != null) tropeScanState.calls = Number(payload.calls) || 0;
+  if (payload.cost_cny != null) tropeScanState.costCny = Number(payload.cost_cny) || 0;
+  if (payload.model_used != null) tropeScanState.model = String(payload.model_used || "");
 }
 
 async function bindEvents() {
@@ -92,6 +184,7 @@ export async function scanTropesFromRoot(root, opts = {}) {
   tropeScanState.updated = 0;
   tropeScanState.skipped = 0;
   tropeScanState.error = "";
+  resetUsageFields();
   appState.statusMessage = t("trope.scanProgress", {
     current: 0,
     total: 0,
@@ -110,23 +203,27 @@ export async function scanTropesFromRoot(root, opts = {}) {
     tropeScanState.added = Array.isArray(r && r.added) ? r.added.length : tropeScanState.added;
     tropeScanState.updated = Array.isArray(r && r.updated) ? r.updated.length : tropeScanState.updated;
     tropeScanState.skipped = Number((r && r.skipped) || 0);
+    applyReportUsage(r);
     try {
       await refreshTropeIndex();
     } catch {
       /* ignore */
     }
     bumpTropeRevision();
+    const usage = formatScanUsage();
     if (tropeScanState.cancelled) {
-      appState.statusMessage = t("trope.scanCancelled", {
-        added: tropeScanState.added,
-        updated: tropeScanState.updated,
-      });
+      appState.statusMessage =
+        t("trope.scanCancelled", {
+          added: tropeScanState.added,
+          updated: tropeScanState.updated,
+        }) + (usage ? ` · ${usage}` : "");
     } else {
-      appState.statusMessage = t("trope.scanDone", {
-        added: tropeScanState.added,
-        updated: tropeScanState.updated,
-        skipped: tropeScanState.skipped,
-      });
+      appState.statusMessage =
+        t("trope.scanDone", {
+          added: tropeScanState.added,
+          updated: tropeScanState.updated,
+          skipped: tropeScanState.skipped,
+        }) + (usage ? ` · ${usage}` : "");
     }
     return r;
   } catch (e) {

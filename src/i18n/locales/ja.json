@@ -826,7 +826,13 @@
     "scanCancelled": "抽出を中止（保存済みは残す）：追加 {added} · 更新 {updated}",
     "scanFailed": "抽出に失敗：{msg}",
     "scanNeedProject": "章のある作品を開くか、TXT 取り込みを使ってください",
-    "importTitle": "取り込み後のナレッジタイトル（任意）"
+    "importTitle": "取り込み後のナレッジタイトル（任意）",
+    "scanCalls": "{n} 回",
+    "scanChunk": "断片 {chunk}/{chunks}",
+    "scanMeter": "{pct}% · {current}/{total} 章",
+    "scanMeterChunk": "{pct}% · 断片 {chunk}/{chunks}",
+    "autoSave": "筋と性癖は novels/_library/lore/tropes.json と kinks.json のリストに保存され、編集は自動保存されます。",
+    "savedAuto": "自動保存しました"
   },
   "analytics": {
     "title": "分析",

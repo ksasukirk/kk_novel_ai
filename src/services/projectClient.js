@@ -413,6 +413,10 @@ export async function ensureCharacterRoster() {
   return await invoke("character_roster_ensure");
 }
 
+export async function ensureTropeLibrary() {
+  return await invoke("trope_library_ensure");
+}
+
 export async function upsertLore(entry) {
   return await upsertLoreAt(appState.projectRoot, entry);
 }
