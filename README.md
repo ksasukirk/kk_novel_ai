@@ -6,7 +6,7 @@
 
 | 项 | 值 |
 |---|---|
-| 当前版本 | `0.2.37`（`package.json` / `src-tauri/Cargo.toml` / `src-tauri/tauri.conf.json` 同步） |
+| 当前版本 | `0.2.38`（`package.json` / `src-tauri/Cargo.toml` / `src-tauri/tauri.conf.json` 同步） |
 | 标识符 | `com.kk.kk-novel-ai` |
 | 仓库 | [https://github.com/ksasukirk/kk_novel_ai](https://github.com/ksasukirk/kk_novel_ai) |
 | 作者 | kk |
@@ -55,20 +55,22 @@
 | R24 | v0.2.36 发版版本号对齐（npm / Cargo / Tauri） | 完成 | [`package.json`](package.json)、[`src-tauri/Cargo.toml`](src-tauri/Cargo.toml)、[`src-tauri/Cargo.lock`](src-tauri/Cargo.lock)、[`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json)、本文 |
 | R25 | 情节扫描降本（冻结名单 / 前缀缓存 / 大切块） | 完成 | [`writing/mod.rs`](src-tauri/src/writing/mod.rs)、[`import/mod.rs`](src-tauri/src/import/mod.rs)、[`trope_extract.md`](src-tauri/prompts/trope_extract.md) |
 | R26 | v0.2.37 发版：扫描降本落地 + 版本对齐 | 完成 | [`package.json`](package.json)、[`src-tauri/Cargo.toml`](src-tauri/Cargo.toml)、[`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json)、[`writing/mod.rs`](src-tauri/src/writing/mod.rs)、[`import/mod.rs`](src-tauri/src/import/mod.rs)、本文 |
+| R27 | v0.2.38 发版：npm / Cargo / Tauri 版本号对齐 | 完成 | [`package.json`](package.json)、[`src-tauri/Cargo.toml`](src-tauri/Cargo.toml)、[`src-tauri/Cargo.lock`](src-tauri/Cargo.lock)、[`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json)、本文 |
 
 ---
 
-## 1. 本版（0.2.37）做了什么
+## 1. 本版（0.2.38）做了什么
 
-相对 `0.2.36`，本版把**全书 / 导入情节扫描的 token 成本**压下来：开书冻结全局库名单、规则与名单进 system（正文单独 user）、名单压成两行便于 DeepSeek 前缀缓存，并把切块从约 3500～4000 字提到约 **7000～8000** 字。版本号同步到 `0.2.37`。
+相对 `0.2.37`，本版是一次**发版版本号对齐**：把前端 npm、Rust crate 与 Tauri 配置统一到 `0.2.38`，便于安装包、应用内更新检查与 GitHub Release 标签一致。功能面承接上一版已落地的情节扫描降本（冻结名单 / 前缀缓存 / 大切块），无额外行为变更。
+
+- **三处版本同步**：[`package.json`](package.json)、[`src-tauri/Cargo.toml`](src-tauri/Cargo.toml)（及 [`Cargo.lock`](src-tauri/Cargo.lock)）、[`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json) 均为 `0.2.38`。
+- **发版文档落盘**：本 README 按发版流水线重写，版本号与仓库入口信息对齐。
+
+**上一版（0.2.37）及更早已交付、本版继续可用的体验**：
 
 - **扫描开书冻结名单**：全书扫描开始时用压缩名单快照，块与块之间不再反复读盘重排目录，前缀可跨块复用。见 [`import/mod.rs`](src-tauri/src/import/mod.rs) `tropes_scan_range`、[`writing/mod.rs`](src-tauri/src/writing/mod.rs) `WritingRequest.known_tropes_snapshot`。
-- **压缩名单 + 前缀缓存友好**：已有卡压成 `kink:` / `trope:` 各一行（斜杠分隔标题，旧→新只追加行尾）；规则与名单放 system，正文单独 user。见 [`format_known_tropes_compact`](src-tauri/src/writing/mod.rs)、三语 [`trope_extract.md`](src-tauri/prompts/trope_extract.md)。
+- **压缩名单 + 前缀缓存友好**：已有卡压成 `kink:` / `trope:` 各一行；规则与名单放 system，正文单独 user。见 [`format_known_tropes_compact`](src-tauri/src/writing/mod.rs)、三语 [`trope_extract.md`](src-tauri/prompts/trope_extract.md)。
 - **大切块与抽取上限**：切块 soft/hard 约 7000/8000；每块最多 8 条；抽取 `max_tokens` 1024。见 [`chunk_prose`](src-tauri/src/import/mod.rs)、[`resolve_writing_options`](src-tauri/src/writing/mod.rs)。
-- **版本号同步**：[`package.json`](package.json)、[`src-tauri/Cargo.toml`](src-tauri/Cargo.toml)（及 [`Cargo.lock`](src-tauri/Cargo.lock)）、[`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json) 均为 `0.2.37`。
-
-**上一版（0.2.36）及更早已交付、本版继续可用的体验**：
-
 - **一键总结排队**：作品首页「一键总结」收集未总结 / 已修改且有正文的书，确认后按顺序全书扫描进全局库；一本失败继续下一本；随时可取消；进度条显示「第几本 / 共几本 · 书名 · 百分比 · 章进度」。见 [`ProjectHome.vue`](src/views/ProjectHome.vue)、[`tropeScan.js`](src/services/tropeScan.js) `scanTropesQueue`、[`GenProgressBar.vue`](src/components/GenProgressBar.vue)。
 - **空书跳过排队**：状态含 `has_prose`；无章正文的书不进待总结列表。见 [`trope_summary.rs`](src-tauri/src/project/trope_summary.rs)。
 - **近义合并、不新开、不覆盖**：扫描 / 抽取命中近义玩法只补写法；打开库时 compact；`trope_extract` 三语 Prompt 禁止近义新开卡。
