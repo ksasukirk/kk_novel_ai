@@ -4,6 +4,7 @@ mod digest_sanitize;
 pub mod backup;
 mod trope_merge;
 mod trope_summary;
+pub(crate) mod trope_tags;
 
 pub use digest_sanitize::sanitize_block_digest;
 pub use trope_merge::{

@@ -97,3 +97,74 @@ export function aiPanelLayoutButtonLabel(layout) {
   if (layout === "float") return t("header.aiHide");
   return t("header.aiShow");
 }
+
+export const TROPE_CARD_FIELDS_KEY = "kk_trope_card_fields";
+export const TROPE_CARD_DENSITY_KEY = "kk_trope_card_density";
+
+/** @typedef {'keywords' | 'snippet' | 'tags' | 'intensity' | 'doDont' | 'evidence'} TropeCardField */
+/** @typedef {'compact' | 'standard'} TropeCardDensity */
+
+export const TROPE_CARD_FIELD_IDS = [
+  "keywords",
+  "snippet",
+  "tags",
+  "intensity",
+  "doDont",
+  "evidence",
+];
+
+export const DEFAULT_TROPE_CARD_FIELDS = {
+  keywords: true,
+  snippet: true,
+  tags: true,
+  intensity: true,
+  doDont: false,
+  evidence: false,
+};
+
+/** @returns {Record<TropeCardField, boolean>} */
+export function readTropeCardFields() {
+  const out = { ...DEFAULT_TROPE_CARD_FIELDS };
+  try {
+    const raw = localStorage.getItem(TROPE_CARD_FIELDS_KEY);
+    if (!raw) return out;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return out;
+    for (const id of TROPE_CARD_FIELD_IDS) {
+      if (typeof parsed[id] === "boolean") out[id] = parsed[id];
+    }
+  } catch {
+    /* ignore */
+  }
+  return out;
+}
+
+/** @param {Record<string, boolean>} fields */
+export function saveTropeCardFields(fields) {
+  const next = { ...DEFAULT_TROPE_CARD_FIELDS, ...(fields || {}) };
+  try {
+    localStorage.setItem(TROPE_CARD_FIELDS_KEY, JSON.stringify(next));
+  } catch {
+    /* ignore */
+  }
+}
+
+/** @returns {TropeCardDensity} */
+export function readTropeCardDensity() {
+  try {
+    const v = localStorage.getItem(TROPE_CARD_DENSITY_KEY);
+    if (v === "compact") return v;
+  } catch {
+    /* ignore */
+  }
+  return "standard";
+}
+
+/** @param {TropeCardDensity} density */
+export function saveTropeCardDensity(density) {
+  try {
+    localStorage.setItem(TROPE_CARD_DENSITY_KEY, density === "compact" ? "compact" : "standard");
+  } catch {
+    /* ignore */
+  }
+}

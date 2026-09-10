@@ -12,6 +12,22 @@ import { useToastError } from "../services/toast.js";
 import { t } from "../i18n/index.js";
 import { isTropeKind, tropeKindLabelKey } from "../utils/tropeKinds.js";
 import { cancelTropeScan, formatScanUsage, scanTropesFromRoot, tropeScanState } from "../services/tropeScan.js";
+import {
+  TROPE_CARD_FIELD_IDS,
+  readTropeCardFields,
+  saveTropeCardFields,
+  readTropeCardDensity,
+  saveTropeCardDensity,
+} from "../utils/layoutPrefs.js";
+import {
+  TROPE_CATEGORY_IDS,
+  categoryLabelKey,
+  formatTropeTags,
+  itemCategoryTags,
+  itemIsUncategorized,
+  parseTropeTags,
+} from "../utils/tropeCategories.js";
+import { tropesScanConfirmText } from "../utils/usageEstimate.js";
 
 const items = ref([]);
 const rosterPath = ref("");
@@ -19,8 +35,16 @@ const error = useToastError();
 const status = ref("");
 /** all | trope | kink */
 const kindFilter = ref("all");
+const searchQuery = ref("");
+/** "" | "__uncat__" | 规范名 */
+const categoryFilter = ref("");
 const form = ref(emptyForm("trope"));
 const importTitle = ref("");
+const editorOpen = ref(false);
+const expandedId = ref("");
+const showFieldPanel = ref(false);
+const cardFields = ref(readTropeCardFields());
+const cardDensity = ref(readTropeCardDensity());
 const scan = tropeScanState;
 let applyingRemote = false;
 let saveTimer = null;
@@ -53,13 +77,115 @@ const libraryItems = computed(() =>
   (items.value || []).filter((it) => isTropeKind(it.kind))
 );
 
-const visibleItems = computed(() => {
+const kindItems = computed(() => {
   if (kindFilter.value === "all") return libraryItems.value;
   return libraryItems.value.filter((it) => it.kind === kindFilter.value);
 });
 
+const categoryCounts = computed(() => {
+  const counts = {};
+  let uncat = 0;
+  for (const it of kindItems.value) {
+    const tags = itemCategoryTags(it);
+    if (!tags.length) uncat += 1;
+    for (const tag of tags) {
+      counts[tag] = (counts[tag] || 0) + 1;
+    }
+  }
+  return {
+    chips: TROPE_CATEGORY_IDS.filter((id) => counts[id] > 0).map((id) => ({
+      id,
+      n: counts[id],
+    })),
+    uncat,
+  };
+});
+
+const visibleItems = computed(() => {
+  let list = kindItems.value;
+  if (categoryFilter.value === "__uncat__") {
+    list = list.filter((it) => itemIsUncategorized(it));
+  } else if (categoryFilter.value) {
+    list = list.filter((it) => itemCategoryTags(it).includes(categoryFilter.value));
+  }
+  const q = searchQuery.value.trim().toLowerCase();
+  if (q) {
+    list = list.filter((it) => {
+      const hay = [
+        it.title || "",
+        (it.keywords || []).join(" "),
+        it.content || "",
+        itemCategoryTags(it).join(" "),
+        String((it.attrs && it.attrs.tags) || ""),
+      ]
+        .join(" ")
+        .toLowerCase();
+      return hay.includes(q);
+    });
+  }
+  return list;
+});
+
+const visibleCountText = computed(() =>
+  t("trope.visibleCount", { n: visibleItems.value.length, m: kindItems.value.length })
+);
+
 function attrsOf(item) {
-  return (item && item.attrs && typeof item.attrs === "object") ? item.attrs : {};
+  return item && item.attrs && typeof item.attrs === "object" ? item.attrs : {};
+}
+
+function keywordChips(item) {
+  return (item.keywords || []).filter(Boolean).slice(0, 8);
+}
+
+function formTagSelected(id) {
+  return parseTropeTags(form.value.tags).includes(id);
+}
+
+function toggleFormTag(id) {
+  const cur = parseTropeTags(form.value.tags);
+  const next = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id];
+  form.value.tags = formatTropeTags(next);
+}
+
+function toggleCategory(id) {
+  categoryFilter.value = categoryFilter.value === id ? "" : id;
+}
+
+function toggleField(id) {
+  cardFields.value = { ...cardFields.value, [id]: !cardFields.value[id] };
+  saveTropeCardFields(cardFields.value);
+}
+
+function setDensity(d) {
+  cardDensity.value = d === "compact" ? "compact" : "standard";
+  saveTropeCardDensity(cardDensity.value);
+}
+
+function toggleExpand(id) {
+  expandedId.value = expandedId.value === id ? "" : id;
+}
+
+function closeEditor() {
+  editorOpen.value = false;
+}
+
+function onListPaneClick() {
+  if (editorOpen.value) editorOpen.value = false;
+}
+
+function fieldOn(id) {
+  return !!cardFields.value[id];
+}
+
+function showDoDont(item) {
+  if (expandedId.value === item.id) return true;
+  return fieldOn("doDont") && !!(attrsOf(item).do || attrsOf(item).dont);
+}
+
+function showEvidence(item) {
+  if (expandedId.value === item.id) return !!attrsOf(item).evidence;
+  return fieldOn("evidence") && !!attrsOf(item).evidence;
 }
 
 async function refresh() {
@@ -77,6 +203,7 @@ async function refresh() {
 }
 
 async function edit(item) {
+  if (expandedId.value && expandedId.value !== item.id) expandedId.value = "";
   applyingRemote = true;
   const attrs = attrsOf(item);
   form.value = {
@@ -88,9 +215,9 @@ async function edit(item) {
     intensity: String(attrs.intensity || "3"),
     doText: attrs.do || "",
     dontText: attrs.dont || "",
-    tags: attrs.tags || "",
+    tags: formatTropeTags(attrs.tags || ""),
   };
-  kindFilter.value = form.value.kind;
+  editorOpen.value = true;
   await nextTick();
   applyingRemote = false;
 }
@@ -100,6 +227,7 @@ async function resetForm() {
   const kind = kindFilter.value === "kink" ? "kink" : "trope";
   form.value = emptyForm(kind);
   status.value = "";
+  editorOpen.value = true;
   await nextTick();
   applyingRemote = false;
 }
@@ -111,7 +239,8 @@ function buildPayload() {
   };
   if (form.value.doText.trim()) attrs.do = form.value.doText.trim();
   if (form.value.dontText.trim()) attrs.dont = form.value.dontText.trim();
-  if (form.value.tags.trim()) attrs.tags = form.value.tags.trim();
+  const tags = formatTropeTags(form.value.tags);
+  attrs.tags = tags;
   return {
     id: form.value.id || "",
     kind,
@@ -182,7 +311,22 @@ async function onScanCurrent() {
     return;
   }
   const n = chapterCount.value;
-  const ok = await appConfirm(t("trope.scanConfirm", { n }), {
+  let msg = t("trope.scanConfirm", { n });
+  try {
+    const r = await project.listTropeSummaryStatus([appState.projectRoot]);
+    const row = ((r && r.items) || [])[0] || {};
+    const chars = Number(row.prose_chars) || 0;
+    const priced = tropesScanConfirmText({
+      settings: appState.settings,
+      books: [{ chars }],
+      n,
+      variant: "scan",
+    });
+    if (priced) msg = priced;
+  } catch {
+    /* 约算失败仍用模糊句 */
+  }
+  const ok = await appConfirm(msg, {
     title: t("trope.scanCurrent"),
   });
   if (!ok) return;
@@ -201,7 +345,7 @@ async function onScanImport() {
     const opened = await kb.importIntoKb(dirPicked.path, filePicked.path, name);
     appState.activeNav = "tropes";
     const n = ((opened.project && opened.project.chapters) || []).length;
-    const ok = await appConfirm(t("trope.scanConfirm", { n }), {
+    const ok = await appConfirm(t("trope.scanConfirmImportUnknown", { n }), {
       title: t("trope.scanImport"),
     });
     if (!ok) {
@@ -293,7 +437,14 @@ async function remove(item) {
     return;
   }
   await project.deleteLoreAt(rosterPath.value, item.id);
-  if (form.value.id === item.id) resetForm();
+  if (form.value.id === item.id) {
+    applyingRemote = true;
+    form.value = emptyForm(kindFilter.value === "kink" ? "kink" : "trope");
+    editorOpen.value = false;
+    await nextTick();
+    applyingRemote = false;
+  }
+  if (expandedId.value === item.id) expandedId.value = "";
   await refresh();
   bumpTropeRevision();
 }
@@ -343,10 +494,74 @@ onUnmounted(() => {
           {{ $t("common.kink") }}
         </button>
         <button type="button" class="app-btn app-btn-light refresh-btn" :disabled="scan.running" @click="refresh">{{ $t("common.refresh") }}</button>
+        <button type="button" class="app-btn app-btn-primary" :disabled="scan.running" @click="resetForm">{{ $t("trope.new") }}</button>
         <button type="button" class="app-btn" :disabled="!canScanCurrent" @click="onScanCurrent">{{ $t("trope.scanCurrent") }}</button>
         <button type="button" class="app-btn" :disabled="scan.running" @click="onScanImport">{{ $t("trope.scanImport") }}</button>
         <button v-if="scan.running" type="button" class="app-btn" @click="cancelTropeScan">{{ $t("common.cancel") }}</button>
       </div>
+
+      <div class="filter-row">
+        <input
+          v-model="searchQuery"
+          type="search"
+          class="search-input"
+          :placeholder="$t('trope.searchPh')"
+        />
+        <span class="muted count-label">{{ visibleCountText }}</span>
+        <div class="field-panel-wrap">
+          <button type="button" class="app-btn app-btn-light" @click="showFieldPanel = !showFieldPanel">
+            {{ $t("trope.cardDisplay") }}
+          </button>
+          <div v-if="showFieldPanel" class="field-panel">
+            <label v-for="id in TROPE_CARD_FIELD_IDS" :key="id" class="field-check">
+              <input type="checkbox" :checked="fieldOn(id)" @change="toggleField(id)" />
+              {{ $t("trope.field" + id.charAt(0).toUpperCase() + id.slice(1)) }}
+            </label>
+            <div class="density-row">
+              <span class="muted">{{ $t("trope.density") }}</span>
+              <button
+                type="button"
+                class="chip"
+                :class="cardDensity === 'standard' ? 'chip-active' : ''"
+                @click="setDensity('standard')"
+              >
+                {{ $t("trope.densityStandard") }}
+              </button>
+              <button
+                type="button"
+                class="chip"
+                :class="cardDensity === 'compact' ? 'chip-active' : ''"
+                @click="setDensity('compact')"
+              >
+                {{ $t("trope.densityCompact") }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="cat-row">
+        <button
+          v-if="categoryCounts.uncat"
+          type="button"
+          class="chip"
+          :class="categoryFilter === '__uncat__' ? 'chip-active' : ''"
+          @click="toggleCategory('__uncat__')"
+        >
+          {{ $t("trope.uncategorized") }} {{ categoryCounts.uncat }}
+        </button>
+        <button
+          v-for="chip in categoryCounts.chips"
+          :key="chip.id"
+          type="button"
+          class="chip"
+          :class="categoryFilter === chip.id ? 'chip-active' : ''"
+          @click="toggleCategory(chip.id)"
+        >
+          {{ $t(categoryLabelKey(chip.id)) }} {{ chip.n }}
+        </button>
+      </div>
+
       <div v-if="scan.running" class="scan-meter-wrap">
         <div
           class="scan-meter"
@@ -380,29 +595,79 @@ onUnmounted(() => {
       </div>
     </div>
 
-    <div class="lore-grid">
-      <div class="list-pane">
-        <div
-          v-for="item in visibleItems"
-          :key="item.id"
-          class="lore-item"
-          :class="{ active: form.id === item.id }"
-          @click="edit(item)"
-        >
-          <div class="lore-meta">
-            <strong>{{ item.title }}</strong>
-            <div class="tag-row">
-              <span class="chip chip-active kind-tag">{{ $t(tropeKindLabelKey(item.kind)) }}</span>
-              <span v-if="attrsOf(item).intensity" class="chip kind-tag">{{ $t("trope.intensityShort", { n: attrsOf(item).intensity }) }}</span>
+    <div class="lore-grid" :class="{ 'has-drawer': editorOpen }">
+      <div class="list-pane" @click="onListPaneClick">
+        <div class="card-grid">
+          <article
+            v-for="item in visibleItems"
+            :key="item.id"
+            class="lore-item"
+            :class="{
+              active: form.id === item.id && editorOpen,
+              compact: cardDensity === 'compact',
+              expanded: expandedId === item.id,
+            }"
+            @click.stop="edit(item)"
+          >
+            <button
+              type="button"
+              class="card-del"
+              :disabled="scan.running"
+              :title="$t('common.delete')"
+              @click.stop="remove(item)"
+            >
+              {{ $t("common.delete") }}
+            </button>
+            <div class="lore-meta">
+              <div class="card-head">
+                <strong>{{ item.title }}</strong>
+                <button
+                  type="button"
+                  class="expand-btn"
+                  @click.stop="toggleExpand(item.id)"
+                >
+                  {{ expandedId === item.id ? $t("trope.collapse") : $t("trope.expand") }}
+                </button>
+              </div>
+              <div class="tag-row">
+                <span class="chip chip-active kind-tag">{{ $t(tropeKindLabelKey(item.kind)) }}</span>
+                <span
+                  v-if="fieldOn('intensity') && attrsOf(item).intensity"
+                  class="chip kind-tag"
+                >{{ $t("trope.intensityShort", { n: attrsOf(item).intensity }) }}</span>
+                <span
+                  v-if="fieldOn('tags')"
+                  v-for="tag in itemCategoryTags(item)"
+                  :key="tag"
+                  class="chip kind-tag cat-chip"
+                >{{ $t(categoryLabelKey(tag)) }}</span>
+              </div>
+              <div v-if="fieldOn('keywords') && keywordChips(item).length" class="tag-row">
+                <span v-for="kw in keywordChips(item)" :key="kw" class="chip kind-tag kw-chip">{{ kw }}</span>
+              </div>
+              <p
+                v-if="fieldOn('snippet') && item.content && expandedId !== item.id"
+                class="snippet"
+              >{{ item.content }}</p>
+              <p v-if="expandedId === item.id && item.content" class="full-content">{{ item.content }}</p>
+              <div v-if="showDoDont(item)" class="do-dont">
+                <p v-if="attrsOf(item).do"><span class="muted">{{ $t("trope.do") }}</span> {{ attrsOf(item).do }}</p>
+                <p v-if="attrsOf(item).dont"><span class="muted">{{ $t("trope.dont") }}</span> {{ attrsOf(item).dont }}</p>
+              </div>
+              <p v-if="showEvidence(item)" class="evidence">
+                <span class="muted">{{ $t("trope.evidence") }}</span> {{ attrsOf(item).evidence }}
+              </p>
             </div>
-            <p class="snippet">{{ (item.content || "").slice(0, 72) }}{{ (item.content || "").length > 72 ? "…" : "" }}</p>
-          </div>
-          <button type="button" class="app-btn app-btn-danger" :disabled="scan.running" @click.stop="remove(item)">{{ $t("common.delete") }}</button>
+          </article>
         </div>
-        <p v-if="!visibleItems.length" class="muted">{{ $t("trope.empty") }}</p>
+        <p v-if="!visibleItems.length" class="muted empty-hint">{{ $t("trope.empty") }}</p>
       </div>
 
-      <div class="editor editor-pane">
+      <aside v-if="editorOpen" class="editor editor-pane" @click.stop>
+        <div class="drawer-head">
+          <strong>{{ form.id ? $t("trope.save") : $t("trope.new") }}</strong>
+          <button type="button" class="app-btn app-btn-light" @click="closeEditor">{{ $t("trope.closeDrawer") }}</button>
+        </div>
         <div class="field">
           <label class="field-label">{{ $t("lore.type") }}</label>
           <select v-model="form.kind">
@@ -430,7 +695,18 @@ onUnmounted(() => {
         </div>
         <div class="field">
           <label class="field-label">{{ $t("trope.tags") }}</label>
-          <input v-model="form.tags" type="text" :placeholder="$t('trope.tagsPh')" />
+          <div class="tag-row editor-tags">
+            <button
+              v-for="id in TROPE_CATEGORY_IDS"
+              :key="id"
+              type="button"
+              class="chip"
+              :class="formTagSelected(id) ? 'chip-active' : ''"
+              @click="toggleFormTag(id)"
+            >
+              {{ $t(categoryLabelKey(id)) }}
+            </button>
+          </div>
         </div>
         <div class="field">
           <label class="field-label">{{ $t("trope.do") }}</label>
@@ -449,7 +725,7 @@ onUnmounted(() => {
           <button type="button" class="app-btn" :disabled="scan.running" @click="resetForm">{{ $t("trope.new") }}</button>
         </div>
         <pre v-if="status" class="out">{{ status }}</pre>
-      </div>
+      </aside>
     </div>
   </section>
 </template>
@@ -465,7 +741,9 @@ onUnmounted(() => {
 .roster-head {
   flex-shrink: 0;
 }
-.tabs {
+.tabs,
+.filter-row,
+.cat-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -474,6 +752,45 @@ onUnmounted(() => {
 }
 .refresh-btn {
   margin-left: auto;
+}
+.search-input {
+  flex: 1 1 220px;
+  min-width: 160px;
+  max-width: 420px;
+}
+.count-label {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.field-panel-wrap {
+  position: relative;
+}
+.field-panel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 8;
+  min-width: 200px;
+  padding: 10px 12px;
+  border-radius: var(--radius-lg, 10px);
+  background: var(--surface-solid, #1c1c1c);
+  box-shadow: var(--shadow, 0 8px 24px rgba(0, 0, 0, 0.25));
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.field-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.85rem;
+}
+.density-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
 }
 .scan-meter-wrap {
   margin-top: 10px;
@@ -531,45 +848,104 @@ onUnmounted(() => {
   max-width: 360px;
 }
 .lore-grid {
-  display: grid;
-  grid-template-columns: 1fr 1.35fr;
+  display: flex;
   gap: 14px;
   margin-top: 12px;
   flex: 1;
   min-height: 0;
   overflow: hidden;
 }
-.list-pane,
-.editor-pane {
+.list-pane {
+  flex: 1 1 auto;
+  min-width: 0;
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
   padding-right: 4px;
 }
+.editor-pane {
+  flex: 0 0 400px;
+  width: 400px;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  padding: 4px 8px 16px 12px;
+  border-left: 1px solid var(--border, rgba(0, 0, 0, 0.08));
+}
+.drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 12px;
+  align-items: start;
+}
 .lore-item {
+  position: relative;
   display: flex;
   align-items: flex-start;
-  justify-content: space-between;
   gap: 10px;
   padding: 14px 16px;
   border: none;
   border-radius: var(--radius-lg);
   background: var(--surface-solid);
-  margin-bottom: 10px;
   cursor: pointer;
   box-shadow: var(--shadow-sm);
   transition: background 0.15s ease, box-shadow 0.15s ease;
+}
+.lore-item.compact {
+  padding: 10px 12px;
 }
 .lore-item:hover,
 .lore-item.active {
   background: var(--accent-soft);
   box-shadow: var(--shadow);
 }
+.card-del {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  opacity: 0;
+  font-size: 12px;
+  padding: 2px 8px;
+  border: none;
+  border-radius: 6px;
+  background: var(--danger, #c44);
+  color: #fff;
+  cursor: pointer;
+}
+.lore-item:hover .card-del,
+.lore-item.active .card-del {
+  opacity: 1;
+}
 .lore-meta {
   display: flex;
   flex-direction: column;
   gap: 6px;
   min-width: 0;
+  width: 100%;
+  padding-right: 8px;
+}
+.card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding-right: 36px;
+}
+.expand-btn {
+  flex-shrink: 0;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0;
 }
 .tag-row {
   display: flex;
@@ -581,26 +957,61 @@ onUnmounted(() => {
   pointer-events: none;
   box-shadow: none;
 }
+.kw-chip,
+.cat-chip {
+  font-size: 0.78rem;
+}
 .snippet {
   margin: 0;
   font-size: 0.85rem;
   color: var(--muted, #888);
   line-height: 1.4;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
+}
+.lore-item.compact .snippet {
+  -webkit-line-clamp: 2;
+}
+.full-content,
+.do-dont p,
+.evidence {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+.do-dont {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.empty-hint {
+  margin: 12px 4px;
 }
 .actions {
   display: flex;
   gap: 8px;
   margin-top: 10px;
 }
+.editor-tags .chip {
+  pointer-events: auto;
+}
 @media (max-width: 900px) {
-  .lore-grid {
-    grid-template-columns: 1fr;
-    overflow-y: auto;
+  .lore-grid.has-drawer {
+    position: relative;
   }
-  .list-pane,
   .editor-pane {
-    max-height: none;
-    overflow: visible;
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: min(400px, 100%);
+    flex: none;
+    background: var(--bg, var(--surface-solid));
+    z-index: 6;
+    box-shadow: var(--shadow);
   }
   .refresh-btn {
     margin-left: 0;

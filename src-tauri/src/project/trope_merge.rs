@@ -247,7 +247,15 @@ pub fn merge_trope_lore(keep: &LoreEntry, add: &LoreEntry) -> LoreEntry {
     merge_attr_append(&mut out.attrs, "evidence", add.attrs.get("evidence"));
     merge_attr_append(&mut out.attrs, "do", add.attrs.get("do"));
     merge_attr_append(&mut out.attrs, "dont", add.attrs.get("dont"));
-    merge_attr_append(&mut out.attrs, "tags", add.attrs.get("tags"));
+    let merged_tags = super::trope_tags::merge_tag_strings(
+        out.attrs.get("tags").map(|s| s.as_str()).unwrap_or(""),
+        add.attrs.get("tags").map(|s| s.as_str()).unwrap_or(""),
+    );
+    if merged_tags.is_empty() {
+        out.attrs.remove("tags");
+    } else {
+        out.attrs.insert("tags".into(), merged_tags);
+    }
     out
 }
 

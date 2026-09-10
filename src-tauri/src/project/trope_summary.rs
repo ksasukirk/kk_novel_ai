@@ -46,9 +46,20 @@ pub fn content_fingerprint(root: &Path, project: &NovelProject) -> String {
 }
 
 pub fn has_chapter_prose(root: &Path, project: &NovelProject) -> bool {
-    project.chapters.iter().any(|ch| {
-        count_non_ws(&chapter_body(root, &ch.file)) > 0
-    })
+    prose_stats(root, project).0
+}
+
+fn prose_stats(root: &Path, project: &NovelProject) -> (bool, u64, usize) {
+    let mut chars = 0u64;
+    let mut chapters = 0usize;
+    for ch in &project.chapters {
+        let n = count_non_ws(&chapter_body(root, &ch.file));
+        if n > 0 {
+            chapters += 1;
+            chars += n as u64;
+        }
+    }
+    (chapters > 0, chars, chapters)
 }
 
 /// 扫描成功后盖章。无正文不盖。返回是否写入。
@@ -88,14 +99,16 @@ fn status_for_project(root: &Path) -> AppResult<Value> {
             "dirty": opened.project.trope_summary_dirty,
         }));
     }
+    let (has_prose, prose_chars, prose_chapters) = prose_stats(root, &opened.project);
     if !has_summary(&opened.project) {
-        let prose = has_chapter_prose(root, &opened.project);
         return Ok(json!({
             "root": root.to_string_lossy(),
             "status": "none",
             "summary_at": serde_json::Value::Null,
             "dirty": false,
-            "has_prose": prose,
+            "has_prose": has_prose,
+            "prose_chars": prose_chars,
+            "prose_chapters": prose_chapters,
         }));
     }
     let live = content_fingerprint(root, &opened.project);
@@ -115,7 +128,9 @@ fn status_for_project(root: &Path) -> AppResult<Value> {
         "status": if stale { "stale" } else { "current" },
         "summary_at": opened.project.trope_summary_at,
         "dirty": opened.project.trope_summary_dirty,
-        "has_prose": has_chapter_prose(root, &opened.project),
+        "has_prose": has_prose,
+        "prose_chars": prose_chars,
+        "prose_chapters": prose_chapters,
     }))
 }
 
@@ -237,6 +252,8 @@ mod tests {
         let item = &v["items"][0];
         assert_eq!(item["status"], "stale");
         assert_eq!(item["dirty"], true);
+        assert!(item["prose_chars"].as_u64().unwrap_or(0) > 0);
+        assert!(item["prose_chapters"].as_u64().unwrap_or(0) >= 1);
         let saved = open_project(&root).unwrap().project;
         assert!(saved.trope_summary_dirty);
     }

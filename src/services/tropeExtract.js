@@ -8,6 +8,7 @@ import { upsertLoreAt, ensureTropeLibrary } from "./projectClient.js";
 import { refreshTropeIndex } from "./tropeIndex.js";
 import { isTropeKind } from "../utils/tropeKinds.js";
 import { findSimilarTrope } from "../utils/tropeMatch.js";
+import { mergeTropeTags, parseTropeTags } from "../utils/tropeCategories.js";
 import { t } from "../i18n/index.js";
 
 const inFlightKeys = new Set();
@@ -46,6 +47,7 @@ function parseTropes(raw) {
           ? row.keywords.map((k) => String(k || "").trim()).filter(Boolean)
           : [],
         evidence: String((row && row.evidence) || "").trim(),
+        tags: parseTropeTags((row && row.tags) || []),
         matched: Boolean(row && String(row.matched_title || "").trim()),
       }))
       .filter((x) => x.title && x.title.length <= 24 && isTropeKind(x.kind));
@@ -109,6 +111,10 @@ export async function runTropeExtract(opts) {
         if (k && !keywords.includes(k)) keywords.push(k);
       }
       const attrs = { ...(existing?.attrs || {}) };
+      if (row.tags && row.tags.length) {
+        const merged = mergeTropeTags(attrs.tags, row.tags);
+        if (merged) attrs.tags = merged;
+      }
       if (row.evidence) {
         const prev = String(attrs.evidence || "").trim();
         attrs.evidence = prev && !prev.includes(row.evidence)

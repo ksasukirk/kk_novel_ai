@@ -16,7 +16,7 @@ const props = defineProps({
 
 const W = 560;
 const ROW_H = 22;
-const PAD = { t: 8, r: 12, b: 8, l: 100 };
+const PAD = { t: 8, r: 72, b: 8, l: 108 };
 
 const sliced = computed(() => (props.rows || []).slice(0, props.maxBars));
 
@@ -73,7 +73,7 @@ function shortName(n) {
           class="bar"
           rx="2"
         />
-        <text :x="PAD.l + barWidth(row) + 4" :y="barY(i) + 11" class="val">
+        <text :x="W - 4" :y="barY(i) + 11" class="val" text-anchor="end">
           {{ fmt(row) }}
         </text>
       </template>

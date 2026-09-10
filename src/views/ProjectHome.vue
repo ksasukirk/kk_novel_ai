@@ -16,6 +16,7 @@ import { isMobileUx } from "../utils/platform.js";
 import { useToastError } from "../services/toast.js";
 import { msgMatchesKey, t } from "../i18n/index.js";
 import { scanTropesFromRoot, scanTropesQueue, cancelTropeScan, isTropeScanBusy, tropeScanState } from "../services/tropeScan.js";
+import { tropesScanConfirmText } from "../utils/usageEstimate.js";
 
 const title = ref(t("project.untitled"));
 const error = useToastError();
@@ -282,7 +283,22 @@ async function onSummarizeAllPending() {
     error.value = t("project.tropeSummaryAllNone");
     return;
   }
-  const ok = await appConfirm(t("project.tropeSummaryAllConfirm", { n: items.length }), {
+  let msg = t("project.tropeSummaryAllConfirm", { n: items.length });
+  try {
+    const books = items.map((it) => ({
+      chars: Number((summaryByPath[it.path] && summaryByPath[it.path].prose_chars) || 0),
+    }));
+    const priced = tropesScanConfirmText({
+      settings: appState.settings,
+      books,
+      n: items.length,
+      variant: "all",
+    });
+    if (priced) msg = priced;
+  } catch {
+    /* 约算失败仍用模糊句 */
+  }
+  const ok = await appConfirm(msg, {
     title: t("project.tropeSummaryAll"),
     confirmText: t("common.start"),
     cancelText: t("common.cancel"),

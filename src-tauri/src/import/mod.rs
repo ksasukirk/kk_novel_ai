@@ -109,6 +109,7 @@ pub struct TropeDraft {
     pub content: String,
     pub keywords: Vec<String>,
     pub evidence: String,
+    pub tags: Vec<String>,
 }
 
 fn eq_heading() -> &'static Regex {
@@ -828,6 +829,16 @@ fn apply_chapter_extract(
                         .collect()
                 })
                 .unwrap_or_default();
+            let tags: Vec<String> = row
+                .get("tags")
+                .and_then(|v| v.as_array())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|x| x.as_str().map(|s| s.trim().to_string()))
+                        .filter(|s| !s.is_empty())
+                        .collect()
+                })
+                .unwrap_or_default();
             let existing_id = index.resolve(title);
             let existing = if let Some(id) = &existing_id {
                 project::list_lore(root)?
@@ -842,6 +853,7 @@ fn apply_chapter_extract(
                 content: content.to_string(),
                 keywords,
                 evidence: evidence.to_string(),
+                tags: project::trope_tags::parse_tag_values(&tags),
             };
             let (saved, _) = upsert_trope_entry(root, &draft, existing)?;
             index.register(&saved.title, &saved.id, &[]);
@@ -1317,6 +1329,12 @@ pub fn upsert_trope_entry(
     if !evidence.is_empty() {
         incoming.attrs.insert("evidence".into(), evidence.to_string());
     }
+    let tags = project::trope_tags::parse_tag_values(&draft.tags);
+    if !tags.is_empty() {
+        incoming
+            .attrs
+            .insert("tags".into(), project::trope_tags::format_tag_list(&tags));
+    }
     let entry = if let Some(keep) = found {
         project::merge_trope_lore(&keep, &incoming)
     } else {
@@ -1427,6 +1445,16 @@ fn parse_trope_drafts(raw: &str) -> Vec<TropeDraft> {
                     .collect()
             })
             .unwrap_or_default();
+        let tags: Vec<String> = row
+            .get("tags")
+            .and_then(|v| v.as_array())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|x| x.as_str().map(|s| s.trim().to_string()))
+                    .filter(|s| !s.is_empty())
+                    .collect()
+            })
+            .unwrap_or_default();
         out.push(TropeDraft {
             kind: kind.into(),
             title,
@@ -1443,6 +1471,7 @@ fn parse_trope_drafts(raw: &str) -> Vec<TropeDraft> {
                 .unwrap_or("")
                 .trim()
                 .to_string(),
+            tags: crate::project::trope_tags::parse_tag_values(&tags),
         });
     }
     out
@@ -1880,11 +1909,12 @@ mod tests {
     #[test]
     fn parse_trope_drafts_from_json() {
         let drafts = parse_trope_drafts(
-            r#"{"tropes":[{"kind":"kink","title":"真空出门","matched_title":"","content":"写过程","keywords":["暴露"],"evidence":"裙摆"}]} "#,
+            r#"{"tropes":[{"kind":"kink","title":"真空出门","matched_title":"","content":"写过程","keywords":["暴露"],"evidence":"裙摆","tags":["暴露","真空出门"]}]} "#,
         );
         assert_eq!(drafts.len(), 1);
         assert_eq!(drafts[0].kind, "kink");
         assert_eq!(drafts[0].title, "真空出门");
+        assert_eq!(drafts[0].tags, vec!["暴露".to_string()]);
     }
 
     #[test]

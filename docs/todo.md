@@ -62,6 +62,20 @@
 | M58 | 近义情节/性癖合并补充（不新开、不覆盖） | 完成 | `project/trope_merge.rs`、`upsert_trope_list_entry`、`ensure_trope_library` compact、`tropeMatch.js`、`trope_extract.md` |
 | M59 | 作品卡情节/性癖总结按钮与三态标记 | 完成 | `project/trope_summary.rs`、`tropes_scan` 盖章、`trope_summary_status`、`ProjectHome.vue` |
 | M60 | 情节扫描降本：冻结名单 + 前缀缓存 + 大切块 | 完成 | `writing/mod.rs` `format_known_tropes_compact` / `known_tropes_snapshot`；`import/mod.rs` `chunk_prose`；`prompts/trope_extract.md` |
+| M61 | 情节库卡片网格 + 规范分类标签 + 扫描约算花销 | 完成 | `TropeLibraryView.vue`、`tropeCategories.js`、`trope_tags.rs`、`usageEstimate.js`、`UsageBarChart.vue` |
+
+### M61 明细 TODO
+
+| # | 项 | 状态 | 路径 |
+|---|---|---|---|
+| 1 | 情节库卡片字段/密度偏好 | 完成 | [`src/utils/layoutPrefs.js`](../src/utils/layoutPrefs.js) `kk_trope_card_fields` / `kk_trope_card_density` |
+| 2 | 浏览网格 + 右侧编辑抽屉；点卡不改 kind 筛选 | 完成 | [`src/views/TropeLibraryView.vue`](../src/views/TropeLibraryView.vue) |
+| 3 | 默认多露信息、单卡展开/收起、显示项勾选 | 完成 | [`src/views/TropeLibraryView.vue`](../src/views/TropeLibraryView.vue) |
+| 4 | 搜索 + 规范分类芯片 + 未分类 + 显示条数 | 完成 | [`src/views/TropeLibraryView.vue`](../src/views/TropeLibraryView.vue)；[`src/utils/tropeCategories.js`](../src/utils/tropeCategories.js) |
+| 5 | 抽取输出 tags，白名单入库，合并去重 | 完成 | [`src-tauri/prompts/trope_extract.md`](../src-tauri/prompts/trope_extract.md)（及 `en/` `ja/`）；[`src-tauri/src/project/trope_tags.rs`](../src-tauri/src/project/trope_tags.rs)；[`src-tauri/src/import/mod.rs`](../src-tauri/src/import/mod.rs)；[`src-tauri/src/project/trope_merge.rs`](../src-tauri/src/project/trope_merge.rs)；[`src/services/tropeExtract.js`](../src/services/tropeExtract.js) |
+| 6 | 一键总结/提取确认框约算次数与闲时/高峰费用 | 完成 | [`src/utils/usageEstimate.js`](../src/utils/usageEstimate.js)；[`src/views/ProjectHome.vue`](../src/views/ProjectHome.vue)；[`src/views/TropeLibraryView.vue`](../src/views/TropeLibraryView.vue)；[`src-tauri/src/project/trope_summary.rs`](../src-tauri/src/project/trope_summary.rs) `prose_chars` |
+| 7 | 分析页柱状图右侧数值槽，最长条不再裁切 | 完成 | [`src/components/analytics/UsageBarChart.vue`](../src/components/analytics/UsageBarChart.vue) |
+| 8 | 三语文案 | 完成 | [`src/i18n/locales/zh-CN.json`](../src/i18n/locales/zh-CN.json)、[`en.json`](../src/i18n/locales/en.json)、[`ja.json`](../src/i18n/locales/ja.json) |
 
 ### M60 明细 TODO
 
