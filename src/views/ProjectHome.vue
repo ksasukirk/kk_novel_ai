@@ -223,6 +223,18 @@ function summaryLabel(path) {
   return t("project.tropeSummaryNone");
 }
 
+function summaryActionLabel(path) {
+  return summaryStatus(path) === "current"
+    ? t("project.tropeSummaryAgain")
+    : t("project.tropeSummary");
+}
+
+function summaryActionHint(path) {
+  return summaryStatus(path) === "current"
+    ? t("project.tropeSummaryAgainHint")
+    : t("project.tropeSummaryHint");
+}
+
 function isSummaryBusy(path) {
   return !!(tropeScanState.running && tropeScanState.root === path);
 }
@@ -259,6 +271,29 @@ async function onSummarizeTropes(item, ev) {
   }
   if (!item || !item.path || isTropeScanBusy()) return;
   error.value = "";
+  if (summaryStatus(item.path) === "current") {
+    let msg = t("project.tropeSummaryAgainConfirm");
+    try {
+      const chars = Number(
+        (summaryByPath[item.path] && summaryByPath[item.path].prose_chars) || 0
+      );
+      const priced = tropesScanConfirmText({
+        settings: appState.settings,
+        books: [{ chars }],
+        n: 1,
+        variant: "again",
+      });
+      if (priced) msg = priced;
+    } catch {
+      /* 约算失败仍用模糊句 */
+    }
+    const ok = await appConfirm(msg, {
+      title: t("project.tropeSummaryAgain"),
+      confirmText: t("common.start"),
+      cancelText: t("common.cancel"),
+    });
+    if (!ok) return;
+  }
   try {
     const r = await scanTropesFromRoot(item.path);
     if (!r) return;
@@ -923,15 +958,14 @@ function heatCellTitle(d) {
             <span v-if="isActive(item.path)" class="row-active-tag">{{ $t("project.current") }}</span>
             <div v-if="!selectMode" class="row-actions" @click.stop>
               <span
-                v-if="summaryStatus(item.path) !== 'current'"
                 class="card-ai-title card-trope-summary"
                 :class="{
                   busy: isSummaryBusy(item.path),
                   disabled: isSummaryDisabled(item.path),
                 }"
-                :title="$t('project.tropeSummaryHint')"
+                :title="summaryActionHint(item.path)"
                 @click="onSummarizeTropes(item, $event)"
-              >{{ isSummaryBusy(item.path) ? "…" : $t("project.tropeSummary") }}</span>
+              >{{ isSummaryBusy(item.path) ? "…" : summaryActionLabel(item.path) }}</span>
               <span
                 class="card-ai-title"
                 :class="{ busy: titleBusy[item.path] }"
@@ -1279,6 +1313,7 @@ function heatCellTitle(d) {
 }
 .card-trope-summary {
   min-width: 36px;
+  white-space: nowrap;
 }
 .card-forget {
   width: 22px;

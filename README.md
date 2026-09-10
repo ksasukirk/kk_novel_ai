@@ -6,7 +6,7 @@
 
 | 项 | 值 |
 |---|---|
-| 当前版本 | `0.2.39`（`package.json` / `src-tauri/Cargo.toml` / `src-tauri/tauri.conf.json` 同步） |
+| 当前版本 | `0.2.40`（`package.json` / `src-tauri/Cargo.toml` / `src-tauri/tauri.conf.json` 同步） |
 | 标识符 | `com.kk.kk-novel-ai` |
 | 仓库 | [https://github.com/ksasukirk/kk_novel_ai](https://github.com/ksasukirk/kk_novel_ai) |
 | 作者 | kk |
@@ -21,7 +21,7 @@
 
 **用量与分析**：侧栏「分析」页展示 DeepSeek 官方余额、本应用累计花费 / token、近 14 天趋势与按模型柱状图；无履历时按当前单价与写作参数做约算（不写假账）。业务 AI 调用会记入全局 `gen_log.jsonl` 与作品目录 `gen_activity.jsonl`（见第 8 节）。全书情节扫描也会累计 token / 费用并写入履历。柱状图右侧预留数值槽，最长条不再裁切数值（见 [`UsageBarChart.vue`](src/components/analytics/UsageBarChart.vue)）。
 
-**情节 / 性癖库**：侧栏「情节库」维护可复用的情节套路与性癖写法卡，落在运行目录 `novels/_library`（与作品并列，不进作品列表）；编辑后自动保存为 `lore/tropes.json` / `kinks.json` 列表。浏览为**卡片网格**，点卡打开右侧抽屉编辑；可按规范分类标签筛选，抽取时由模型从表内打标（不另开补标调用）。扫描或写后抽取时**近义玩法会合并进旧卡**（保留原标题与 id，只补新写法），打开库时也会压缩近义重复。全书扫描会**冻结全局库名单**、把规则放进 system、正文单独作为 user，并按约 **7000～8000 字**切块，方便 DeepSeek 前缀缓存、少打重复目录。本章可在 AI 面板与总谱「本章焦点」多选，续写时强制注入；作品首页卡片可一键总结并显示未总结 / 已总结 / 已修改三态，也可**一键总结**排队扫完所有待处理书，确认框会约算次数与闲时/高峰费用（见第 1 节）。
+**情节 / 性癖库**：侧栏「情节库」维护可复用的情节套路与性癖写法卡，落在运行目录 `novels/_library`（与作品并列，不进作品列表）；编辑后自动保存为 `lore/tropes.json` / `kinks.json` 列表。浏览为**卡片网格**，点卡打开右侧抽屉编辑；可按规范分类标签筛选，抽取时由模型从表内打标（不另开补标调用）。扫描或写后抽取时**近义玩法会合并进旧卡**（保留原标题与 id，只补新写法），打开库时也会压缩近义重复。全书扫描会**冻结全局库名单**、把规则放进 system、正文单独作为 user，并按约 **7000～8000 字**切块，方便 DeepSeek 前缀缓存、少打重复目录。本章可在 AI 面板与总谱「本章焦点」多选，续写时强制注入；作品首页卡片可一键总结并显示未总结 / 已总结 / 已修改三态，已总结的卡也可点**重新总结**再扫一遍（确认框带约算）；也可**一键总结**排队扫完所有待处理书，确认框会约算次数与闲时/高峰费用（见第 1 节）。
 
 ---
 
@@ -58,28 +58,29 @@
 | R27 | v0.2.38 发版：npm / Cargo / Tauri 版本号对齐 | 完成 | [`package.json`](package.json)、[`src-tauri/Cargo.toml`](src-tauri/Cargo.toml)、[`src-tauri/Cargo.lock`](src-tauri/Cargo.lock)、[`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json)、本文 |
 | R28 | 情节库卡片网格 / 规范分类标签 / 扫描约算花销 | 完成 | [`TropeLibraryView.vue`](src/views/TropeLibraryView.vue)、[`tropeCategories.js`](src/utils/tropeCategories.js)、[`trope_tags.rs`](src-tauri/src/project/trope_tags.rs)、[`usageEstimate.js`](src/utils/usageEstimate.js)、[`UsageBarChart.vue`](src/components/analytics/UsageBarChart.vue) |
 | R29 | v0.2.39 发版：情节库卡片体验 + 扫描约算 + 版本对齐 | 完成 | [`package.json`](package.json)、[`src-tauri/Cargo.toml`](src-tauri/Cargo.toml)、[`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json)、[`TropeLibraryView.vue`](src/views/TropeLibraryView.vue)、[`usageEstimate.js`](src/utils/usageEstimate.js)、本文 |
+| R30 | 作品卡「重新总结」 | 完成 | [`ProjectHome.vue`](src/views/ProjectHome.vue)、[`usageEstimate.js`](src/utils/usageEstimate.js)、[`src/i18n/locales/zh-CN.json`](src/i18n/locales/zh-CN.json)、[`en.json`](src/i18n/locales/en.json)、[`ja.json`](src/i18n/locales/ja.json) |
+| R31 | v0.2.40 发版：已总结也可重新总结 + 版本对齐 | 完成 | [`package.json`](package.json)、[`src-tauri/Cargo.toml`](src-tauri/Cargo.toml)、[`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json)、[`ProjectHome.vue`](src/views/ProjectHome.vue)、[`usageEstimate.js`](src/utils/usageEstimate.js)、本文 |
 
 ---
 
-## 1. 本版（0.2.39）做了什么
+## 1. 本版（0.2.40）做了什么
 
-相对 `0.2.38`，本版把全局情节 / 性癖库从「列表编辑」改成更好翻的**卡片网格**，并加上**规范分类筛选**与扫描前的**费用约算**，让你在开扫前就能看到大概几次调用、闲时 / 高峰大概多少钱；同时把 npm / Cargo / Tauri 版本对齐到 `0.2.39`。
+相对 `0.2.39`，本版补上作品首页的**重新总结**：已经扫过、状态仍是「已总结」的书，也可以再点一次全书扫描进全局情节 / 性癖库，确认框会按正文量约算调用次数与闲时 / 高峰费用；同时把 npm / Cargo / Tauri 版本对齐到 `0.2.40`。
 
-- **卡片网格 + 右侧抽屉**：情节库以卡片浏览，点卡打开右侧抽屉编辑；新建也走抽屉，不再依赖旁侧常驻表单。可勾选卡片显示字段（关键词、正文预览、分类、强度、要写/不要、证据），并在标准 / 紧凑密度间切换；偏好写入本地布局键。见 [`TropeLibraryView.vue`](src/views/TropeLibraryView.vue)、[`layoutPrefs.js`](src/utils/layoutPrefs.js)。
-- **规范分类标签筛选**：统一 16 类规范名（暴露、公开、后庭等）；搜索可查标题 / 关键词 / 正文 / 标签；芯片筛选含「未分类」与显示条数。抽取时模型从表内打 `tags`（每条 1～3 个），后端白名单入库并在近义合并时去重，不另开补标调用。见 [`tropeCategories.js`](src/utils/tropeCategories.js)、[`trope_tags.rs`](src-tauri/src/project/trope_tags.rs)、三语 [`trope_extract.md`](src-tauri/prompts/trope_extract.md)、[`import/mod.rs`](src-tauri/src/import/mod.rs)、[`trope_merge.rs`](src-tauri/src/project/trope_merge.rs)、[`tropeExtract.js`](src/services/tropeExtract.js)。
-- **扫描 / 一键总结确认约算**：确认框根据正文量约算调用次数与闲时 / 高峰费用（实际以账本为准）；总结状态带出 `prose_chars` / `prose_chapters`。见 [`usageEstimate.js`](src/utils/usageEstimate.js)、[`ProjectHome.vue`](src/views/ProjectHome.vue)、[`TropeLibraryView.vue`](src/views/TropeLibraryView.vue)、[`trope_summary.rs`](src-tauri/src/project/trope_summary.rs)。
-- **分析页柱状图**：右侧数值槽加宽，数值右对齐固定在图右，最长条不再裁切。见 [`UsageBarChart.vue`](src/components/analytics/UsageBarChart.vue)。
-- **三语文案与版本对齐**：情节库 / 确认约算文案中英日齐全；[`package.json`](package.json)、[`src-tauri/Cargo.toml`](src-tauri/Cargo.toml)（及 [`Cargo.lock`](src-tauri/Cargo.lock)）、[`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json) 均为 `0.2.39`。
+- **已总结也可再扫**：作品卡在状态为「已总结」时按钮文案改为「重新总结」，提示说明会再扫正文补进全局库、不改本章勾选；点下先确认再开扫。见 [`ProjectHome.vue`](src/views/ProjectHome.vue) `summaryActionLabel` / `summaryActionHint` / `onSummarizeTropes`。
+- **再扫确认约算**：确认文案走 `variant: "again"`，按本书 `prose_chars` 估次数与闲时 / 高峰费用（约算失败仍用模糊句）；中 / 英 / 日文案齐全。见 [`usageEstimate.js`](src/utils/usageEstimate.js) `tropesScanConfirmText`、[`zh-CN.json`](src/i18n/locales/zh-CN.json)、[`en.json`](src/i18n/locales/en.json)、[`ja.json`](src/i18n/locales/ja.json)。
+- **版本对齐**：[`package.json`](package.json)、[`src-tauri/Cargo.toml`](src-tauri/Cargo.toml)（及 [`Cargo.lock`](src-tauri/Cargo.lock)）、[`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json) 均为 `0.2.40`；里程碑见 [`docs/todo.md`](docs/todo.md) M62。
 
-**上一版（0.2.38）及更早已交付、本版继续可用的体验**：
+**上一版（0.2.39）及更早已交付、本版继续可用的体验**：
 
-- **扫描开书冻结名单**：全书扫描开始时用压缩名单快照，块与块之间不再反复读盘重排目录，前缀可跨块复用。见 [`import/mod.rs`](src-tauri/src/import/mod.rs) `tropes_scan_range`、[`writing/mod.rs`](src-tauri/src/writing/mod.rs) `WritingRequest.known_tropes_snapshot`。
-- **压缩名单 + 前缀缓存友好**：已有卡压成 `kink:` / `trope:` 各一行；规则与名单放 system，正文单独 user。见 [`format_known_tropes_compact`](src-tauri/src/writing/mod.rs)、三语 [`trope_extract.md`](src-tauri/prompts/trope_extract.md)。
-- **大切块与抽取上限**：切块 soft/hard 约 7000/8000；每块最多 8 条；抽取 `max_tokens` 1024。见 [`chunk_prose`](src-tauri/src/import/mod.rs)、[`resolve_writing_options`](src-tauri/src/writing/mod.rs)。
-- **一键总结排队**：作品首页「一键总结」收集未总结 / 已修改且有正文的书，确认后按顺序全书扫描进全局库；一本失败继续下一本；随时可取消；进度条显示「第几本 / 共几本 · 书名 · 百分比 · 章进度」。见 [`ProjectHome.vue`](src/views/ProjectHome.vue)、[`tropeScan.js`](src/services/tropeScan.js) `scanTropesQueue`、[`GenProgressBar.vue`](src/components/GenProgressBar.vue)。
-- **空书跳过排队**：状态含 `has_prose`；无章正文的书不进待总结列表。见 [`trope_summary.rs`](src-tauri/src/project/trope_summary.rs)。
-- **近义合并、不新开、不覆盖**：扫描 / 抽取命中近义玩法只补写法；打开库时 compact；`trope_extract` 三语 Prompt 禁止近义新开卡。
-- **作品卡总结三态**：未总结 / 已总结 / 已修改；单卡「总结」对该书全书扫描；改正文打 dirty；扫描成功盖章。
+- **卡片网格 + 右侧抽屉**：情节库以卡片浏览，点卡打开右侧抽屉编辑；可勾选显示字段并在标准 / 紧凑密度间切换。见 [`TropeLibraryView.vue`](src/views/TropeLibraryView.vue)、[`layoutPrefs.js`](src/utils/layoutPrefs.js)。
+- **规范分类标签筛选**：统一 16 类规范名；抽取时模型打 `tags`，后端白名单入库。见 [`tropeCategories.js`](src/utils/tropeCategories.js)、[`trope_tags.rs`](src-tauri/src/project/trope_tags.rs)、三语 [`trope_extract.md`](src-tauri/prompts/trope_extract.md)。
+- **扫描 / 一键总结确认约算**：确认框按正文量约算次数与闲时 / 高峰费用。见 [`usageEstimate.js`](src/utils/usageEstimate.js)、[`ProjectHome.vue`](src/views/ProjectHome.vue)、[`TropeLibraryView.vue`](src/views/TropeLibraryView.vue)。
+- **分析页柱状图**：右侧数值槽加宽，最长条不再裁切。见 [`UsageBarChart.vue`](src/components/analytics/UsageBarChart.vue)。
+- **扫描开书冻结名单**、压缩名单 + 前缀缓存友好、大切块与抽取上限：见 [`import/mod.rs`](src-tauri/src/import/mod.rs)、[`writing/mod.rs`](src-tauri/src/writing/mod.rs)、三语 [`trope_extract.md`](src-tauri/prompts/trope_extract.md)。
+- **一键总结排队** / 空书跳过：见 [`ProjectHome.vue`](src/views/ProjectHome.vue)、[`tropeScan.js`](src/services/tropeScan.js) `scanTropesQueue`、[`trope_summary.rs`](src-tauri/src/project/trope_summary.rs)。
+- **近义合并、不新开、不覆盖**：扫描 / 抽取命中近义玩法只补写法；打开库时 compact。
+- **作品卡总结三态**：未总结 / 已总结 / 已修改；单卡「总结」或「重新总结」对该书全书扫描；改正文打 dirty；扫描成功盖章。
 - **独立全局库目录**：`novels/_library` 列表 JSON；编辑自动保存；扫描进度含分块百分比与用量。
 - **全书 / 导入扫描进库**、情节 / 性癖注入续写、按纲写完收束、界面 / 写作多语言、拆章 JSON 加固、对话助手人设、大纲导图、角色 / 设定跨页刷新、插图与分镜、应用内更新，以及 `python build.py` 默认发版流水线（见第 9 节）。
 
@@ -89,7 +90,7 @@
 
 - 以**本地作品目录**为真相源：`project.json`、章节 Markdown、lore / memory / 总谱 / 分镜 JSON；对话会话另存（不混进章节）；情节 / 性癖条目存全局 `novels/_library`（列表 JSON，近义合并补充，规范分类标签可筛），作品内也可有同 kind lore；可由全书扫描或蒸馏写入全局库；`project.json` 可记情节总结游标（时间 / 指纹 / dirty）。
 - 续写、润色、拆章、按纲节拍、设定召回、知识库蒸馏，都走同一套 Rust 写作引擎；按纲整章可一次写完本章纲，并自动补半句 / 收束；本章勾选的情节 / 性癖会注入生成。
-- 桌面 GUI（Tauri 2 + Vue 3）负责编辑与预览；界面可切中 / 英 / 日；写作 Prompt 可按写作语言独立选择；独立「对话」页做本作 / 自由聊（可配助手人设）；独立「情节库」页以卡片网格维护套路卡、自动保存并可批量扫描（带用量进度与确认约算）；作品首页可单卡总结、**一键总结**排队扫待处理书并看三态与约算；CLI / NDJSON RPC 给脚本编排；GUI 在线时 CLI 默认可经本机 IPC 驱动同一套预览（见 [`src-tauri/src/ipc/mod.rs`](src-tauri/src/ipc/mod.rs)、[`src/services/guiBridge.js`](src/services/guiBridge.js)）。
+- 桌面 GUI（Tauri 2 + Vue 3）负责编辑与预览；界面可切中 / 英 / 日；写作 Prompt 可按写作语言独立选择；独立「对话」页做本作 / 自由聊（可配助手人设）；独立「情节库」页以卡片网格维护套路卡、自动保存并可批量扫描（带用量进度与确认约算）；作品首页可单卡总结或**重新总结**、**一键总结**排队扫待处理书并看三态与约算；CLI / NDJSON RPC 给脚本编排；GUI 在线时 CLI 默认可经本机 IPC 驱动同一套预览（见 [`src-tauri/src/ipc/mod.rs`](src-tauri/src/ipc/mod.rs)、[`src/services/guiBridge.js`](src/services/guiBridge.js)）。
 - Windows 桌面为主，Android APK 由 `build_android.py` 引导工具链后打包（见 [`docs/android-setup.md`](docs/android-setup.md)）。
 - **持续迭代**：会吸取更多建议来优化本软件；写作模型**最好使用 DeepSeek**（设置页配置端点与模型槽）。
 - **用量可追溯**：续写 / 润色 / 书名建议 / 导入蒸馏 / 情节扫描等业务 AI 调用记 token 与花费；侧栏「分析」可看余额、KPI 与趋势。
@@ -116,7 +117,7 @@
 | 应用更新 | GitHub Release 检查 / 下载 | [`src-tauri/src/update.rs`](src-tauri/src/update.rs) |
 | LLM JSON 容错 | 前端近似 JSON 修复 + 拆章抢救 | [`src/utils/llmJson.js`](src/utils/llmJson.js)、[`src/utils/outlineChapters.js`](src/utils/outlineChapters.js) |
 | 按纲快照校验 | 正文门槛 + 拒脏占位 | [`src/utils/outlineSnapshot.js`](src/utils/outlineSnapshot.js)、[`scripts/check-outline-snapshot.mjs`](scripts/check-outline-snapshot.mjs) |
-| 情节 / 性癖库 | `novels/_library` 列表 JSON + 卡片网格 + 规范 tags + 近义合并补充 + 作品卡总结三态 + 一键总结排队 + 扫描约算 + 扫描降本（冻结名单 / 前缀缓存 / 大切块） + 本章 `trope_ids` + 写后抽取 | [`TropeLibraryView.vue`](src/views/TropeLibraryView.vue)、[`ProjectHome.vue`](src/views/ProjectHome.vue)、[`tropeScan.js`](src/services/tropeScan.js)、[`tropeExtract.js`](src/services/tropeExtract.js)、[`tropeMatch.js`](src/utils/tropeMatch.js)、[`tropeCategories.js`](src/utils/tropeCategories.js)、[`layoutPrefs.js`](src/utils/layoutPrefs.js)、[`usageEstimate.js`](src/utils/usageEstimate.js)、[`trope_merge.rs`](src-tauri/src/project/trope_merge.rs)、[`trope_summary.rs`](src-tauri/src/project/trope_summary.rs)、[`trope_tags.rs`](src-tauri/src/project/trope_tags.rs)、[`paths.rs`](src-tauri/src/paths.rs)、[`kb/mod.rs`](src-tauri/src/kb/mod.rs)、[`import/mod.rs`](src-tauri/src/import/mod.rs)、[`writing/mod.rs`](src-tauri/src/writing/mod.rs) |
+| 情节 / 性癖库 | `novels/_library` 列表 JSON + 卡片网格 + 规范 tags + 近义合并补充 + 作品卡总结三态 / 重新总结 + 一键总结排队 + 扫描约算 + 扫描降本（冻结名单 / 前缀缓存 / 大切块） + 本章 `trope_ids` + 写后抽取 | [`TropeLibraryView.vue`](src/views/TropeLibraryView.vue)、[`ProjectHome.vue`](src/views/ProjectHome.vue)、[`tropeScan.js`](src/services/tropeScan.js)、[`tropeExtract.js`](src/services/tropeExtract.js)、[`tropeMatch.js`](src/utils/tropeMatch.js)、[`tropeCategories.js`](src/utils/tropeCategories.js)、[`layoutPrefs.js`](src/utils/layoutPrefs.js)、[`usageEstimate.js`](src/utils/usageEstimate.js)、[`trope_merge.rs`](src-tauri/src/project/trope_merge.rs)、[`trope_summary.rs`](src-tauri/src/project/trope_summary.rs)、[`trope_tags.rs`](src-tauri/src/project/trope_tags.rs)、[`paths.rs`](src-tauri/src/paths.rs)、[`kb/mod.rs`](src-tauri/src/kb/mod.rs)、[`import/mod.rs`](src-tauri/src/import/mod.rs)、[`writing/mod.rs`](src-tauri/src/writing/mod.rs) |
 | 对话会话 | 本地 JSON 落盘（含人设字段） | [`src-tauri/src/chat.rs`](src-tauri/src/chat.rs) |
 
 窗口无系统边框（`decorations: false`），自定义标题栏在 [`src/App.vue`](src/App.vue)；主题 Token 在 [`src/style.css`](src/style.css)。
@@ -147,7 +148,7 @@ GUI 装配：[`src-tauri/src/lib.rs`](src-tauri/src/lib.rs)（注册命令、`Ca
 
 设置字段：`ui_locale` / `writing_locale` / `writing_auto_trope`（[`settings.rs`](src-tauri/src/settings.rs)）；前端保存后 `applyUiLocale`（[`src/i18n/index.js`](src/i18n/index.js)）。
 
-写作请求可带 `outline_run`、本章 `selected_trope_ids` 与扫描冻结名单 `known_tropes_snapshot`（[`writing/mod.rs`](src-tauri/src/writing/mod.rs)）；按纲队列在 [`outlineQueue.js`](src/services/outlineQueue.js) 置位。前端跨页同步：角色 / 设定用 [`bumpCastRevision()`](src/stores/appState.js)；情节库用 `tropeRevision` / [`refreshTropeIndex`](src/services/tropeIndex.js)（扫描结束后也会 bump）。大纲侧栏、总谱、设定页在 watch / `onActivated` 时重载。作品首页批量拉 [`listTropeSummaryStatus`](src/services/projectClient.js)；一键总结走 [`scanTropesQueue`](src/services/tropeScan.js)。
+写作请求可带 `outline_run`、本章 `selected_trope_ids` 与扫描冻结名单 `known_tropes_snapshot`（[`writing/mod.rs`](src-tauri/src/writing/mod.rs)）；按纲队列在 [`outlineQueue.js`](src/services/outlineQueue.js) 置位。前端跨页同步：角色 / 设定用 [`bumpCastRevision()`](src/stores/appState.js)；情节库用 `tropeRevision` / [`refreshTropeIndex`](src/services/tropeIndex.js)（扫描结束后也会 bump）。大纲侧栏、总谱、设定页在 watch / `onActivated` 时重载。作品首页批量拉 [`listTropeSummaryStatus`](src/services/projectClient.js)；一键总结走 [`scanTropesQueue`](src/services/tropeScan.js)；单卡总结 / 重新总结走 [`scanTropesFromRoot`](src/services/tropeScan.js)。
 
 ---
 
@@ -192,7 +193,7 @@ kk_novel_ai/
 | 界面 | 路径 | 职责 |
 |---|---|---|
 | 壳 / 侧栏 / 页眉 | [`src/components/shell/AppSidebar.vue`](src/components/shell/AppSidebar.vue)、[`PageHeader.vue`](src/components/shell/PageHeader.vue)、[`PageBackground.vue`](src/components/shell/PageBackground.vue) | 布局、主题、移动抽屉；i18n 键；页眉可跟生成进度 |
-| 作品 | [`src/views/ProjectHome.vue`](src/views/ProjectHome.vue)、[`projectClient.js`](src/services/projectClient.js) | 新建/打开/最近、仪表盘、书名建议；情节总结三态、单卡总结、一键总结排队与取消、确认约算 |
+| 作品 | [`src/views/ProjectHome.vue`](src/views/ProjectHome.vue)、[`projectClient.js`](src/services/projectClient.js) | 新建/打开/最近、仪表盘、书名建议；情节总结三态、单卡总结 / 重新总结、一键总结排队与取消、确认约算 |
 | 知识库 | [`src/views/KnowledgeHome.vue`](src/views/KnowledgeHome.vue) | 一书一库、通用库；导入走此页；蒸馏 tropes 双写全局 `_library` |
 | 写作 | [`src/views/EditorView.vue`](src/views/EditorView.vue)、[`src/components/AiPanel.vue`](src/components/AiPanel.vue)、[`ChapterBlockEditor.vue`](src/components/ChapterBlockEditor.vue) | 章树、块编辑（含插图块）、按纲队列、流式预览；情节多选；指令按任务分槽 |
 | 对话 | [`src/views/ChatView.vue`](src/views/ChatView.vue)、[`chatClient.js`](src/services/chatClient.js)、[`chatState.js`](src/stores/chatState.js) | 本作 / 自由聊；助手人设落盘；气泡显示名；不写章节 |
@@ -205,8 +206,8 @@ kk_novel_ai/
 | 设置 | [`src/views/SettingsView.vue`](src/views/SettingsView.vue) | **界面/写作语言**、端点、DeepSeek 预设、`writing_auto_trope`、文生图、检查更新、多模型槽 |
 | 进度条 | [`GenProgressBar.vue`](src/components/GenProgressBar.vue) | 写作 / 单书扫描 / 批量一键总结进度（含书序号、书名、pct、分块、用量） |
 | 插图 / 更新 UI | [`IllustrationPromptDialog.vue`](src/components/IllustrationPromptDialog.vue)、[`UpdateDialog.vue`](src/components/UpdateDialog.vue) | 提示词确认出图；更新说明与进度 |
-| i18n | [`src/i18n/index.js`](src/i18n/index.js)、[`src/i18n/locales/zh-CN.json`](src/i18n/locales/zh-CN.json)、[`en.json`](src/i18n/locales/en.json)、[`ja.json`](src/i18n/locales/ja.json) | 文案目录、`applyUiLocale`、跨语言消息匹配（含总结三态、一键总结与扫描约算文案） |
-| 用量工具 | [`usageFormat.js`](src/utils/usageFormat.js)、[`usageSeries.js`](src/utils/usageSeries.js)、[`usageEstimate.js`](src/utils/usageEstimate.js)、[`deepseekPricing.js`](src/utils/deepseekPricing.js) | 格式化、按日聚合、无履历约算、情节扫描约算、官方单价 |
+| i18n | [`src/i18n/index.js`](src/i18n/index.js)、[`src/i18n/locales/zh-CN.json`](src/i18n/locales/zh-CN.json)、[`en.json`](src/i18n/locales/en.json)、[`ja.json`](src/i18n/locales/ja.json) | 文案目录、`applyUiLocale`、跨语言消息匹配（含总结三态、重新总结、一键总结与扫描约算文案） |
+| 用量工具 | [`usageFormat.js`](src/utils/usageFormat.js)、[`usageSeries.js`](src/utils/usageSeries.js)、[`usageEstimate.js`](src/utils/usageEstimate.js)、[`deepseekPricing.js`](src/utils/deepseekPricing.js) | 格式化、按日聚合、无履历约算、情节扫描 / 再扫约算、官方单价 |
 | LLM JSON / 拆章 | [`llmJson.js`](src/utils/llmJson.js)、[`outlineChapters.js`](src/utils/outlineChapters.js)、[`check-llm-json.mjs`](scripts/check-llm-json.mjs) | 近似 JSON 修复；拆章解析与 token 估算；本地回归 |
 | 按纲快照 | [`outlineSnapshot.js`](src/utils/outlineSnapshot.js)、[`check-outline-snapshot.mjs`](scripts/check-outline-snapshot.mjs) | 拒脏占位、正文实质门槛；本地验收 |
 | 按纲队列 | [`outlineQueue.js`](src/services/outlineQueue.js)、[`bookOutlineQueue.js`](src/services/bookOutlineQueue.js)、[`sectionQueue.js`](src/services/sectionQueue.js) | 整章按纲、`outline_run`、落盘校验 |
@@ -346,7 +347,7 @@ CLI 调试优先用 `kk_novel_cli`（构建后在 `src-tauri/target/...`）。�
 |---|---|---|
 | 本 README | [`README.md`](README.md) | 仓库入口与结构总览 |
 | 项目分析 | [`docs/project-analysis.md`](docs/project-analysis.md) | 架构图、模块、数据模型、缺口 |
-| 里程碑 TODO | [`docs/todo.md`](docs/todo.md) | M1–M61 及明细（均带代码路径） |
+| 里程碑 TODO | [`docs/todo.md`](docs/todo.md) | M1–M62 及明细（均带代码路径） |
 | LM Studio / CLI | [`docs/lmstudio.md`](docs/lmstudio.md) | 本地服务、按纲流程、RPC、`novels/_library` |
 | Android | [`docs/android-setup.md`](docs/android-setup.md) | JDK/SDK 引导、签名、产物 |
 | 移动 QA | [`docs/mobile-qa-checklist.md`](docs/mobile-qa-checklist.md) | 触控与布局抽检 |
@@ -357,7 +358,7 @@ CLI 调试优先用 `kk_novel_cli`（构建后在 `src-tauri/target/...`）。�
 
 ## 11. 后续可做（建议 TODO）
 
-已完成的产品里程碑见 [`docs/todo.md`](docs/todo.md)（M1–M61）。本仓库会继续收集 Issue / 用户反馈，把有效建议排进迭代。分析文档里仍开放的工程向建议：
+已完成的产品里程碑见 [`docs/todo.md`](docs/todo.md)（M1–M62）。本仓库会继续收集 Issue / 用户反馈，把有效建议排进迭代。分析文档里仍开放的工程向建议：
 
 | # | 建议项 | 说明 | 涉及路径 |
 |---|---|---|---|
@@ -375,4 +376,4 @@ CLI 调试优先用 `kk_novel_cli`（构建后在 `src-tauri/target/...`）。�
 | N18 | 按纲收束钩子启发式再精 | 现依章纲末句压缩匹配正文尾部 | [`continuity.rs`](src-tauri/src/writing/continuity.rs)、[`writing/mod.rs`](src-tauri/src/writing/mod.rs) |
 | N19 | 情节库跨作品文件级导入导出 | 已独立 `_library` 列表存盘与近义合并、卡片分类；仍可补文件级导入导出 UI | [`TropeLibraryView.vue`](src/views/TropeLibraryView.vue)、[`kb/mod.rs`](src-tauri/src/kb/mod.rs)、[`paths.rs`](src-tauri/src/paths.rs)、[`trope_merge.rs`](src-tauri/src/project/trope_merge.rs) |
 
-已知约束：Debug GUI 依赖 Vite `5173`；Release 读 `frontend-dist/`；蒸馏与全书扫描依赖可用的分析模型（推荐 DeepSeek）+ `analysis_model`，长书请用 `--from` / `--to` 分段。DeepSeek 官方仅提供余额 API，无 Bearer 可查的「今日已用 token」；今日/累计消耗以本应用履历与账本为准。插图需自行配置兼容文生图端点；未配置时仍可写正文，不可出图。本作对话需先打开作品；自由聊写在应用数据目录。界面与写作语言默认 `zh-CN`；未译键回退中文。按纲完整度补写有次数与章长上限，极端短写仍可能需手动续写。情节 / 性癖注入以本章 `trope_ids` 为准；未勾选条目不会当必达；写后抽取可在设置中关闭；全书扫描只写全局 `_library`，不改本章勾选；扫描开书冻结名单并大切块以降本；近义玩法会合并进旧卡而非新开；规范 tags 白名单入库；旧角色仓 tropes 会在首次 ensure 时迁走并 compact；改正文后作品卡会标「已修改」直至再次成功扫描盖章；一键总结按顺序排队，可取消，空书（无正文）不进队；扫描 / 总结确认框费用为约算，实际以账本为准。
+已知约束：Debug GUI 依赖 Vite `5173`；Release 读 `frontend-dist/`；蒸馏与全书扫描依赖可用的分析模型（推荐 DeepSeek）+ `analysis_model`，长书请用 `--from` / `--to` 分段。DeepSeek 官方仅提供余额 API，无 Bearer 可查的「今日已用 token」；今日/累计消耗以本应用履历与账本为准。插图需自行配置兼容文生图端点；未配置时仍可写正文，不可出图。本作对话需先打开作品；自由聊写在应用数据目录。界面与写作语言默认 `zh-CN`；未译键回退中文。按纲完整度补写有次数与章长上限，极端短写仍可能需手动续写。情节 / 性癖注入以本章 `trope_ids` 为准；未勾选条目不会当必达；写后抽取可在设置中关闭；全书扫描只写全局 `_library`，不改本章勾选；扫描开书冻结名单并大切块以降本；近义玩法会合并进旧卡而非新开；规范 tags 白名单入库；旧角色仓 tropes 会在首次 ensure 时迁走并 compact；改正文后作品卡会标「已修改」直至再次成功扫描盖章；一键总结按顺序排队，可取消，空书（无正文）不进队；已总结也可点「重新总结」再扫（带约算确认）；扫描 / 总结确认框费用为约算，实际以账本为准。
