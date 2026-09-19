@@ -32,6 +32,8 @@ pub enum WritingTask {
     CastExtract,
     /** 本块情节/性癖抽取，写入全局库 */
     TropeExtract,
+    /** 已有情节/性癖卡 AI 优化写法，不改库身份 */
+    TropeRefine,
     /** 先分析需要几节，再由前端排队续写 */
     SectionPlan,
     /** 从章纲 summary 拆成 beats JSON */
@@ -59,6 +61,7 @@ impl WritingTask {
             "block_digest" | "digest" => Ok(Self::BlockDigest),
             "cast_extract" | "auto_cast" => Ok(Self::CastExtract),
             "trope_extract" | "auto_trope" => Ok(Self::TropeExtract),
+            "trope_refine" | "refine_trope" => Ok(Self::TropeRefine),
             "section_plan" | "plan_sections" => Ok(Self::SectionPlan),
             "outline_to_beats" | "split_beats" => Ok(Self::OutlineToBeats),
             "outline_to_chapters" | "split_chapters" => Ok(Self::OutlineToChapters),
@@ -81,6 +84,7 @@ impl WritingTask {
             Self::BlockDigest => crate::prompt_i18n::prompt("block_digest.md"),
             Self::CastExtract => crate::prompt_i18n::prompt("cast_extract.md"),
             Self::TropeExtract => crate::prompt_i18n::prompt("trope_extract.md"),
+            Self::TropeRefine => crate::prompt_i18n::prompt("trope_refine.md"),
             Self::SectionPlan => crate::prompt_i18n::prompt("section_plan.md"),
             Self::OutlineToBeats => crate::prompt_i18n::prompt("outline_to_beats.md"),
             Self::OutlineToChapters => crate::prompt_i18n::prompt("outline_to_chapters.md"),
@@ -102,6 +106,7 @@ impl WritingTask {
             Self::BlockDigest => "block_digest",
             Self::CastExtract => "cast_extract",
             Self::TropeExtract => "trope_extract",
+            Self::TropeRefine => "trope_refine",
             Self::SectionPlan => "section_plan",
             Self::OutlineToBeats => "outline_to_beats",
             Self::OutlineToChapters => "outline_to_chapters",
@@ -120,6 +125,7 @@ impl WritingTask {
                 | Self::BlockDigest
                 | Self::CastExtract
                 | Self::TropeExtract
+                | Self::TropeRefine
                 | Self::SectionPlan
                 | Self::OutlineToBeats
                 | Self::OutlineToChapters
@@ -761,7 +767,7 @@ fn resolve_writing_options(
         }
     });
     // 写作任务：max_tokens 始终与规定字数同量级；分析任务用较短上限
-    let max_tokens = if matches!(task, WritingTask::TropeExtract) {
+    let max_tokens = if matches!(task, WritingTask::TropeExtract | WritingTask::TropeRefine) {
         req.max_tokens.or(Some(1024))
     } else if matches!(
         task,
@@ -805,6 +811,36 @@ fn resolve_writing_options(
     }
 }
 
+fn assemble_trope_refine(req: &WritingRequest) -> AppResult<AssembledWriting> {
+    let card = if req.selection.trim().is_empty() {
+        "{}".into()
+    } else {
+        req.selection.clone()
+    };
+    let instruction = if req.instruction.trim().is_empty() {
+        "（无）"
+    } else {
+        req.instruction.as_str()
+    };
+    let system = render_template(
+        crate::prompt_i18n::prompt("trope_refine.md"),
+        &[("instruction", instruction)],
+    );
+    Ok(AssembledWriting {
+        messages: vec![
+            ChatMessage {
+                role: "system".into(),
+                content: system,
+            },
+            ChatMessage {
+                role: "user".into(),
+                content: card,
+            },
+        ],
+        context_sources: WritingContextSources::default(),
+    })
+}
+
 pub fn assemble_messages(
     settings: &AppSettings,
     req: &WritingRequest,
@@ -817,9 +853,12 @@ pub fn assemble_messages_with_scores(
     req: &WritingRequest,
     semantic_scores: Option<&std::collections::HashMap<String, f32>>,
 ) -> AppResult<AssembledWriting> {
+    let task = WritingTask::from_str_loose(&req.task)?;
+    if task == WritingTask::TropeRefine {
+        return assemble_trope_refine(req);
+    }
     let root = Path::new(&req.project_root);
     let opened = project::open_project(root)?;
-    let task = WritingTask::from_str_loose(&req.task)?;
     let (chapter, file_content) = project::read_chapter(root, &req.chapter_id)?;
     // 分支生成：前端传入激活路径前缀，避免吃到兄弟变体
     // 同位置变体：即使 branch_context 为空也不回退整章正文（避免上节全文污染）
@@ -1144,6 +1183,7 @@ pub fn assemble_messages_with_scores(
         WritingTask::BlockDigest
         | WritingTask::CastExtract
         | WritingTask::TropeExtract
+        | WritingTask::TropeRefine
         | WritingTask::BeatsToStoryboard
         | WritingTask::ContentToImagePrompt => req.selection.clone(),
     };
@@ -1557,6 +1597,7 @@ pub fn assemble_messages_with_scores(
                     | WritingTask::SectionPlan
                     | WritingTask::CastExtract
                     | WritingTask::TropeExtract
+                    | WritingTask::TropeRefine
                     | WritingTask::StorySync
                     | WritingTask::BeatsToStoryboard
                     | WritingTask::ContentToImagePrompt => {
@@ -1739,7 +1780,7 @@ pub async fn run_writing(
     }
     let scores = if matches!(
         task,
-        WritingTask::BlockDigest | WritingTask::CastExtract | WritingTask::TropeExtract | WritingTask::SectionPlan | WritingTask::OutlineToBeats | WritingTask::OutlineToChapters | WritingTask::OutlineToMindmap | WritingTask::BeatsToStoryboard | WritingTask::ContentToImagePrompt
+        WritingTask::BlockDigest | WritingTask::CastExtract | WritingTask::TropeExtract | WritingTask::TropeRefine | WritingTask::SectionPlan | WritingTask::OutlineToBeats | WritingTask::OutlineToChapters | WritingTask::OutlineToMindmap | WritingTask::BeatsToStoryboard | WritingTask::ContentToImagePrompt
     ) {
         None
     } else {

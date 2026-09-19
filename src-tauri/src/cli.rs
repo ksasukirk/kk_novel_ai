@@ -1305,6 +1305,8 @@ fn tools_manifest() -> Value {
             {"cmd": "project_delete", "args": ["root", "purge?"], "desc": "移除最近项；purge 时删含 project.json 的目录"},
             {"cmd": "project_forget_all_novels", "args": ["purge?"], "desc": "清空全部最近小说；可 purge 删盘"},
             {"cmd": "novels_list_projects", "args": [], "desc": "列出 novels 目录与最近列表中的全部小说"},
+            {"cmd": "work_catalog_ensure", "args": ["force?"], "desc": "刷新作品页搜索用压缩目录卡缓存"},
+            {"cmd": "novels_search", "args": ["query", "mode?"], "desc": "作品智能搜索；mode=local|ai"},
             {"cmd": "project_save_meta", "args": ["root", "project"], "desc": "保存元数据"},
             {"cmd": "project_suggest_title", "args": ["root"], "desc": "AI 根据内容建议书名"},
             {"cmd": "project_apply_title", "args": ["root", "title"], "desc": "写入书名并刷新最近列表"},

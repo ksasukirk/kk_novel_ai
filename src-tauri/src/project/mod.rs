@@ -2,6 +2,7 @@
 //! 代码路径: kk_novel_ai/src-tauri/src/project/mod.rs
 mod digest_sanitize;
 pub mod backup;
+pub mod work_catalog;
 mod trope_merge;
 mod trope_summary;
 pub(crate) mod trope_tags;

@@ -59,11 +59,11 @@ export function appConfirm(message, opts = {}) {
 /**
  * 删除类操作统一入口：skip_delete_confirm 开启时直接通过
  * @param {string} message
- * @param {{ title?: string, confirmText?: string, cancelText?: string, danger?: boolean }} [opts]
+ * @param {{ title?: string, confirmText?: string, cancelText?: string, danger?: boolean, force?: boolean }} [opts]
  * @returns {Promise<boolean>}
  */
 export function appConfirmDelete(message, opts = {}) {
-  if (isSkipDeleteConfirm()) return Promise.resolve(true);
+  if (!opts.force && isSkipDeleteConfirm()) return Promise.resolve(true);
   return appConfirm(message, {
     title: opts.title || t("common.confirmDelete"),
     confirmText: opts.confirmText || t("common.delete"),

@@ -3,7 +3,7 @@
   代码路径: kk_novel_ai/src/views/ProjectHome.vue
 -->
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from "vue";
+import { computed, onActivated, onMounted, onUnmounted, reactive, ref, watch } from "vue";
 import { appState, isKbProject } from "../stores/appState.js";
 import * as project from "../services/projectClient.js";
 import { loadSettings } from "../services/llmClient.js";
@@ -17,6 +17,8 @@ import { useToastError } from "../services/toast.js";
 import { msgMatchesKey, t } from "../i18n/index.js";
 import { scanTropesFromRoot, scanTropesQueue, cancelTropeScan, isTropeScanBusy, tropeScanState } from "../services/tropeScan.js";
 import { tropesScanConfirmText } from "../utils/usageEstimate.js";
+import { ensureWorkCatalog, localSearchCatalog, novelsSearchAi } from "../services/novelSearch.js";
+import { normalizeRoot } from "../utils/novelSearchScore.js";
 
 const title = ref(t("project.untitled"));
 const error = useToastError();
@@ -45,10 +47,38 @@ const recentList = computed(() => {
   return Array.isArray(list) ? list : [];
 });
 
+const searchQuery = ref("");
+const searchHits = ref([]);
+const searchBusy = ref(false);
+const searchMode = ref("");
+let searchDebounce = 0;
+let searchSeq = 0;
+
+const searching = computed(() => !!String(searchQuery.value || "").trim());
+
+const visibleWorks = computed(() => {
+  if (!searching.value) return recentList.value;
+  const byPath = new Map();
+  for (const item of recentList.value) {
+    if (item && item.path) byPath.set(normalizeRoot(item.path), item);
+  }
+  return (searchHits.value || []).map((h) => {
+    const root = h.root || "";
+    const rec = byPath.get(normalizeRoot(root));
+    return {
+      path: rec ? rec.path : root,
+      title: (rec && rec.title) || h.title || "",
+      opened_at: rec ? rec.opened_at : "",
+      reason: h.reason || "",
+      matchFields: h.match_fields || h.matchFields || [],
+    };
+  });
+});
+
 const selectedCount = computed(() => selectedPaths.value.length);
 
 const allSelected = computed(
-  () => recentList.value.length > 0 && selectedCount.value === recentList.value.length
+  () => visibleWorks.value.length > 0 && selectedCount.value === visibleWorks.value.length
 );
 
 function isSelected(path) {
@@ -69,7 +99,98 @@ function toggleSelect(path) {
 }
 
 function selectAllRecent() {
-  selectedPaths.value = recentList.value.map((item) => item.path);
+  selectedPaths.value = visibleWorks.value.map((item) => item.path).filter(Boolean);
+}
+
+function isInRecent(path) {
+  const key = normalizeRoot(path);
+  return recentList.value.some((item) => normalizeRoot(item.path) === key);
+}
+
+function matchFieldLabel(field) {
+  const map = {
+    title: t("project.searchMatchTitle"),
+    tropes: t("project.searchMatchTropes"),
+    outline: t("project.searchMatchOutline"),
+    chapters: t("project.searchMatchChapters"),
+    memory: t("project.searchMatchMemory"),
+    genre: t("project.searchMatchGenre"),
+    path: t("project.searchMatchPath"),
+  };
+  return map[field] || "";
+}
+
+function hitMatchLabels(item) {
+  const fields = (item && item.matchFields) || [];
+  return fields.map(matchFieldLabel).filter(Boolean);
+}
+
+function runLocalSearch() {
+  const q = String(searchQuery.value || "").trim();
+  if (!q) {
+    searchHits.value = [];
+    searchMode.value = "";
+    return;
+  }
+  searchHits.value = localSearchCatalog(q);
+  searchMode.value = "local";
+}
+
+async function warmupCatalog() {
+  try {
+    await ensureWorkCatalog(false);
+    if (searching.value && searchMode.value !== "ai") runLocalSearch();
+  } catch {
+    /* 目录未就绪时本地搜空列表，不挡开页 */
+  }
+}
+
+async function onAiSearch() {
+  const q = String(searchQuery.value || "").trim();
+  if (searchDebounce) {
+    clearTimeout(searchDebounce);
+    searchDebounce = 0;
+  }
+  if (searchBusy.value) {
+    searchSeq += 1;
+    searchBusy.value = false;
+    return;
+  }
+  if (!q) return;
+  const seq = ++searchSeq;
+  searchBusy.value = true;
+  try {
+    await ensureWorkCatalog(false);
+    if (seq !== searchSeq) return;
+    runLocalSearch();
+    const r = await novelsSearchAi(q);
+    if (seq !== searchSeq) return;
+    if (String(searchQuery.value || "").trim() !== q) return;
+    const items = Array.isArray(r && r.items) ? r.items : [];
+    searchHits.value = items;
+    searchMode.value = "ai";
+  } catch (e) {
+    if (seq !== searchSeq) return;
+    error.value = String(e.message || e);
+    if (!searchHits.value.length) runLocalSearch();
+  } finally {
+    if (seq === searchSeq) searchBusy.value = false;
+  }
+}
+
+function onSearchKeydown(ev) {
+  if (ev.key === "Enter") {
+    ev.preventDefault();
+    void onAiSearch();
+  }
+}
+
+function clearSearch() {
+  searchSeq += 1;
+  searchQuery.value = "";
+  searchHits.value = [];
+  searchMode.value = "";
+  searchBusy.value = false;
 }
 
 function clearSelection() {
@@ -81,7 +202,7 @@ function onCardClick(item) {
     toggleSelect(item.path);
     return;
   }
-  openByPath(item.path);
+  openByPath(item.path, { goEditorNow: true });
 }
 
 function clearActiveProjectIfNeeded(paths) {
@@ -183,9 +304,25 @@ watch(
   refreshSummaryStatus
 );
 watch(() => appState.tropeRevision, refreshSummaryStatus);
+watch(searchQuery, () => {
+  searchSeq += 1;
+  searchBusy.value = false;
+  searchMode.value = "local";
+  if (searchDebounce) clearTimeout(searchDebounce);
+  searchDebounce = setTimeout(() => {
+    runLocalSearch();
+  }, 150);
+});
 onMounted(async () => {
   await refreshSettings();
   await refreshSummaryStatus();
+  void warmupCatalog();
+});
+onActivated(() => {
+  void warmupCatalog();
+});
+onUnmounted(() => {
+  if (searchDebounce) clearTimeout(searchDebounce);
 });
 
 function isActive(path) {
@@ -253,6 +390,13 @@ const pendingSummaryItems = computed(() =>
   })
 );
 
+const rescanAllItems = computed(() =>
+  recentList.value.filter((item) => {
+    const row = summaryByPath[item.path];
+    return !row || row.has_prose !== false;
+  })
+);
+
 const summarizeAllLabel = computed(() => {
   if (tropeScanState.batchRunning) {
     return t("project.tropeSummaryAllBusy", {
@@ -262,6 +406,11 @@ const summarizeAllLabel = computed(() => {
   }
   const n = pendingSummaryItems.value.length;
   return n ? t("project.tropeSummaryAllN", { n }) : t("project.tropeSummaryAll");
+});
+
+const rescanAllLabel = computed(() => {
+  const n = rescanAllItems.value.length;
+  return n ? t("project.tropeSummaryAllAgainN", { n }) : t("project.tropeSummaryAllAgain");
 });
 
 async function onSummarizeTropes(item, ev) {
@@ -361,6 +510,61 @@ async function onSummarizeAllPending() {
   }
 }
 
+async function onRescanAll() {
+  if (isTropeScanBusy()) return;
+  error.value = "";
+  await refreshSummaryStatus();
+  const items = rescanAllItems.value.map((it) => ({
+    path: it.path,
+    title: it.title || "",
+  }));
+  if (!items.length) {
+    error.value = t("project.tropeSummaryAllAgainNone");
+    return;
+  }
+  let msg = t("project.tropeSummaryAllAgainConfirm", { n: items.length });
+  try {
+    const books = items.map((it) => ({
+      chars: Number((summaryByPath[it.path] && summaryByPath[it.path].prose_chars) || 0),
+    }));
+    const priced = tropesScanConfirmText({
+      settings: appState.settings,
+      books,
+      n: items.length,
+      variant: "allAgain",
+    });
+    if (priced) msg = priced;
+  } catch {
+    /* 约算失败仍用模糊句 */
+  }
+  const ok = await appConfirm(msg, {
+    title: t("project.tropeSummaryAllAgain"),
+    confirmText: t("common.start"),
+    cancelText: t("common.cancel"),
+  });
+  if (!ok) return;
+  try {
+    const r = await scanTropesQueue(items);
+    await refreshSummaryStatus();
+    if (!r) return;
+    if (r.cancelled) {
+      appState.statusMessage = t("project.tropeSummaryAllCancelled", {
+        ok: r.ok,
+        total: r.total,
+      });
+    } else {
+      appState.statusMessage = t("project.tropeSummaryAllDone", {
+        ok: r.ok,
+        empty: r.empty,
+        failed: r.failed,
+      });
+    }
+  } catch (e) {
+    error.value = String(e.message || e);
+    await refreshSummaryStatus();
+  }
+}
+
 function shortPath(path) {
   if (!path) return "";
   const parts = path.replace(/\\/g, "/").split("/").filter(Boolean);
@@ -368,8 +572,13 @@ function shortPath(path) {
   return parts.slice(-2).join("/");
 }
 
-async function openByPath(path) {
+async function openByPath(path, opts = {}) {
   error.value = "";
+  const goEditorNow = !!opts.goEditorNow;
+  const prevNav = appState.activeNav;
+  if (goEditorNow) {
+    appState.activeNav = "editor";
+  }
   try {
     const r = await project.openProject(path);
     if (r.project && isKbProject(r.project)) {
@@ -386,6 +595,7 @@ async function openByPath(path) {
     if (appState.chapterId) await project.loadChapter(appState.chapterId);
   } catch (e) {
     error.value = String(e.message || e);
+    if (goEditorNow) appState.activeNav = prevNav;
   }
 }
 
@@ -859,6 +1069,41 @@ function heatCellTitle(d) {
       </div>
     </div>
 
+    <div class="search-row">
+      <input
+        v-model="searchQuery"
+        type="search"
+        class="search-input"
+        :placeholder="$t('project.searchPlaceholder')"
+        :aria-label="$t('project.searchPlaceholder')"
+        @keydown="onSearchKeydown"
+      />
+      <button
+        type="button"
+        class="app-btn"
+        :class="{ 'app-btn-primary': searchBusy || searchMode === 'ai' }"
+        :disabled="!searchQuery.trim() && !searchBusy"
+        @click="onAiSearch"
+      >
+        {{ searchBusy ? $t("project.searchCancel") : (mobileUx ? $t("project.searchAiShort") : $t("project.searchAi")) }}
+      </button>
+      <button
+        type="button"
+        class="app-btn"
+        :disabled="!searchQuery && !searchHits.length"
+        @click="clearSearch"
+      >
+        {{ $t("project.searchClear") }}
+      </button>
+      <span v-if="searching" class="search-count muted">
+        {{
+          searchBusy
+            ? $t("project.searching")
+            : $t("project.searchHits", { n: visibleWorks.length })
+        }}
+      </span>
+    </div>
+
     <div v-if="recentList.length" class="select-bar">
       <button
         type="button"
@@ -878,6 +1123,15 @@ function heatCellTitle(d) {
         {{ summarizeAllLabel }}
       </button>
       <button
+        type="button"
+        class="app-btn"
+        :disabled="isTropeScanBusy() || !rescanAllItems.length"
+        :title="$t('project.tropeSummaryAllAgainHint')"
+        @click="onRescanAll"
+      >
+        {{ rescanAllLabel }}
+      </button>
+      <button
         v-if="tropeScanState.batchRunning"
         type="button"
         class="app-btn"
@@ -887,12 +1141,12 @@ function heatCellTitle(d) {
       </button>
       <template v-if="selectMode">
         <span class="select-hint muted">
-          {{ $t("project.selectedCount", { n: selectedCount, total: recentList.length }) }}
+          {{ $t("project.selectedCount", { n: selectedCount, total: visibleWorks.length }) }}
         </span>
         <button
           type="button"
           class="app-btn"
-          :disabled="bulkBusy || !recentList.length"
+          :disabled="bulkBusy || !visibleWorks.length"
           @click="allSelected ? clearSelection() : selectAllRecent()"
         >
           {{ allSelected ? $t("project.deselectAll") : $t("project.selectAll") }}
@@ -931,13 +1185,14 @@ function heatCellTitle(d) {
       </button>
 
       <button
-        v-for="item in recentList"
+        v-for="item in visibleWorks"
         :key="item.path"
         type="button"
         class="work-bar"
         :class="{
           active: isActive(item.path),
           selected: selectMode && isSelected(item.path),
+          'has-reason': !!(item.reason || (item.matchFields && item.matchFields.length)),
         }"
         :title="item.path"
         @click="onCardClick(item)"
@@ -973,6 +1228,7 @@ function heatCellTitle(d) {
                 @click="onSuggestTitle(item, $event)"
               >{{ titleBusy[item.path] ? "…" : "AI" }}</span>
               <span
+                v-if="isInRecent(item.path)"
                 class="card-forget"
                 :title="$t('project.removeFromList')"
                 @click="onForget(item.path, $event)"
@@ -980,10 +1236,24 @@ function heatCellTitle(d) {
             </div>
           </div>
           <span class="row-title">{{ item.title || $t("project.untitled") }}</span>
+          <span
+            v-if="item.reason"
+            class="row-reason muted"
+          >{{ item.reason }}</span>
+          <span
+            v-else-if="hitMatchLabels(item).length"
+            class="row-reason muted"
+          >{{ hitMatchLabels(item).join(" · ") }}</span>
           <span class="row-path muted">{{ shortPath(item.path) }}</span>
         </div>
       </button>
     </div>
+    <p
+      v-if="searching && !searchBusy && !visibleWorks.length"
+      class="search-empty muted"
+    >
+      {{ $t("project.searchEmpty") }}
+    </p>
 
     <div
       v-if="showCreate"
@@ -1120,6 +1390,26 @@ function heatCellTitle(d) {
   flex-wrap: wrap;
   gap: 8px;
 }
+.search-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.search-input {
+  flex: 1 1 220px;
+  min-width: 160px;
+}
+.search-count {
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.search-empty {
+  margin: 8px 2px 16px;
+  font-size: 13px;
+}
 .select-bar {
   display: flex;
   flex-wrap: wrap;
@@ -1154,6 +1444,10 @@ function heatCellTitle(d) {
   gap: 8px;
   color: var(--text);
   transition: box-shadow 0.15s ease, background 0.15s ease, transform 0.15s ease;
+}
+.work-bar.has-reason {
+  min-height: 88px;
+  max-height: 128px;
 }
 .work-bar.selected {
   box-shadow: 0 0 0 2px var(--accent), var(--shadow-sm);
@@ -1272,6 +1566,14 @@ function heatCellTitle(d) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.row-reason {
+  font-size: 11px;
+  line-height: 1.3;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 .row-active-tag {
   flex-shrink: 0;

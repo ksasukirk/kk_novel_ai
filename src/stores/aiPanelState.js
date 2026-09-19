@@ -49,8 +49,46 @@ export const aiPanelForm = reactive({
   selectedTropeIds: [],
 });
 
-/** 指令框光标（失焦后插入角色名用） */
+/** 指令框光标（失焦后插入角色名 / 情节标题用） */
 export const instrCaret = ref({ start: null, end: null });
+
+/**
+ * 把文本插入当前指令框（或指令队列焦点步）
+ * @param {string} insert
+ */
+export function insertInstructionText(insert) {
+  const piece = String(insert || "").trim();
+  if (!piece) return;
+  const apply = (text) => {
+    const src = String(text || "");
+    const len = src.length;
+    const start =
+      instrCaret.value.start == null ? len : Math.min(instrCaret.value.start, len);
+    const end =
+      instrCaret.value.end == null ? len : Math.min(instrCaret.value.end, len);
+    const before = src.slice(0, start);
+    const after = src.slice(end);
+    const spaceBefore = before.length > 0 && !/\s$/.test(before) ? " " : "";
+    const spaceAfter = after.length > 0 && !/^\s/.test(after) ? " " : "";
+    const next = before + spaceBefore + piece + spaceAfter + after;
+    const caret = before.length + spaceBefore.length + piece.length;
+    instrCaret.value = { start: caret, end: caret };
+    return next;
+  };
+  if (aiPanelForm.instructionQueue && aiPanelForm.task === "continue") {
+    const steps = aiPanelForm.instructionSteps || [];
+    let step = steps.find((s) => s.id === activeStepId.value) || steps[0];
+    if (!step) {
+      step = createInstructionStep("");
+      if (!aiPanelForm.instructionSteps) aiPanelForm.instructionSteps = [];
+      aiPanelForm.instructionSteps.push(step);
+    }
+    step.text = apply(step.text || "");
+    activeStepId.value = step.id;
+    return;
+  }
+  aiPanelForm.instruction = apply(aiPanelForm.instruction || "");
+}
 
 /** 当前聚焦的指令步骤 id（角色标签插入用） */
 export const activeStepId = ref("");

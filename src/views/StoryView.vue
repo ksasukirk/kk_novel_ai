@@ -18,6 +18,7 @@ import { t } from "../i18n/index.js";
 import { isTropeKind } from "../utils/tropeKinds.js";
 import { aiPanelForm } from "../stores/aiPanelState.js";
 import { refreshTropeIndex } from "../services/tropeIndex.js";
+import { isTropeSelected, toggleTropeSelection } from "../services/tropeSelect.js";
 import { outlineQueueState } from "../services/outlineQueue.js";
 import { sectionQueueState } from "../services/sectionQueue.js";
 import {
@@ -511,21 +512,11 @@ const tropeTagsKink = computed(() =>
 );
 
 function isFocusTropeSelected(id) {
-  return (aiPanelForm.selectedTropeIds || []).includes(id);
+  return isTropeSelected(id);
 }
 
 async function toggleFocusTrope(id) {
-  const ids = [...(aiPanelForm.selectedTropeIds || [])];
-  const i = ids.indexOf(id);
-  if (i >= 0) ids.splice(i, 1);
-  else ids.push(id);
-  aiPanelForm.selectedTropeIds = ids;
-  if (!appState.projectRoot || !appState.chapterId) return;
-  try {
-    await project.updateChapterMeta(appState.chapterId, { trope_ids: ids });
-  } catch (e) {
-    error.value = String(e.message || e);
-  }
+  toggleTropeSelection(id);
 }
 
 function syncFocusDraft(force) {

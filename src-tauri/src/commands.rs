@@ -183,6 +183,18 @@ pub fn novels_list_projects() -> Result<Value, String> {
 }
 
 #[tauri::command]
+pub fn work_catalog_ensure(force: Option<bool>) -> Result<Value, String> {
+    api::work_catalog_ensure(force.unwrap_or(false)).map_err(Into::into)
+}
+
+#[tauri::command]
+pub async fn novels_search(query: String, mode: Option<String>) -> Result<Value, String> {
+    api::novels_search(&query, mode.as_deref().unwrap_or("local"))
+        .await
+        .map_err(Into::into)
+}
+
+#[tauri::command]
 pub fn project_open(root: String) -> Result<Value, String> {
     api::project_open(&root).map_err(Into::into)
 }

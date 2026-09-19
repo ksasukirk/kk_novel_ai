@@ -174,7 +174,7 @@ export function estimateTropesScan(opts) {
 }
 
 /**
- * @param {{ settings?: object, books?: Array<{ chars?: number }>, n: number, variant: 'all'|'scan'|'again' }} opts
+ * @param {{ settings?: object, books?: Array<{ chars?: number }>, n: number, variant: 'all'|'scan'|'again'|'allAgain' }} opts
  * @returns {string|null}
  */
 export function tropesScanConfirmText(opts) {
@@ -199,6 +199,12 @@ export function tropesScanConfirmText(opts) {
       return t(
         est.deepseek ? "project.tropeSummaryAgainConfirmCost" : "project.tropeSummaryAgainConfirmCostFlat",
         { calls: est.calls, cost, costPeak }
+      );
+    }
+    if (variant === "allAgain") {
+      return t(
+        est.deepseek ? "project.tropeSummaryAllAgainConfirmCost" : "project.tropeSummaryAllAgainConfirmCostFlat",
+        { n, calls: est.calls, cost, costPeak }
       );
     }
     return t(

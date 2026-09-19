@@ -64,6 +64,58 @@
 | M60 | 情节扫描降本：冻结名单 + 前缀缓存 + 大切块 | 完成 | `writing/mod.rs` `format_known_tropes_compact` / `known_tropes_snapshot`；`import/mod.rs` `chunk_prose`；`prompts/trope_extract.md` |
 | M61 | 情节库卡片网格 + 规范分类标签 + 扫描约算花销 | 完成 | `TropeLibraryView.vue`、`tropeCategories.js`、`trope_tags.rs`、`usageEstimate.js`、`UsageBarChart.vue` |
 | M62 | 作品卡「重新总结」：已总结也可再扫 | 完成 | `ProjectHome.vue`、`usageEstimate.js`、`src/i18n/locales/{zh-CN,en,ja}.json` |
+| M63 | 一键重新总结 + 情节卡 AI 优化 + 情节库顶栏压紧 | 完成 | `ProjectHome.vue`、`TropeLibraryView.vue`、`tropeRefine.js`、`trope_refine.md` |
+| M64 | 情节库卡片删除始终确认 | 完成 | `TropeLibraryView.vue`、`confirmDialog.js` |
+| M65 | 写作页可筛选多选情节/性癖卡片 | 完成 | `TropePickPanel.vue`、`EditorView.vue`、`AiPanel.vue`、`tropeSelect.js` |
+| M66 | 目录变体行 + 切作品立刻进写作 + 防空载 | 完成 | `EditorView.vue`、`projectClient.js`、`ProjectHome.vue`、三语 `src/i18n/locales/*.json` |
+| M67 | 作品页 AI 智能搜索（关键词 + 相似内容） | 完成 | `work_catalog.rs`、`novelSearch.js`、`novelSearchScore.js`、`ProjectHome.vue`、`novel_search.md` |
+
+### M67 明细 TODO
+
+| # | 项 | 状态 | 路径 |
+|---|---|---|---|
+| 1 | 压缩目录卡 + fingerprint 缓存 | 完成 | [`src-tauri/src/project/work_catalog.rs`](../src-tauri/src/project/work_catalog.rs)；[`src-tauri/src/paths.rs`](../src-tauri/src/paths.rs) `app_data_dir/work_catalog.json` |
+| 2 | `work_catalog_ensure` / `novels_search` 命令与 RPC | 完成 | [`src-tauri/src/api.rs`](../src-tauri/src/api.rs)；[`src-tauri/src/commands.rs`](../src-tauri/src/commands.rs)；[`src-tauri/src/lib.rs`](../src-tauri/src/lib.rs)；[`src-tauri/src/cli.rs`](../src-tauri/src/cli.rs) |
+| 3 | 三语 Prompt + 分析模型 JSON 重排 + genlog `novel_search` | 完成 | [`src-tauri/prompts/novel_search.md`](../src-tauri/prompts/novel_search.md)、[`en/novel_search.md`](../src-tauri/prompts/en/novel_search.md)、[`ja/novel_search.md`](../src-tauri/prompts/ja/novel_search.md)；[`prompt_i18n.rs`](../src-tauri/src/prompt_i18n.rs) |
+| 4 | 本地关键词/近义打分 | 完成 | [`src/utils/novelSearchScore.js`](../src/utils/novelSearchScore.js)；[`src/services/novelSearch.js`](../src/services/novelSearch.js) |
+| 5 | 作品页搜索条：输入即滤、智能搜重排、命中理由/空态 | 完成 | [`src/views/ProjectHome.vue`](../src/views/ProjectHome.vue) |
+| 6 | 三语文案 | 完成 | [`src/i18n/locales/zh-CN.json`](../src/i18n/locales/zh-CN.json)、[`en.json`](../src/i18n/locales/en.json)、[`ja.json`](../src/i18n/locales/ja.json) `project.search*` |
+
+### M66 明细 TODO
+
+| # | 项 | 状态 | 路径 |
+|---|---|---|---|
+| 1 | 展开章目录恢复变体 / 生成块子行（`*` 当前、`-` 其它、`~` 分支提示） | 完成 | [`src/views/EditorView.vue`](../src/views/EditorView.vue) `toc-children` / `tocRowsForChapter` / `selectTocItem` / `loadTocForChapter` |
+| 2 | 切作品清编辑缓存；`loadChapter` 序号 + root 守卫，过期结果不写回 | 完成 | [`src/views/EditorView.vue`](../src/views/EditorView.vue) `clearEditorCaches` / `hydrateEditor`；[`src/services/projectClient.js`](../src/services/projectClient.js) `applyProject` / `loadChapter` |
+| 3 | 点作品卡立刻切写作页，打开失败则退回原导航 | 完成 | [`src/views/ProjectHome.vue`](../src/views/ProjectHome.vue) `onCardClick` / `openByPath` `goEditorNow` |
+| 4 | 等待读章时不伪造空块、不把空数组写入邻章缓存 | 完成 | [`src/views/EditorView.vue`](../src/views/EditorView.vue) `ensureBlocks` / `cacheCurrentChapterBody` / `preloadChapterBodies` |
+| 5 | 三语文案：暂无生成块 | 完成 | [`src/i18n/locales/zh-CN.json`](../src/i18n/locales/zh-CN.json)、[`en.json`](../src/i18n/locales/en.json)、[`ja.json`](../src/i18n/locales/ja.json) `editor.noGenBlocks` |
+
+### M65 明细 TODO
+
+| # | 项 | 状态 | 路径 |
+|---|---|---|---|
+| 1 | 本章勾选写入 `trope_ids` 抽成共用入口 | 完成 | [`src/services/tropeSelect.js`](../src/services/tropeSelect.js)；[`src/stores/aiPanelState.js`](../src/stores/aiPanelState.js) `insertInstructionText` |
+| 2 | 写作页右侧卡片栏：种类/分类/搜索筛选，点卡多选 | 完成 | [`src/components/TropePickPanel.vue`](../src/components/TropePickPanel.vue)；[`src/views/EditorView.vue`](../src/views/EditorView.vue) |
+| 3 | 「填入」把标题写入当前指令；AI 面板只显示已选 | 完成 | [`src/components/TropePickPanel.vue`](../src/components/TropePickPanel.vue)；[`src/components/AiPanel.vue`](../src/components/AiPanel.vue) |
+| 4 | 三语文案 | 完成 | [`src/i18n/locales/zh-CN.json`](../src/i18n/locales/zh-CN.json)、[`en.json`](../src/i18n/locales/en.json)、[`ja.json`](../src/i18n/locales/ja.json) |
+
+### M64 明细 TODO
+
+| # | 项 | 状态 | 路径 |
+|---|---|---|---|
+| 1 | `appConfirmDelete` 支持 `force`，忽略「删除不需确认」 | 完成 | [`src/services/confirmDialog.js`](../src/services/confirmDialog.js) |
+| 2 | 情节库卡片删除强制弹窗 | 完成 | [`src/views/TropeLibraryView.vue`](../src/views/TropeLibraryView.vue) `remove` |
+
+### M63 明细 TODO
+
+| # | 项 | 状态 | 路径 |
+|---|---|---|---|
+| 1 | 作品页「一键重新总结」扫全部有正文的书（含已总结），确认带约算 | 完成 | [`src/views/ProjectHome.vue`](../src/views/ProjectHome.vue) `onRescanAll`；[`src/utils/usageEstimate.js`](../src/utils/usageEstimate.js) `variant: allAgain` |
+| 2 | `trope_refine` 写作任务：不读章、只优化一张卡 JSON | 完成 | [`src-tauri/src/writing/mod.rs`](../src-tauri/src/writing/mod.rs)；[`src-tauri/prompts/trope_refine.md`](../src-tauri/prompts/trope_refine.md)（及 `en/` `ja/`）；[`src-tauri/src/prompt_i18n.rs`](../src-tauri/src/prompt_i18n.rs) |
+| 3 | 情节库卡片/抽屉「优化」按钮，解析后写回同一 id | 完成 | [`src/services/tropeRefine.js`](../src/services/tropeRefine.js)；[`src/views/TropeLibraryView.vue`](../src/views/TropeLibraryView.vue) |
+| 4 | 情节库顶栏压紧：去掉长介绍与导入标题栏 | 完成 | [`src/views/TropeLibraryView.vue`](../src/views/TropeLibraryView.vue) |
+| 5 | 三语文案 | 完成 | [`src/i18n/locales/zh-CN.json`](../src/i18n/locales/zh-CN.json)、[`en.json`](../src/i18n/locales/en.json)、[`ja.json`](../src/i18n/locales/ja.json) |
 
 ### M62 明细 TODO
 

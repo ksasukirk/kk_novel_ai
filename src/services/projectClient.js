@@ -76,6 +76,8 @@ export async function getProject(root) {
   return r;
 }
 
+let loadChapterSeq = 0;
+
 function applyProject(r) {
   const prevRoot = appState.projectRoot || "";
   const nextRoot = r.root || "";
@@ -83,8 +85,19 @@ function applyProject(r) {
   const forceOutline = prevRoot !== nextRoot;
   appState.projectRoot = nextRoot;
   appState.project = r.project || null;
+  if (forceOutline) {
+    loadChapterSeq += 1;
+    appState.chapterContent = "";
+    appState.chapterBlocks = [];
+    appState.chapterBranchDoc = null;
+    appState.dirty = false;
+  }
   if (r.project && r.project.chapters && r.project.chapters.length) {
-    if (!appState.chapterId || !r.project.chapters.some((c) => c.id === appState.chapterId)) {
+    if (
+      forceOutline ||
+      !appState.chapterId ||
+      !r.project.chapters.some((c) => c.id === appState.chapterId)
+    ) {
       appState.chapterId = r.project.chapters[0].id;
     }
   } else {
@@ -175,14 +188,18 @@ export function syncBranchDocFromEditor() {
 
 export async function loadChapter(chapterId) {
   if (!appState.projectRoot || !chapterId) return;
+  const seq = ++loadChapterSeq;
+  const root = appState.projectRoot;
   const r = await invoke("chapter_read", {
-    root: appState.projectRoot,
+    root,
     chapterId,
   });
+  if (seq !== loadChapterSeq || appState.projectRoot !== root) return r;
   appState.chapterId = chapterId;
   const { doc: next, changed } = collapseChapterSectionsToWholeChapter(
     branchDocFromChapterPayload(r)
   );
+  if (seq !== loadChapterSeq || appState.projectRoot !== root) return r;
   applyBranchDoc(next);
   if (changed) {
     appState.dirty = true;

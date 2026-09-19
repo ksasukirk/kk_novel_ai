@@ -28,6 +28,7 @@ import {
   parseTropeTags,
 } from "../utils/tropeCategories.js";
 import { tropesScanConfirmText } from "../utils/usageEstimate.js";
+import { runTropeRefine } from "../services/tropeRefine.js";
 
 const items = ref([]);
 const rosterPath = ref("");
@@ -43,6 +44,7 @@ const importTitle = ref("");
 const editorOpen = ref(false);
 const expandedId = ref("");
 const showFieldPanel = ref(false);
+const refiningId = ref("");
 const cardFields = ref(readTropeCardFields());
 const cardDensity = ref(readTropeCardDensity());
 const scan = tropeScanState;
@@ -427,11 +429,61 @@ watch(
   }
 );
 
+function currentEditItem() {
+  const id = form.value.id;
+  if (!id) return null;
+  return (items.value || []).find((it) => it.id === id) || null;
+}
+
+async function onRefine(item) {
+  if (!item || !item.id || scan.running || refiningId.value) return;
+  if (form.value.id === item.id) {
+    item = {
+      ...item,
+      kind: form.value.kind,
+      title: form.value.title,
+      content: form.value.content,
+      keywords: form.value.keywords
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean),
+      attrs: {
+        ...(item.attrs || {}),
+        intensity: form.value.intensity,
+        do: form.value.doText.trim(),
+        dont: form.value.dontText.trim(),
+        tags: formatTropeTags(form.value.tags),
+      },
+    };
+  }
+  const ok = await appConfirm(t("trope.refineConfirm", { title: item.title || item.id }), {
+    title: t("trope.refine"),
+  });
+  if (!ok) return;
+  refiningId.value = item.id;
+  try {
+    const saved = await runTropeRefine(item, {
+      projectRoot: appState.projectRoot || rosterPath.value,
+      libraryRoot: rosterPath.value,
+    });
+    await refresh();
+    if (saved && saved.id && (form.value.id === item.id || editorOpen.value)) {
+      const fresh = (items.value || []).find((it) => it.id === saved.id) || saved;
+      await edit(fresh);
+    }
+  } catch (e) {
+    error.value = String(e.message || e);
+  } finally {
+    refiningId.value = "";
+  }
+}
+
 async function remove(item) {
   if (!rosterPath.value) return;
   if (
     !(await appConfirmDelete(t("trope.deleteQ", { title: item.title || item.id }), {
       title: t("trope.deleteTitle"),
+      force: true,
     }))
   ) {
     return;
@@ -460,44 +512,42 @@ onUnmounted(() => {
 <template>
   <section class="panel roster-panel">
     <div class="roster-head">
-      <h1 class="panel-heading">{{ $t("trope.title") }}</h1>
-      <p class="muted">
-        {{ $t("trope.introBefore") }}<strong>{{ $t("trope.introStrong") }}</strong>{{ $t("trope.introAfter") }}
-        <code v-if="rosterPath">{{ rosterPath }}</code>
-        <span v-else>{{ $t("common.loading") }}</span>
-        {{ $t("trope.autoSave") }}
-      </p>
-
-      <div class="tabs">
-        <button
-          type="button"
-          class="chip"
-          :class="kindFilter === 'all' ? 'chip-active' : ''"
-          @click="kindFilter = 'all'"
-        >
-          {{ $t("common.all") }}
-        </button>
-        <button
-          type="button"
-          class="chip"
-          :class="kindFilter === 'trope' ? 'chip-active' : ''"
-          @click="kindFilter = 'trope'"
-        >
-          {{ $t("common.trope") }}
-        </button>
-        <button
-          type="button"
-          class="chip"
-          :class="kindFilter === 'kink' ? 'chip-active' : ''"
-          @click="kindFilter = 'kink'"
-        >
-          {{ $t("common.kink") }}
-        </button>
-        <button type="button" class="app-btn app-btn-light refresh-btn" :disabled="scan.running" @click="refresh">{{ $t("common.refresh") }}</button>
-        <button type="button" class="app-btn app-btn-primary" :disabled="scan.running" @click="resetForm">{{ $t("trope.new") }}</button>
-        <button type="button" class="app-btn" :disabled="!canScanCurrent" @click="onScanCurrent">{{ $t("trope.scanCurrent") }}</button>
-        <button type="button" class="app-btn" :disabled="scan.running" @click="onScanImport">{{ $t("trope.scanImport") }}</button>
-        <button v-if="scan.running" type="button" class="app-btn" @click="cancelTropeScan">{{ $t("common.cancel") }}</button>
+      <div class="head-row">
+        <h1
+          class="panel-heading compact-title"
+          :title="rosterPath ? `${$t('trope.introBefore')}${$t('trope.introStrong')}${$t('trope.introAfter')}${rosterPath}` : $t('trope.title')"
+        >{{ $t("trope.title") }}</h1>
+        <div class="tabs">
+          <button
+            type="button"
+            class="chip"
+            :class="kindFilter === 'all' ? 'chip-active' : ''"
+            @click="kindFilter = 'all'"
+          >
+            {{ $t("common.all") }}
+          </button>
+          <button
+            type="button"
+            class="chip"
+            :class="kindFilter === 'trope' ? 'chip-active' : ''"
+            @click="kindFilter = 'trope'"
+          >
+            {{ $t("common.trope") }}
+          </button>
+          <button
+            type="button"
+            class="chip"
+            :class="kindFilter === 'kink' ? 'chip-active' : ''"
+            @click="kindFilter = 'kink'"
+          >
+            {{ $t("common.kink") }}
+          </button>
+          <button type="button" class="app-btn app-btn-light refresh-btn" :disabled="scan.running" @click="refresh">{{ $t("common.refresh") }}</button>
+          <button type="button" class="app-btn app-btn-primary" :disabled="scan.running" @click="resetForm">{{ $t("trope.new") }}</button>
+          <button type="button" class="app-btn" :disabled="!canScanCurrent" @click="onScanCurrent">{{ $t("trope.scanCurrent") }}</button>
+          <button type="button" class="app-btn" :disabled="scan.running" @click="onScanImport">{{ $t("trope.scanImport") }}</button>
+          <button v-if="scan.running" type="button" class="app-btn" @click="cancelTropeScan">{{ $t("common.cancel") }}</button>
+        </div>
       </div>
 
       <div class="filter-row">
@@ -544,7 +594,7 @@ onUnmounted(() => {
         <button
           v-if="categoryCounts.uncat"
           type="button"
-          class="chip"
+          class="chip cat-chip-btn"
           :class="categoryFilter === '__uncat__' ? 'chip-active' : ''"
           @click="toggleCategory('__uncat__')"
         >
@@ -554,7 +604,7 @@ onUnmounted(() => {
           v-for="chip in categoryCounts.chips"
           :key="chip.id"
           type="button"
-          class="chip"
+          class="chip cat-chip-btn"
           :class="categoryFilter === chip.id ? 'chip-active' : ''"
           @click="toggleCategory(chip.id)"
         >
@@ -589,10 +639,6 @@ onUnmounted(() => {
         </p>
         <p v-if="scanUsageText" class="muted scan-usage">{{ scanUsageText }}</p>
       </div>
-      <div class="field scan-title-field">
-        <label class="field-label">{{ $t("trope.importTitle") }}</label>
-        <input v-model="importTitle" type="text" :disabled="scan.running" :placeholder="$t('knowledge.untitledKb')" />
-      </div>
     </div>
 
     <div class="lore-grid" :class="{ 'has-drawer': editorOpen }">
@@ -621,13 +667,24 @@ onUnmounted(() => {
             <div class="lore-meta">
               <div class="card-head">
                 <strong>{{ item.title }}</strong>
-                <button
-                  type="button"
-                  class="expand-btn"
-                  @click.stop="toggleExpand(item.id)"
-                >
-                  {{ expandedId === item.id ? $t("trope.collapse") : $t("trope.expand") }}
-                </button>
+                <div class="card-head-actions">
+                  <button
+                    type="button"
+                    class="expand-btn"
+                    :disabled="scan.running || !!refiningId"
+                    :title="$t('trope.refineHint')"
+                    @click.stop="onRefine(item)"
+                  >
+                    {{ refiningId === item.id ? $t("trope.refiningShort") : $t("trope.refine") }}
+                  </button>
+                  <button
+                    type="button"
+                    class="expand-btn"
+                    @click.stop="toggleExpand(item.id)"
+                  >
+                    {{ expandedId === item.id ? $t("trope.collapse") : $t("trope.expand") }}
+                  </button>
+                </div>
               </div>
               <div class="tag-row">
                 <span class="chip chip-active kind-tag">{{ $t(tropeKindLabelKey(item.kind)) }}</span>
@@ -722,6 +779,13 @@ onUnmounted(() => {
         </div>
         <div class="actions">
           <button type="button" class="app-btn app-btn-primary" :disabled="scan.running" @click="save()">{{ $t("trope.save") }}</button>
+          <button
+            v-if="form.id"
+            type="button"
+            class="app-btn"
+            :disabled="scan.running || !!refiningId"
+            @click="onRefine(currentEditItem())"
+          >{{ refiningId === form.id ? $t("trope.refiningShort") : $t("trope.refine") }}</button>
           <button type="button" class="app-btn" :disabled="scan.running" @click="resetForm">{{ $t("trope.new") }}</button>
         </div>
         <pre v-if="status" class="out">{{ status }}</pre>
@@ -740,6 +804,18 @@ onUnmounted(() => {
 }
 .roster-head {
   flex-shrink: 0;
+  margin-bottom: 2px;
+}
+.head-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.compact-title {
+  font-size: 16px;
+  margin: 0;
+  flex-shrink: 0;
 }
 .tabs,
 .filter-row,
@@ -747,8 +823,20 @@ onUnmounted(() => {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
-  margin-top: 10px;
+  gap: 6px;
+}
+.tabs {
+  flex: 1 1 auto;
+  margin-top: 0;
+}
+.filter-row,
+.cat-row {
+  margin-top: 6px;
+}
+.cat-chip-btn {
+  font-size: 11px;
+  padding: 1px 8px;
+  min-height: 22px;
 }
 .refresh-btn {
   margin-left: auto;
@@ -843,14 +931,10 @@ onUnmounted(() => {
     transform: translateX(320%);
   }
 }
-.scan-title-field {
-  margin-top: 8px;
-  max-width: 360px;
-}
 .lore-grid {
   display: flex;
   gap: 14px;
-  margin-top: 12px;
+  margin-top: 8px;
   flex: 1;
   min-height: 0;
   overflow: hidden;
@@ -937,6 +1021,12 @@ onUnmounted(() => {
   justify-content: space-between;
   gap: 8px;
   padding-right: 36px;
+}
+.card-head-actions {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
 }
 .expand-btn {
   flex-shrink: 0;

@@ -5,11 +5,12 @@
 <script setup>
 import { computed, nextTick, onMounted, ref, toRefs, watch } from "vue";
 import { appState } from "../stores/appState.js";
-import { aiPanelForm, instrCaret, activeStepId, createInstructionStep } from "../stores/aiPanelState.js";
+import { aiPanelForm, instrCaret, activeStepId, createInstructionStep, insertInstructionText } from "../stores/aiPanelState.js";
 import { runWriting } from "../services/llmClient.js";
 import { withBranchContext } from "../services/draftAccept.js";
 import { saveChapter, updateChapterMeta } from "../services/projectClient.js";
 import { refreshTropeIndex } from "../services/tropeIndex.js";
+import { toggleTropeSelection } from "../services/tropeSelect.js";
 import { undoLastAi } from "../services/aiUndo.js";
 import { applyStoryPatch } from "../services/storyClient.js";
 import { lineDiff } from "../utils/lineDiff.js";
@@ -104,12 +105,10 @@ const characterTags = computed(() => {
 });
 
 const tropeTags = computed(() => appState.tropeList || []);
-const tropeTagsPlot = computed(() =>
-  tropeTags.value.filter((x) => x && x.kind === "trope")
-);
-const tropeTagsKink = computed(() =>
-  tropeTags.value.filter((x) => x && x.kind === "kink")
-);
+const selectedTropeChips = computed(() => {
+  const ids = new Set((selectedTropeIds.value || []).map(String));
+  return tropeTags.value.filter((x) => x && ids.has(String(x.id)));
+});
 const showTropeRow = computed(() => tropeTags.value.length > 0);
 
 function tropeIdsSig(ids) {
@@ -126,28 +125,8 @@ function hydrateTropesFromChapter() {
   }
 }
 
-async function persistSelectedTropes() {
-  if (!appState.projectRoot || !appState.chapterId) return;
-  try {
-    await updateChapterMeta(appState.chapterId, {
-      trope_ids: [...(selectedTropeIds.value || [])],
-    });
-  } catch (e) {
-    console.warn("[AiPanel] persist tropes", e);
-  }
-}
-
-function isTropeSelected(id) {
-  return (selectedTropeIds.value || []).includes(id);
-}
-
 function toggleTrope(id) {
-  const ids = [...(selectedTropeIds.value || [])];
-  const i = ids.indexOf(id);
-  if (i >= 0) ids.splice(i, 1);
-  else ids.push(id);
-  selectedTropeIds.value = ids;
-  void persistSelectedTropes();
+  toggleTropeSelection(id);
 }
 
 watch(() => appState.chapterId, hydrateTropesFromChapter);
@@ -200,55 +179,17 @@ function setStepEl(id, el) {
 
 /** 点击角色标签：插入当前指令框（或指令队列焦点步） */
 function insertCharacterName(name) {
-  const insert = String(name || "").trim();
-  if (!insert) return;
-
-  if (instructionQueue.value && task.value === "continue") {
-    let step =
-      instructionSteps.value.find((s) => s.id === activeStepId.value) ||
-      instructionSteps.value[0];
-    if (!step) {
-      step = createInstructionStep("");
-      instructionSteps.value.push(step);
-    }
-    const text = step.text || "";
-    const len = text.length;
-    const start =
-      instrCaret.value.start == null ? len : Math.min(instrCaret.value.start, len);
-    const end =
-      instrCaret.value.end == null ? len : Math.min(instrCaret.value.end, len);
-    const before = text.slice(0, start);
-    const after = text.slice(end);
-    const spaceBefore = before.length > 0 && !/\s$/.test(before) ? " " : "";
-    const spaceAfter = after.length > 0 && !/^\s/.test(after) ? " " : "";
-    step.text = before + spaceBefore + insert + spaceAfter + after;
-    const caret = before.length + spaceBefore.length + insert.length;
-    instrCaret.value = { start: caret, end: caret };
-    activeStepId.value = step.id;
-    nextTick(() => {
-      const el = stepEls.value[step.id];
+  insertInstructionText(name);
+  nextTick(() => {
+    const caret = instrCaret.value.start;
+    if (caret == null) return;
+    if (instructionQueue.value && task.value === "continue") {
+      const el = stepEls.value[activeStepId.value];
       if (!el) return;
       el.focus();
       el.setSelectionRange(caret, caret);
-    });
-    return;
-  }
-
-  const text = instruction.value || "";
-  const len = text.length;
-  const start =
-    instrCaret.value.start == null ? len : Math.min(instrCaret.value.start, len);
-  const end =
-    instrCaret.value.end == null ? len : Math.min(instrCaret.value.end, len);
-  const before = text.slice(0, start);
-  const after = text.slice(end);
-  const spaceBefore = before.length > 0 && !/\s$/.test(before) ? " " : "";
-  const spaceAfter = after.length > 0 && !/^\s/.test(after) ? " " : "";
-  const piece = `${spaceBefore}${insert}${spaceAfter}`;
-  instruction.value = before + piece + after;
-  const caret = before.length + spaceBefore.length + insert.length;
-  instrCaret.value = { start: caret, end: caret };
-  nextTick(() => {
+      return;
+    }
     const el = instructionEl.value;
     if (!el) return;
     el.focus();
@@ -812,28 +753,19 @@ function onToggleLayout() {
           class="char-tag-row float-char-tags"
           :aria-label="$t('ai.localTropes')"
         >
+          <span class="muted trope-row-label">{{ $t("ai.localTropes") }}</span>
           <button
-            v-for="c in tropeTagsPlot"
+            v-for="c in selectedTropeChips"
             :key="c.id"
             type="button"
-            class="char-tag"
-            :class="{ 'is-on': isTropeSelected(c.id) }"
+            class="char-tag is-on"
+            :class="{ 'is-kink': c.kind === 'kink' }"
             :title="$t('trope.selectHint')"
             @click="toggleTrope(c.id)"
           >
             {{ c.title }}
           </button>
-          <button
-            v-for="c in tropeTagsKink"
-            :key="c.id"
-            type="button"
-            class="char-tag is-kink"
-            :class="{ 'is-on': isTropeSelected(c.id) }"
-            :title="$t('trope.selectHint')"
-            @click="toggleTrope(c.id)"
-          >
-            {{ c.title }}
-          </button>
+          <span v-if="!selectedTropeChips.length" class="muted">{{ $t("ai.localTropesHint") }}</span>
         </div>
         <div v-if="task === 'continue'" class="ai-float-queue">
           <CapsuleSwitch
@@ -1288,28 +1220,19 @@ function onToggleLayout() {
           </button>
         </div>
         <div v-if="showTropeRow" class="char-tag-row" :aria-label="$t('ai.localTropes')">
+          <span class="muted trope-row-label">{{ $t("ai.localTropes") }}</span>
           <button
-            v-for="c in tropeTagsPlot"
+            v-for="c in selectedTropeChips"
             :key="c.id"
             type="button"
-            class="char-tag"
-            :class="{ 'is-on': isTropeSelected(c.id) }"
+            class="char-tag is-on"
+            :class="{ 'is-kink': c.kind === 'kink' }"
             :title="$t('trope.selectHint')"
             @click="toggleTrope(c.id)"
           >
             {{ c.title }}
           </button>
-          <button
-            v-for="c in tropeTagsKink"
-            :key="c.id"
-            type="button"
-            class="char-tag is-kink"
-            :class="{ 'is-on': isTropeSelected(c.id) }"
-            :title="$t('trope.selectHint')"
-            @click="toggleTrope(c.id)"
-          >
-            {{ c.title }}
-          </button>
+          <span v-if="!selectedTropeChips.length" class="muted">{{ $t("ai.localTropesHint") }}</span>
         </div>
       </div>
       <div v-if="task === 'continue'" class="field queue-field">
@@ -1564,6 +1487,10 @@ function onToggleLayout() {
   flex-wrap: wrap;
   gap: 6px;
   margin-top: 8px;
+}
+.trope-row-label {
+  font-size: 11px;
+  align-self: center;
 }
 .char-tag {
   border: none;

@@ -1,11 +1,12 @@
 /**
- * 布局偏好（侧栏 / 写作页目录 / AI 面板）localStorage
+ * 布局偏好（侧栏 / 写作页目录 / 情节卡片栏 / AI 面板）localStorage
  * 代码路径: kk_novel_ai/src/utils/layoutPrefs.js
  */
 import { t } from "../i18n/index.js";
 
 export const SIDEBAR_MODE_KEY = "kk_sidebar_mode";
 export const EDITOR_TOC_VISIBLE_KEY = "kk_editor_toc_visible";
+export const EDITOR_TROPE_PICKER_KEY = "kk_editor_trope_picker";
 export const AI_PANEL_LAYOUT_KEY = "kk_ai_panel_layout";
 
 /** @typedef {'expanded' | 'compact' | 'closed'} SidebarMode */
@@ -59,6 +60,25 @@ export function readEditorTocVisible() {
 export function saveEditorTocVisible(visible) {
   try {
     localStorage.setItem(EDITOR_TOC_VISIBLE_KEY, visible ? "1" : "0");
+  } catch {
+    /* ignore */
+  }
+}
+
+export function readEditorTropePickerVisible() {
+  try {
+    const v = localStorage.getItem(EDITOR_TROPE_PICKER_KEY);
+    if (v === "0" || v === "false") return false;
+  } catch {
+    /* ignore */
+  }
+  return true;
+}
+
+/** @param {boolean} visible */
+export function saveEditorTropePickerVisible(visible) {
+  try {
+    localStorage.setItem(EDITOR_TROPE_PICKER_KEY, visible ? "1" : "0");
   } catch {
     /* ignore */
   }

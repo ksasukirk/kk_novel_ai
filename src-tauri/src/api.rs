@@ -259,6 +259,61 @@ pub fn novels_list_projects() -> AppResult<Value> {
     }))
 }
 
+fn novel_roots_from_list() -> AppResult<Vec<(String, String)>> {
+    let listed = novels_list_projects()?;
+    let mut roots = Vec::new();
+    if let Some(arr) = listed.get("items").and_then(|v| v.as_array()) {
+        for it in arr {
+            let root = it.get("root").and_then(|v| v.as_str()).unwrap_or("");
+            if root.is_empty() {
+                continue;
+            }
+            let title = it.get("title").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            roots.push((root.to_string(), title));
+        }
+    }
+    Ok(roots)
+}
+
+/// 懒建 / 刷新跨书压缩目录卡
+pub fn work_catalog_ensure(force: bool) -> AppResult<Value> {
+    let roots = novel_roots_from_list()?;
+    let items = project::work_catalog::ensure_cards(&roots, force)?;
+    Ok(json!({
+        "ok": true,
+        "count": items.len(),
+        "items": items,
+    }))
+}
+
+/// 作品智能搜索：`mode=local` 仅本地打分；`mode=ai` 分析模型重排
+pub async fn novels_search(query: &str, mode: &str) -> AppResult<Value> {
+    let catalog = work_catalog_ensure(false)?;
+    let cards: Vec<project::work_catalog::WorkCatalogCard> = catalog
+        .get("items")
+        .cloned()
+        .map(serde_json::from_value)
+        .transpose()?
+        .unwrap_or_default();
+    let q = query.trim();
+    if q.is_empty() {
+        return Ok(json!({
+            "ok": true,
+            "mode": mode,
+            "items": [],
+        }));
+    }
+    if mode != "ai" {
+        let items = project::work_catalog::score_local(q, &cards);
+        return Ok(json!({
+            "ok": true,
+            "mode": "local",
+            "items": items,
+        }));
+    }
+    project::work_catalog::search_ai(q, &cards).await
+}
+
 pub fn project_open(root: &str) -> AppResult<Value> {
     let opened = project::open_project(Path::new(root))?;
     let mut s = settings::load_settings()?;
@@ -1313,6 +1368,18 @@ pub async fn dispatch_rpc(req: Value) -> AppResult<Value> {
         }
         "novels_dir_info" => novels_dir_info(),
         "novels_list_projects" => novels_list_projects(),
+        "work_catalog_ensure" => {
+            let force = req
+                .get("force")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            work_catalog_ensure(force)
+        }
+        "novels_search" => {
+            let query = req.get("query").and_then(|v| v.as_str()).unwrap_or("");
+            let mode = req.get("mode").and_then(|v| v.as_str()).unwrap_or("local");
+            novels_search(query, mode).await
+        }
         "project_open" | "project_get" => {
             let root = req_str(&req, "root")?;
             if cmd == "project_open" {

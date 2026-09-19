@@ -11,6 +11,8 @@ export function isBackgroundAnalysisTask(task) {
     t === "auto_cast" ||
     t === "trope_extract" ||
     t === "auto_trope" ||
+    t === "trope_refine" ||
+    t === "refine_trope" ||
     t === "section_plan" ||
     t === "plan_sections" ||
     t === "outline_to_beats" ||

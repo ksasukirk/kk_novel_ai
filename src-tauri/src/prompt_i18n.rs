@@ -9,9 +9,22 @@ pub fn writing_locale() -> String {
     }
 }
 
+fn prompt_locale_for(name: &str) -> String {
+    if name == "novel_search.md" {
+        match crate::settings::load_settings() {
+            Ok(s) => crate::settings::AppSettings::normalize_locale_code(&s.ui_locale),
+            Err(_) => "zh-CN".into(),
+        }
+    } else {
+        writing_locale()
+    }
+}
+
 /// 按 writing_locale 取编译期嵌入的 prompt。根目录 `prompts/*.md` 为 zh-CN 回退。
+/// `novel_search.md` 跟界面语言（ui_locale），理由要和作品页一致。
 pub fn prompt(name: &str) -> &'static str {
-    match (writing_locale().as_str(), name) {
+    let loc = prompt_locale_for(name);
+    match (loc.as_str(), name) {
         ("en", "continue_chapter.md") => include_str!("../prompts/en/continue_chapter.md"),
         ("ja", "continue_chapter.md") => include_str!("../prompts/ja/continue_chapter.md"),
         (_, "continue_chapter.md") => include_str!("../prompts/continue_chapter.md"),
@@ -99,6 +112,14 @@ pub fn prompt(name: &str) -> &'static str {
         ("en", "trope_extract.md") => include_str!("../prompts/en/trope_extract.md"),
         ("ja", "trope_extract.md") => include_str!("../prompts/ja/trope_extract.md"),
         (_, "trope_extract.md") => include_str!("../prompts/trope_extract.md"),
+
+        ("en", "trope_refine.md") => include_str!("../prompts/en/trope_refine.md"),
+        ("ja", "trope_refine.md") => include_str!("../prompts/ja/trope_refine.md"),
+        (_, "trope_refine.md") => include_str!("../prompts/trope_refine.md"),
+
+        ("en", "novel_search.md") => include_str!("../prompts/en/novel_search.md"),
+        ("ja", "novel_search.md") => include_str!("../prompts/ja/novel_search.md"),
+        (_, "novel_search.md") => include_str!("../prompts/novel_search.md"),
 
         _ => "",
     }

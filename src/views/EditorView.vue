@@ -20,11 +20,11 @@ import { appConfirmDelete } from "../services/confirmDialog.js";
 import {
   blocksFromContent,
   contentFromBlocks,
-  createPlainBlock,
   genBlocksToc,
 } from "../utils/genBlock.js";
 import {
   activatePathToNode,
+  activePathBlocks,
   branchTocTree,
   migrateBlocksToBranchDoc,
 } from "../utils/branchModel.js";
@@ -46,13 +46,16 @@ import {
 } from "../services/editorReadingProgress.js";
 import { isMobileUx, watchMobileViewport } from "../utils/platform.js";
 import { t, tLocale } from "../i18n/index.js";
+import TropePickPanel from "../components/TropePickPanel.vue";
 import {
   aiPanelLayoutButtonLabel,
   cycleAiPanelLayout,
   readAiPanelLayout,
   readEditorTocVisible,
+  readEditorTropePickerVisible,
   saveAiPanelLayout,
   saveEditorTocVisible,
+  saveEditorTropePickerVisible,
 } from "../utils/layoutPrefs.js";
 import {
   chapterQueueStatus,
@@ -78,6 +81,8 @@ function writingT(key, values) {
 const mobileUx = ref(isMobileUx());
 const tocDrawerOpen = ref(false);
 const tocVisible = ref(readEditorTocVisible());
+const tropesDrawerOpen = ref(false);
+const tropesVisible = ref(readEditorTropePickerVisible());
 const aiPanelLayout = ref(readAiPanelLayout());
 
 const isAiHidden = computed(() => aiPanelLayout.value === "hidden");
@@ -89,10 +94,21 @@ const aiLayoutButtonLabel = computed(() => aiPanelLayoutButtonLabel(aiPanelLayou
 function toggleTocVisible() {
   if (mobileUx.value) {
     tocDrawerOpen.value = !tocDrawerOpen.value;
+    if (tocDrawerOpen.value) tropesDrawerOpen.value = false;
     return;
   }
   tocVisible.value = !tocVisible.value;
   saveEditorTocVisible(tocVisible.value);
+}
+
+function toggleTropesVisible() {
+  if (mobileUx.value) {
+    tropesDrawerOpen.value = !tropesDrawerOpen.value;
+    if (tropesDrawerOpen.value) tocDrawerOpen.value = false;
+    return;
+  }
+  tropesVisible.value = !tropesVisible.value;
+  saveEditorTropePickerVisible(tropesVisible.value);
 }
 
 function setAiPanelLayout(layout) {
@@ -168,6 +184,59 @@ let progressSaveTimer = 0;
 let restoringProgress = false;
 /** 邻章正文预载去重 */
 let preloadBodiesToken = 0;
+/** 写作页补水：避免切作品时旧 load 覆盖新书 */
+let hydrateEditorToken = 0;
+
+function clearEditorCaches() {
+  preloadBodiesToken += 1;
+  hydrateEditorToken += 1;
+  for (const bag of [
+    chapterBodyCache,
+    tocByChapter,
+    branchTocByChapter,
+    bodyEmptyByChapter,
+    expanded,
+    tocLoading,
+  ]) {
+    for (const k of Object.keys(bag)) delete bag[k];
+  }
+  activeBlockKey.value = "";
+}
+
+async function hydrateEditor() {
+  if (appState.activeNav !== "editor") return;
+  if (!appState.projectRoot || !appState.chapterId) {
+    syncCurrentToc();
+    return;
+  }
+  const token = ++hydrateEditorToken;
+  const root = appState.projectRoot;
+  const chapterId = appState.chapterId;
+  const needLoad =
+    !appState.chapterBranchDoc ||
+    !(Array.isArray(appState.chapterBlocks) && appState.chapterBlocks.length);
+  if (needLoad) {
+    try {
+      await project.loadChapter(chapterId);
+    } catch (e) {
+      if (token !== hydrateEditorToken) return;
+      error.value = String(e.message || e);
+      return;
+    }
+  }
+  if (
+    token !== hydrateEditorToken ||
+    appState.projectRoot !== root ||
+    appState.chapterId !== chapterId
+  ) {
+    return;
+  }
+  ensureBlocks();
+  cacheCurrentChapterBody();
+  syncCurrentToc();
+  void preloadChapterBodies();
+  void refreshAllTocs();
+}
 
 function escapeAttrSelector(value) {
   const s = String(value || "");
@@ -223,6 +292,13 @@ function snapshotBlocks(blocks) {
 function cacheCurrentChapterBody() {
   const id = appState.chapterId;
   if (!id) return;
+  // 切作品后块尚未读回时不要把空数组当成「本章就是空的」
+  if (
+    !appState.chapterBranchDoc &&
+    (!Array.isArray(appState.chapterBlocks) || !appState.chapterBlocks.length)
+  ) {
+    return;
+  }
   chapterBodyCache[id] = snapshotBlocks(appState.chapterBlocks);
 }
 
@@ -237,7 +313,9 @@ async function preloadChapterBodies() {
     if (token !== preloadBodiesToken) return;
     if (!ch?.id) continue;
     if (ch.id === appState.chapterId) {
-      chapterBodyCache[ch.id] = snapshotBlocks(appState.chapterBlocks);
+      if (appState.chapterBranchDoc) {
+        chapterBodyCache[ch.id] = snapshotBlocks(appState.chapterBlocks);
+      }
       continue;
     }
     try {
@@ -310,9 +388,7 @@ function ensureBlocks() {
     return;
   }
   if (!appState.chapterBranchDoc) {
-    if (!Array.isArray(appState.chapterBlocks) || !appState.chapterBlocks.length) {
-      applyBranchDoc(migrateBlocksToBranchDoc([createPlainBlock(raw)]));
-    } else {
+    if (Array.isArray(appState.chapterBlocks) && appState.chapterBlocks.length) {
       applyBranchDoc(migrateBlocksToBranchDoc(appState.chapterBlocks));
     }
     return;
@@ -751,8 +827,9 @@ function tocRowsForChapter(ch) {
   if (!ch?.id) return [];
   const chapterId = ch.id;
   let rows = [];
-  if (chapterId === appState.chapterId && currentBranchToc(chapterId).length) {
-    rows = currentBranchToc(chapterId).map((item) => ({
+  const branchRows = currentBranchToc(chapterId);
+  if (branchRows.length) {
+    rows = branchRows.map((item) => ({
       ...item,
       generating: !!(item.key && isBlockGenerating(item.key)),
     }));
@@ -851,11 +928,19 @@ async function loadTocForChapter(chapterId) {
   if (tocLoading[chapterId]) return;
   tocLoading[chapterId] = true;
   try {
-    const blocks = await project.peekChapterBlocks(chapterId);
-    tocByChapter[chapterId] = genBlocksToc(blocks);
+    const doc = await project.peekChapterBranchDoc(chapterId);
+    if (doc) {
+      branchTocByChapter[chapterId] = branchTocTree(doc);
+      tocByChapter[chapterId] = genBlocksToc(activePathBlocks(doc));
+    } else {
+      const blocks = await project.peekChapterBlocks(chapterId);
+      tocByChapter[chapterId] = genBlocksToc(blocks);
+      branchTocByChapter[chapterId] = [];
+    }
     await refreshBodyEmpty(chapterId);
   } catch (e) {
     tocByChapter[chapterId] = [];
+    branchTocByChapter[chapterId] = [];
     error.value = String(e.message || e);
   } finally {
     tocLoading[chapterId] = false;
@@ -1309,10 +1394,7 @@ onMounted(() => {
     }
   });
   window.addEventListener("keydown", onKeydown);
-  ensureBlocks();
-  syncCurrentToc();
-  cacheCurrentChapterBody();
-  void preloadChapterBodies();
+  void hydrateEditor();
   void refreshCharacterNameIndex().catch(() => {});
   void refreshTropeIndex().catch(() => {});
   nextTick(() => {
@@ -1352,9 +1434,13 @@ onUnmounted(() => {
 
 watch(
   () => appState.projectRoot,
-  () => {
+  (next, prev) => {
+    if (next !== prev) clearEditorCaches();
     void refreshCharacterNameIndex().catch(() => {});
-  void refreshTropeIndex().catch(() => {});
+    void refreshTropeIndex().catch(() => {});
+    if (next && appState.activeNav === "editor") {
+      void hydrateEditor();
+    }
   }
 );
 
@@ -1363,8 +1449,8 @@ watch(
   (v) => {
     if (v === "editor") {
       void refreshCharacterNameIndex().catch(() => {});
-  void refreshTropeIndex().catch(() => {});
-      syncCurrentToc();
+      void refreshTropeIndex().catch(() => {});
+      void hydrateEditor();
       nextTick(() => syncActiveBlockFromScroll());
     }
   }
@@ -1374,7 +1460,7 @@ onActivated(() => {
   if (appState.activeNav !== "editor") return;
   void refreshCharacterNameIndex().catch(() => {});
   void refreshTropeIndex().catch(() => {});
-  syncCurrentToc();
+  void hydrateEditor();
   nextTick(() => syncActiveBlockFromScroll());
 });
 
@@ -1480,12 +1566,13 @@ watch(
       'is-float-ai': isAiFloat,
       'is-mobile': mobileUx,
       'toc-hidden': !mobileUx && !tocVisible,
+      'tropes-hidden': !mobileUx && !tropesVisible,
     }"
   >
     <div
-      v-if="mobileUx && tocDrawerOpen"
+      v-if="mobileUx && (tocDrawerOpen || tropesDrawerOpen)"
       class="toc-backdrop"
-      @click="tocDrawerOpen = false"
+      @click="tocDrawerOpen = false; tropesDrawerOpen = false"
     />
     <aside
       v-show="mobileUx || tocVisible"
@@ -1616,11 +1703,78 @@ watch(
               {{ ch.summary }}
             </p>
             <p
-              v-else-if="!ch.summary && editingSummaryId !== ch.id"
+              v-else-if="!ch.summary && editingSummaryId !== ch.id && !tocRowsForChapter(ch).length"
               class="toc-empty muted"
             >
               {{ $t("editor.noOutline") }}
             </p>
+            <p v-if="tocLoading[ch.id]" class="toc-empty muted">{{ $t("common.loading") }}</p>
+            <template v-else>
+              <div
+                v-for="(item, ti) in tocRowsForChapter(ch)"
+                :key="`${item.kind}-${item.nodeId || ''}-${item.variantId || item.key || ti}`"
+                class="toc-block-row"
+                :class="{
+                  active:
+                    item.kind === 'generating'
+                      ? ch.id === tocFocusChapterId || ch.id === outlineQueueState.chapterId
+                      : ch.id === tocFocusChapterId &&
+                        item.key &&
+                        item.key === activeBlockKey &&
+                        (item.kind === 'section' || item.active),
+                  'toc-variant': item.kind === 'variant',
+                  'toc-hint': item.kind === 'branchHint',
+                  'is-generating': item.generating || item.kind === 'generating',
+                }"
+                :style="{ paddingLeft: 6 + (item.depth || 0) * 10 + 'px' }"
+              >
+                <button
+                  type="button"
+                  class="toc-block"
+                  :title="
+                    item.generating || item.kind === 'generating'
+                      ? `${item.label} (${$t('common.generating')})`
+                      : item.label
+                  "
+                  @click="
+                    item.kind === 'generating'
+                      ? onTocGeneratingClick(ch.id)
+                      : selectTocItem(ch.id, item)
+                  "
+                >
+                  <span
+                    v-if="item.generating || item.kind === 'generating'"
+                    class="toc-gen-spin"
+                    aria-hidden="true"
+                  />
+                  <span v-else-if="item.kind === 'section'" class="toc-block-idx">{{
+                    item.genIndex + 1
+                  }}</span>
+                  <span v-else-if="item.kind === 'variant'" class="toc-block-idx toc-var">{{
+                    item.active ? "*" : "-"
+                  }}</span>
+                  <span v-else class="toc-block-idx toc-var">~</span>
+                  <span class="toc-block-label">{{ item.label }}</span>
+                  <span
+                    v-if="item.generating || item.kind === 'generating'"
+                    class="toc-gen-badge"
+                  >{{ $t("common.generating") }}</span>
+                </button>
+                <button
+                  v-if="item.kind === 'section' && item.key && !item.generating"
+                  type="button"
+                  class="toc-block-del"
+                  :title="$t('editor.deleteBlockTitle')"
+                  :disabled="appState.generating"
+                  @click="deleteTocBlock(ch.id, item.key, $event)"
+                >
+                  {{ $t("editor.deleteShort") }}
+                </button>
+              </div>
+              <p v-if="!tocRowsForChapter(ch).length" class="toc-empty muted">{{
+                $t("editor.noGenBlocks")
+              }}</p>
+            </template>
           </div>
         </div>
       </div>
@@ -1662,6 +1816,24 @@ watch(
           @click="toggleTocVisible"
         >
           {{ $t("editor.showToc") }}
+        </button>
+        <button
+          v-if="mobileUx"
+          type="button"
+          class="app-btn"
+          :title="$t('editor.showTropesHint')"
+          @click="toggleTropesVisible"
+        >
+          {{ $t("editor.showTropes") }}
+        </button>
+        <button
+          v-else-if="!tropesVisible"
+          type="button"
+          class="app-btn"
+          :title="$t('editor.showTropesHint')"
+          @click="toggleTropesVisible"
+        >
+          {{ $t("editor.showTropes") }}
         </button>
         <strong>{{
           chapters.find((c) => c.id === tocFocusChapterId)?.title ||
@@ -1810,6 +1982,13 @@ watch(
       </div>
     </section>
 
+    <TropePickPanel
+      v-show="mobileUx || tropesVisible"
+      class="trope-pick-slot"
+      :class="{ 'tropes-drawer-open': !mobileUx || tropesDrawerOpen }"
+      @hide="toggleTropesVisible"
+    />
+
     <AiPanel
       v-if="!isAiFloat && !isAiHidden"
       class="ai-panel-slot"
@@ -1845,6 +2024,29 @@ watch(
   box-shadow: var(--shadow);
 }
 .editor-layout.is-mobile .chapter-tree.toc-drawer-open {
+  transform: translateX(0);
+}
+.trope-pick-slot {
+  width: 300px;
+  flex-shrink: 0;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.editor-layout.is-mobile .trope-pick-slot {
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 20;
+  width: min(90vw, 340px);
+  transform: translateX(105%);
+  transition: transform 0.22s ease;
+  box-shadow: var(--shadow);
+}
+.editor-layout.is-mobile .trope-pick-slot.tropes-drawer-open {
   transform: translateX(0);
 }
 .toc-backdrop {

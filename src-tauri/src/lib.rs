@@ -77,6 +77,8 @@ pub fn run() {
             commands::project_create_in_novels,
             commands::novels_dir_info,
             commands::novels_list_projects,
+            commands::work_catalog_ensure,
+            commands::novels_search,
             commands::project_open,
             commands::project_import_directory,
             commands::project_forget_recent,
