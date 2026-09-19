@@ -184,6 +184,7 @@ mod tests {
             style: String::new(),
             book_outline: String::new(),
             source_file: None,
+            title_src: String::new(),
             linked_kb_roots: vec![],
             volumes: vec![VolumeMeta {
                 id: Uuid::new_v4().to_string(),
@@ -196,6 +197,7 @@ mod tests {
                 id: ch_id.clone(),
                 file,
                 title: "第一章".into(),
+                title_src: String::new(),
                 summary: String::new(),
                 status: "draft".into(),
                 pov_lore_id: None,

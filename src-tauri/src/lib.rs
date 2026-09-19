@@ -125,6 +125,7 @@ pub fn run() {
             commands::export_epub,
             commands::export_pdf,
             commands::import_txt,
+            commands::import_novel_txt,
             commands::import_distill,
             commands::tropes_scan,
             commands::import_apply_pending,

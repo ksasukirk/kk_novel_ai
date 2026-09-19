@@ -72,6 +72,18 @@
 | M68 | 空 JSON 文件不再弹出 serde EOF | 完成 | `error.rs` `json_is_blank` / `parse_json_at`；`settings.rs`；`project/mod.rs` `open_project`；`kb/mod.rs`；`story/mod.rs`；`chat.rs`；`src-tauri/locales/{zh-CN,en,ja}.json` |
 | M69 | 情节库/知识库导入 TXT 只弹一次文件框 | 完成 | `TropeLibraryView.vue` `onScanImport`；`KnowledgeHome.vue`；`api.rs` `import_txt`；`kbClient.js` |
 | M70 | TXT 无标题时按段落大致范围切章 | 完成 | `import/mod.rs` `chapters_from_paragraph_ranges`；`src-tauri/locales/{zh-CN,en,ja}.json` `noChapterHeadings` |
+| M71 | 作品库导入 TXT 写作工程 + 可选标题翻译 + 情节卡中英 | 完成 | `import_novel_txt`、`title_translate.md`、`trope_extract.md` `title_en`、`ProjectHome.vue`、`tropeI18n.js` |
+
+### M71 明细 TODO
+
+| # | 项 | 状态 | 路径 |
+|---|---|---|---|
+| 1 | `import_novel_txt`：`allocate_novel_folder` + `create_project` + `parse_txt_chapters` + `replace_all_chapters`（`kind=novel`） | 完成 | [`src-tauri/src/import/mod.rs`](../src-tauri/src/import/mod.rs) `import_novel_txt` / `write_imported_novel`；[`src-tauri/src/api.rs`](../src-tauri/src/api.rs)；[`src-tauri/src/commands.rs`](../src-tauri/src/commands.rs)；[`src-tauri/src/lib.rs`](../src-tauri/src/lib.rs)；[`src-tauri/src/cli.rs`](../src-tauri/src/cli.rs)；[`src/services/projectClient.js`](../src/services/projectClient.js) `importNovelTxt` |
+| 2 | 作品页导入弹窗：书名、是否翻译标题（默认关）、目标语；确认后只弹一次文件框 | 完成 | [`src/views/ProjectHome.vue`](../src/views/ProjectHome.vue)；[`src/i18n/locales/zh-CN.json`](../src/i18n/locales/zh-CN.json)、[`en.json`](../src/i18n/locales/en.json)、[`ja.json`](../src/i18n/locales/ja.json) `project.importNovel*` |
+| 3 | 勾选翻译时一次分析模型 JSON 只翻书名+章标题；正文原样；失败用原文；`title_src` 对照 | 完成 | [`src-tauri/src/import/title_translate.rs`](../src-tauri/src/import/title_translate.rs)；[`src-tauri/prompts/title_translate.md`](../src-tauri/prompts/title_translate.md)、[`en/title_translate.md`](../src-tauri/prompts/en/title_translate.md)、[`ja/title_translate.md`](../src-tauri/prompts/ja/title_translate.md)；[`src-tauri/src/project/mod.rs`](../src-tauri/src/project/mod.rs) `ChapterMeta.title_src` / `NovelProject.title_src` |
+| 4 | 同轮抽取 JSON 写 `title_en` / `content_en`；compact `中文\|english`；命中旧卡只填空英文 | 完成 | [`src-tauri/prompts/trope_extract.md`](../src-tauri/prompts/trope_extract.md) 及 en/ja；[`src-tauri/src/import/mod.rs`](../src-tauri/src/import/mod.rs) `TropeDraft` / `parse_trope_drafts` / `upsert_trope_entry`；[`src-tauri/src/writing/mod.rs`](../src-tauri/src/writing/mod.rs) `format_known_tropes_compact`；[`src-tauri/src/project/trope_merge.rs`](../src-tauri/src/project/trope_merge.rs) |
+| 5 | 卡片/PickPanel 按 `ui_locale` 显示；续写注入按 `writing_locale`；表单可改英文；优化顺带补空英文 | 完成 | [`src/utils/tropeI18n.js`](../src/utils/tropeI18n.js)；[`src/views/TropeLibraryView.vue`](../src/views/TropeLibraryView.vue)；[`src/components/TropePickPanel.vue`](../src/components/TropePickPanel.vue)；[`src/utils/tropeMatch.js`](../src/utils/tropeMatch.js)；[`src/services/tropeRefine.js`](../src/services/tropeRefine.js)；[`src-tauri/prompts/trope_refine.md`](../src-tauri/prompts/trope_refine.md) 及 en/ja |
+| 6 | 单测：无翻译不碰 LLM、标题 JSON、`title_en` 解析、跨语相似、无英文 compact 与旧快照一致 | 完成 | [`src-tauri/src/import/mod.rs`](../src-tauri/src/import/mod.rs) `tests`；[`src-tauri/src/import/title_translate.rs`](../src-tauri/src/import/title_translate.rs) `tests`；[`src-tauri/src/project/trope_merge.rs`](../src-tauri/src/project/trope_merge.rs)；[`src-tauri/src/writing/mod.rs`](../src-tauri/src/writing/mod.rs) `compact_catalog_*` |
 
 ### M70 明细 TODO
 

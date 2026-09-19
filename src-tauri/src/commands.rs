@@ -496,6 +496,23 @@ pub fn import_txt(root: String, file: String, title: String) -> Result<Value, St
 }
 
 #[tauri::command]
+pub async fn import_novel_txt(
+    file: String,
+    title: Option<String>,
+    translate_titles: Option<bool>,
+    translate_locale: Option<String>,
+) -> Result<Value, String> {
+    api::import_novel_txt(
+        &file,
+        title.as_deref().unwrap_or(""),
+        translate_titles.unwrap_or(false),
+        translate_locale.as_deref().unwrap_or(""),
+    )
+    .await
+    .map_err(Into::into)
+}
+
+#[tauri::command]
 pub async fn import_distill(
     root: String,
     from: u64,

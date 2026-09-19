@@ -581,41 +581,89 @@ fn is_trope_kind(kind: &str) -> bool {
 }
 
 fn tropes_to_text(entries: &[&LoreEntry]) -> String {
+    let loc = crate::prompt_i18n::writing_locale();
+    let en = loc == "en";
     if entries.is_empty() {
-        return "（无）".into();
+        return if en { "(none)".into() } else { "（无）".into() };
     }
     entries
         .iter()
         .map(|e| {
-            let kind_label = if e.kind == "kink" { "喜好" } else { "情节" };
+            let kind_label = if en {
+                if e.kind == "kink" { "kink" } else { "trope" }
+            } else if e.kind == "kink" {
+                "喜好"
+            } else {
+                "情节"
+            };
+            let title = if en {
+                let te = e.attrs.get("title_en").map(|s| s.trim()).unwrap_or("");
+                if te.is_empty() {
+                    e.title.as_str()
+                } else {
+                    te
+                }
+            } else {
+                e.title.as_str()
+            };
+            let content = if en {
+                let ce = e.attrs.get("content_en").map(|s| s.trim()).unwrap_or("");
+                if ce.is_empty() {
+                    e.content.as_str()
+                } else {
+                    ce
+                }
+            } else {
+                e.content.as_str()
+            };
             let intensity = e.attrs.get("intensity").map(|s| s.as_str()).unwrap_or("");
             let do_line = e.attrs.get("do").map(|s| s.as_str()).unwrap_or("");
             let dont_line = e.attrs.get("dont").map(|s| s.as_str()).unwrap_or("");
             let tags = e.attrs.get("tags").map(|s| s.as_str()).unwrap_or("");
             let mut extra = String::new();
             if !intensity.is_empty() {
-                extra.push_str(&format!("\n强度: {intensity}"));
+                extra.push_str(&format!(
+                    "\n{}: {intensity}",
+                    if en { "intensity" } else { "强度" }
+                ));
             }
             if !tags.is_empty() {
-                extra.push_str(&format!("\n标签: {tags}"));
+                extra.push_str(&format!("\n{}: {tags}", if en { "tags" } else { "标签" }));
             }
             if !do_line.is_empty() {
-                extra.push_str(&format!("\n要写: {do_line}"));
+                extra.push_str(&format!("\n{}: {do_line}", if en { "do" } else { "要写" }));
             }
             if !dont_line.is_empty() {
-                extra.push_str(&format!("\n不要: {dont_line}"));
+                extra.push_str(&format!(
+                    "\n{}: {dont_line}",
+                    if en { "don't" } else { "不要" }
+                ));
             }
             format!(
-                "### {}（{}）\n关键词: {}{}\n{}\n",
-                e.title,
+                "### {}（{}）\n{}: {}{}\n{}\n",
+                title,
                 kind_label,
+                if en { "keywords" } else { "关键词" },
                 e.keywords.join(", "),
                 extra,
-                e.content
+                content
             )
         })
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+fn compact_trope_label(e: &LoreEntry) -> Option<String> {
+    let title = e.title.trim();
+    if title.is_empty() {
+        return None;
+    }
+    let en = e.attrs.get("title_en").map(|s| s.trim()).unwrap_or("");
+    if en.is_empty() {
+        Some(title.to_string())
+    } else {
+        Some(format!("{title}|{en}"))
+    }
 }
 
 /// 压缩名单：按 kind 各一行，库内「最新在前」翻成「旧→新」以便新卡只追加在行尾，保住 DeepSeek 前缀缓存。
@@ -626,17 +674,17 @@ pub(crate) fn format_known_tropes_compact(entries: &[LoreEntry]) -> String {
         if !is_trope_kind(&e.kind) {
             continue;
         }
-        let title = e.title.trim();
-        if title.is_empty() {
+        let Some(label) = compact_trope_label(e) else {
             continue;
-        }
+        };
+        let ident = e.title.trim();
         let bucket = if e.kind == "kink" {
             &mut kinks
         } else {
             &mut tropes
         };
-        if !bucket.iter().any(|x| x == title) {
-            bucket.push(title.to_string());
+        if !bucket.iter().any(|x| x.split('|').next().unwrap_or(x) == ident) {
+            bucket.push(label);
         }
     }
     kinks.reverse();
@@ -2500,5 +2548,19 @@ mod tests {
         let kink_at = s.find("kink:").unwrap();
         let trope_at = s.find("trope:").unwrap();
         assert!(kink_at < trope_at);
+    }
+
+    #[test]
+    fn compact_catalog_title_en_suffix_keeps_old_prefix() {
+        let old = dummy_lore("1", "kink", "旧卡");
+        let mut with_en = dummy_lore("2", "kink", "新卡");
+        with_en
+            .attrs
+            .insert("title_en".into(), "new card".into());
+        let before = format_known_tropes_compact(std::slice::from_ref(&old));
+        assert_eq!(before, "kink: 旧卡");
+        let after = format_known_tropes_compact(&[with_en, old]);
+        assert!(after.starts_with("kink: 旧卡"), "got {after}");
+        assert!(after.contains("新卡|new card"), "got {after}");
     }
 }

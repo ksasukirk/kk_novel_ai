@@ -14,7 +14,7 @@ import { appConfirm, appConfirmDelete } from "../services/confirmDialog.js";
 import { createBackdropDismiss } from "../utils/backdropDismiss.js";
 import { isMobileUx } from "../utils/platform.js";
 import { useToastError } from "../services/toast.js";
-import { msgMatchesKey, t } from "../i18n/index.js";
+import { isCancelledMsg, msgMatchesKey, t, UI_LOCALES } from "../i18n/index.js";
 import { scanTropesFromRoot, scanTropesQueue, cancelTropeScan, isTropeScanBusy, tropeScanState } from "../services/tropeScan.js";
 import { tropesScanConfirmText } from "../utils/usageEstimate.js";
 import { ensureWorkCatalog, localSearchCatalog, novelsSearchAi } from "../services/novelSearch.js";
@@ -26,6 +26,11 @@ const stats = ref(null);
 const goalInput = ref(2000);
 const dash = ref(null);
 const showCreate = ref(false);
+const showImportNovel = ref(false);
+const importNovelTitle = ref("");
+const importNovelTranslate = ref(false);
+const importNovelLocale = ref("zh-CN");
+const importingNovel = ref(false);
 const creating = ref(false);
 const novelsDirHint = ref("");
 const mobileUx = ref(isMobileUx());
@@ -40,6 +45,9 @@ const selectedPaths = ref([]);
 const bulkBusy = ref(false);
 const createBackdrop = createBackdropDismiss(() => {
   showCreate.value = false;
+});
+const importNovelBackdrop = createBackdropDismiss(() => {
+  showImportNovel.value = false;
 });
 
 const recentList = computed(() => {
@@ -235,6 +243,43 @@ async function refreshSettings() {
 async function openCreateDialog() {
   showCreate.value = true;
   await refreshNovelsHint();
+}
+
+function openImportNovelDialog() {
+  importNovelTitle.value = "";
+  importNovelTranslate.value = false;
+  const loc = (appState.settings && appState.settings.ui_locale) || "zh-CN";
+  importNovelLocale.value = loc === "en" || loc === "ja" ? loc : "zh-CN";
+  showImportNovel.value = true;
+}
+
+async function onImportNovelConfirm() {
+  error.value = "";
+  importingNovel.value = true;
+  try {
+    const filePicked = await project.pickFile(t("project.importNovelPick"), ["txt", "md"]);
+    const filePath = String((filePicked && filePicked.path) || "");
+    if (!filePath) return;
+    const r = await project.importNovelTxt(filePath, importNovelTitle.value.trim(), {
+      translateTitles: importNovelTranslate.value,
+      translateLocale: importNovelLocale.value,
+    });
+    await refreshSettings();
+    showImportNovel.value = false;
+    if (r && r.translate_attempted && r.translate_error) {
+      error.value = t("project.importNovelTranslateWarn");
+    } else {
+      appState.statusMessage = t("project.importNovelOk");
+    }
+    if (r && r.root) {
+      await openByPath(r.root, { goEditorNow: true });
+    }
+  } catch (e) {
+    if (isCancelledMsg(e && e.message ? e.message : e)) return;
+    error.value = String(e.message || e);
+  } finally {
+    importingNovel.value = false;
+  }
 }
 
 async function onCreateConfirm() {
@@ -1015,6 +1060,15 @@ function heatCellTitle(d) {
         >
           {{ $t("project.importDir") }}
         </button>
+        <button
+          v-if="!mobileUx"
+          type="button"
+          class="app-btn"
+          :title="$t('project.importNovelHint')"
+          @click="openImportNovelDialog"
+        >
+          {{ $t("project.importNovel") }}
+        </button>
         <button type="button" class="app-btn" @click="onImportBackupPick">{{ $t("project.importBackup") }}</button>
         <button
           type="button"
@@ -1293,6 +1347,48 @@ function heatCellTitle(d) {
             @click="onCreateConfirm"
           >
             {{ creating ? $t("project.creating") : $t("common.create") }}
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div
+      v-if="showImportNovel"
+      class="create-mask"
+      @mousedown="importNovelBackdrop.onMouseDown"
+      @click="importNovelBackdrop.onClick"
+    >
+      <div class="create-dialog">
+        <h2>{{ $t("project.importNovelTitle") }}</h2>
+        <p class="muted">{{ $t("project.importNovelHint") }}</p>
+        <div class="field">
+          <label class="field-label">{{ $t("project.importNovelBookTitle") }}</label>
+          <input
+            v-model="importNovelTitle"
+            type="text"
+            :placeholder="$t('project.bookTitlePh')"
+            @keydown.enter.prevent="onImportNovelConfirm"
+          />
+        </div>
+        <label class="check-row">
+          <input v-model="importNovelTranslate" type="checkbox" />
+          {{ $t("project.importNovelTranslate") }}
+        </label>
+        <div v-if="importNovelTranslate" class="field">
+          <label class="field-label">{{ $t("project.importNovelLocale") }}</label>
+          <select v-model="importNovelLocale">
+            <option v-for="loc in UI_LOCALES" :key="'imp-' + loc.id" :value="loc.id">{{ loc.native }}</option>
+          </select>
+        </div>
+        <div class="dialog-actions">
+          <button type="button" class="app-btn" @click="showImportNovel = false">{{ $t("common.cancel") }}</button>
+          <button
+            type="button"
+            class="app-btn app-btn-primary"
+            :disabled="importingNovel"
+            @click="onImportNovelConfirm"
+          >
+            {{ importingNovel ? $t("project.importingNovel") : $t("project.importNovelPick") }}
           </button>
         </div>
       </div>
@@ -1665,6 +1761,13 @@ function heatCellTitle(d) {
   padding: 1px 6px;
   border-radius: 4px;
   background: var(--chip-bg, #f0f0f0);
+}
+.check-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 4px;
+  font-size: 13px;
 }
 .dialog-actions {
   display: flex;

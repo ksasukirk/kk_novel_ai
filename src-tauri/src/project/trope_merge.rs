@@ -47,7 +47,7 @@ fn jaccard_chars(a: &str, b: &str) -> f32 {
     }
 }
 
-/// 标题近义：全等、较长包含较短（短边≥3字）、或字集合 Jaccard≥0.55 且交集≥2
+/// 标题近义：全等、较长包含较短（中文短边≥3 / 拉丁短边≥4）、或字集合 Jaccard≥0.55 且交集≥2（仅非拉丁）
 pub fn titles_similar(a: &str, b: &str) -> bool {
     let a = trope_norm(a);
     let b = trope_norm(b);
@@ -57,16 +57,30 @@ pub fn titles_similar(a: &str, b: &str) -> bool {
     if a == b {
         return true;
     }
+    let latin = is_mostly_latin(&a) || is_mostly_latin(&b);
     let (short, long) = if char_len(&a) <= char_len(&b) {
         (&a, &b)
     } else {
         (&b, &a)
     };
-    if char_len(short) >= 3 && long.contains(short) {
+    let min_contains = if latin { 4 } else { 3 };
+    if char_len(short) >= min_contains && long.contains(short) {
         return true;
+    }
+    if latin {
+        return false;
     }
     let inter = char_set(&a).intersection(&char_set(&b)).count();
     inter >= 2 && jaccard_chars(&a, &b) >= 0.55
+}
+
+fn is_mostly_latin(s: &str) -> bool {
+    let letters: Vec<char> = s.chars().filter(|c| c.is_alphabetic()).collect();
+    if letters.is_empty() {
+        return false;
+    }
+    let ascii = letters.iter().filter(|c| c.is_ascii_alphabetic()).count();
+    ascii * 2 >= letters.len()
 }
 
 fn alias_list(entry: &LoreEntry) -> Vec<String> {
@@ -77,6 +91,12 @@ fn alias_list(entry: &LoreEntry) -> Vec<String> {
     }
     for k in &entry.keywords {
         let n = trope_norm(k);
+        if char_len(&n) >= 2 && !out.iter().any(|x| x == &n) {
+            out.push(n);
+        }
+    }
+    if let Some(en) = entry.attrs.get("title_en") {
+        let n = trope_norm(en);
         if char_len(&n) >= 2 && !out.iter().any(|x| x == &n) {
             out.push(n);
         }
@@ -233,6 +253,21 @@ fn merge_attr_append(attrs: &mut std::collections::BTreeMap<String, String>, key
     }
 }
 
+fn merge_attr_if_empty(
+    attrs: &mut std::collections::BTreeMap<String, String>,
+    key: &str,
+    add: Option<&String>,
+) {
+    let empty = attrs.get(key).map(|s| s.trim().is_empty()).unwrap_or(true);
+    if !empty {
+        return;
+    }
+    let Some(add) = add.map(|s| s.trim()).filter(|s| !s.is_empty()) else {
+        return;
+    };
+    attrs.insert(key.into(), add.to_string());
+}
+
 /// 把 add 补进 keep：保留 keep 的 id/标题，只追加未见过的正文/关键词
 pub fn merge_trope_lore(keep: &LoreEntry, add: &LoreEntry) -> LoreEntry {
     let mut out = keep.clone();
@@ -247,6 +282,8 @@ pub fn merge_trope_lore(keep: &LoreEntry, add: &LoreEntry) -> LoreEntry {
     merge_attr_append(&mut out.attrs, "evidence", add.attrs.get("evidence"));
     merge_attr_append(&mut out.attrs, "do", add.attrs.get("do"));
     merge_attr_append(&mut out.attrs, "dont", add.attrs.get("dont"));
+    merge_attr_if_empty(&mut out.attrs, "title_en", add.attrs.get("title_en"));
+    merge_attr_if_empty(&mut out.attrs, "content_en", add.attrs.get("content_en"));
     let merged_tags = super::trope_tags::merge_tag_strings(
         out.attrs.get("tags").map(|s| s.as_str()).unwrap_or(""),
         add.attrs.get("tags").map(|s| s.as_str()).unwrap_or(""),
@@ -374,6 +411,18 @@ mod tests {
     }
 
     #[test]
+    fn similar_cross_lang_via_title_en() {
+        let mut existing = kink("真空出门", &["暴露"]);
+        existing
+            .attrs
+            .insert("title_en".into(), "outdoor exhibitionism".into());
+        let draft = kink("outdoor exhibitionism", &[]);
+        assert!(tropes_are_similar(&existing, &draft));
+        assert!(!titles_similar("真空出门", "outdoor exhibitionism"));
+        assert!(!titles_similar("exhibitionism", "voyeurism"));
+    }
+
+    #[test]
     fn similar_via_keyword_concat() {
         let existing = kink("裙下暴露", &["短裙", "真空", "不穿内裤", "裙摆"]);
         let draft = kink("真空短裙", &["短裙"]);
@@ -413,5 +462,25 @@ mod tests {
             1,
             "must not duplicate content"
         );
+    }
+
+    #[test]
+    fn merge_fills_empty_title_en_only() {
+        let keep = kink("真空出门", &["暴露"]);
+        let mut add = kink("真空出门", &[]);
+        add.attrs
+            .insert("title_en".into(), "outdoor exhibitionism".into());
+        add.attrs
+            .insert("content_en".into(), "write the outing".into());
+        let out = merge_trope_lore(&keep, &add);
+        assert_eq!(out.attrs.get("title_en").unwrap(), "outdoor exhibitionism");
+        let mut keep2 = out.clone();
+        keep2
+            .attrs
+            .insert("title_en".into(), "keep me".into());
+        add.attrs
+            .insert("title_en".into(), "replace me".into());
+        let out2 = merge_trope_lore(&keep2, &add);
+        assert_eq!(out2.attrs.get("title_en").unwrap(), "keep me");
     }
 }

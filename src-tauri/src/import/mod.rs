@@ -19,6 +19,8 @@ use std::sync::Arc;
 use std::sync::OnceLock;
 use uuid::Uuid;
 
+mod title_translate;
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ParsedChapter {
     pub title: String,
@@ -33,6 +35,16 @@ pub struct ImportReport {
     pub chapter_count: usize,
     pub titles_sample: Vec<String>,
     pub source: String,
+    #[serde(default)]
+    pub kind: String,
+    #[serde(default)]
+    pub translate_attempted: bool,
+    #[serde(default)]
+    pub translate_ok: bool,
+    #[serde(default)]
+    pub translate_skipped: bool,
+    #[serde(default)]
+    pub translate_error: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -106,7 +118,9 @@ pub struct TropesScanReport {
 pub struct TropeDraft {
     pub kind: String,
     pub title: String,
+    pub title_en: String,
     pub content: String,
+    pub content_en: String,
     pub keywords: Vec<String>,
     pub evidence: String,
     pub tags: Vec<String>,
@@ -345,7 +359,156 @@ pub fn import_txt(root: &Path, source: &Path, title: &str) -> AppResult<ImportRe
         chapter_count: count,
         titles_sample: sample,
         source: source_s,
+        kind: "knowledge_base".into(),
+        translate_attempted: false,
+        translate_ok: false,
+        translate_skipped: false,
+        translate_error: String::new(),
     })
+}
+
+fn title_from_source(source: &Path, title: &str) -> String {
+    let t = title.trim();
+    if !t.is_empty() {
+        return t.to_string();
+    }
+    source
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "未命名小说".into())
+}
+
+fn write_imported_novel(
+    root: &Path,
+    source: &Path,
+    display_title: &str,
+    orig_title: &str,
+    parsed: &[ParsedChapter],
+    display_chapters: &[String],
+) -> AppResult<ImportReport> {
+    if parsed.is_empty() {
+        return Err(AppError::t("errors.importChapterEmpty"));
+    }
+    fs::create_dir_all(root)?;
+    let opened = project::create_project(root, display_title)?;
+    let pairs: Vec<(String, String)> = parsed
+        .iter()
+        .enumerate()
+        .map(|(i, c)| {
+            let t = display_chapters
+                .get(i)
+                .map(|s| s.trim())
+                .filter(|s| !s.is_empty())
+                .unwrap_or(c.title.as_str());
+            (t.to_string(), c.body.clone())
+        })
+        .collect();
+    project::replace_all_chapters(root, &pairs)?;
+
+    let mut opened = project::open_project(root).unwrap_or(opened);
+    opened.project.source_file = Some(source.to_string_lossy().into());
+    if orig_title.trim() != display_title.trim() {
+        opened.project.title_src = orig_title.trim().to_string();
+    }
+    for (i, meta) in opened.project.chapters.iter_mut().enumerate() {
+        if let Some(src) = parsed.get(i) {
+            if src.title.trim() != meta.title.trim() {
+                meta.title_src = src.title.trim().to_string();
+            }
+        }
+    }
+    project::save_project_meta(root, &opened.project)?;
+
+    let count = parsed.len();
+    let sample: Vec<String> = opened
+        .project
+        .chapters
+        .iter()
+        .take(5)
+        .map(|c| c.title.clone())
+        .collect();
+    Ok(ImportReport {
+        ok: true,
+        root: root.to_string_lossy().to_string(),
+        title: display_title.to_string(),
+        chapter_count: count,
+        titles_sample: sample,
+        source: source.to_string_lossy().into(),
+        kind: "novel".into(),
+        translate_attempted: false,
+        translate_ok: false,
+        translate_skipped: false,
+        translate_error: String::new(),
+    })
+}
+
+/// 作品库导入 TXT 为写作小说（kind=novel）。`translate_titles=false` 时不调用模型。
+pub async fn import_novel_txt(
+    source: &Path,
+    title: &str,
+    translate_titles: bool,
+    translate_locale: &str,
+) -> AppResult<ImportReport> {
+    if !source.is_file() {
+        return Err(AppError::t_fmt(
+            "errors.sourceFileMissing",
+            &[("path", &source.display().to_string())],
+        ));
+    }
+    let parsed = parse_txt_chapters(source)?;
+    let orig_title = title_from_source(source, title);
+    let orig_chapters: Vec<String> = parsed.iter().map(|c| c.title.clone()).collect();
+    let mut display_title = orig_title.clone();
+    let mut display_chapters = orig_chapters.clone();
+    let mut translate_attempted = false;
+    let mut translate_ok = false;
+    let mut translate_skipped = false;
+    let mut translate_error = String::new();
+
+    if translate_titles {
+        translate_attempted = true;
+        match title_translate::maybe_translate_titles(
+            &orig_title,
+            &orig_chapters,
+            translate_locale,
+            "",
+        )
+        .await
+        {
+            Ok(None) => {
+                translate_skipped = true;
+                translate_ok = true;
+            }
+            Ok(Some(out)) => {
+                display_title = out.book_title;
+                display_chapters = out.chapters;
+                translate_ok = true;
+            }
+            Err(e) => {
+                translate_error = e.to_string();
+            }
+        }
+    }
+
+    let root = crate::paths::allocate_novel_folder(&display_title)?;
+    let mut report = write_imported_novel(
+        &root,
+        source,
+        &display_title,
+        &orig_title,
+        &parsed,
+        &display_chapters,
+    )?;
+    let mut s = crate::settings::load_settings().unwrap_or_default();
+    s.touch_recent_project(&root.to_string_lossy(), &display_title);
+    let _ = crate::settings::save_settings(&s);
+    report.translate_attempted = translate_attempted;
+    report.translate_ok = translate_ok;
+    report.translate_skipped = translate_skipped;
+    report.translate_error = translate_error;
+    Ok(report)
 }
 
 fn jobs_dir(root: &Path) -> PathBuf {
@@ -373,7 +536,7 @@ fn take_tail(text: &str, max_chars: usize) -> String {
     chars[chars.len() - max_chars..].iter().collect()
 }
 
-fn strip_json_fence(raw: &str) -> String {
+pub(crate) fn strip_json_fence(raw: &str) -> String {
     let t = raw.trim();
     if let Some(rest) = t.strip_prefix("```json") {
         if let Some(end) = rest.rfind("```") {
@@ -931,7 +1094,9 @@ fn apply_chapter_extract(
             let draft = TropeDraft {
                 kind: kind.into(),
                 title: title.to_string(),
+                title_en: String::new(),
                 content: content.to_string(),
+                content_en: String::new(),
                 keywords,
                 evidence: evidence.to_string(),
                 tags: project::trope_tags::parse_tag_values(&tags),
@@ -1391,7 +1556,13 @@ pub fn upsert_trope_entry(
     };
     let found = match existing {
         Some(e) => Some(e),
-        None => find_existing_trope(root, title, &draft.keywords, kind)?,
+        None => {
+            let mut kws = draft.keywords.clone();
+            if !draft.title_en.trim().is_empty() {
+                kws.push(draft.title_en.trim().to_string());
+            }
+            find_existing_trope(root, title, &kws, kind)?
+        }
     };
     let created = found.is_none();
     let mut incoming = LoreEntry {
@@ -1409,6 +1580,23 @@ pub fn upsert_trope_entry(
     let evidence = draft.evidence.trim();
     if !evidence.is_empty() {
         incoming.attrs.insert("evidence".into(), evidence.to_string());
+    }
+    let title_en = draft.title_en.trim();
+    if !title_en.is_empty() {
+        incoming.attrs.insert("title_en".into(), title_en.to_string());
+        if !incoming
+            .keywords
+            .iter()
+            .any(|x| trope_key(x) == trope_key(title_en))
+        {
+            incoming.keywords.push(title_en.to_string());
+        }
+    }
+    let content_en = draft.content_en.trim();
+    if !content_en.is_empty() {
+        incoming
+            .attrs
+            .insert("content_en".into(), content_en.to_string());
     }
     let tags = project::trope_tags::parse_tag_values(&draft.tags);
     if !tags.is_empty() {
@@ -1475,6 +1663,26 @@ fn chunk_prose(text: &str) -> Vec<String> {
     chunks
 }
 
+fn split_compact_title(raw: &str) -> (String, String) {
+    let raw = raw.trim();
+    if let Some((zh, en)) = raw.split_once('|') {
+        let zh = zh.trim().to_string();
+        let en = en.trim().to_string();
+        if !zh.is_empty() {
+            return (zh, en);
+        }
+    }
+    (raw.to_string(), String::new())
+}
+
+fn json_trimmed(row: &Value, key: &str) -> String {
+    row.get(key)
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string()
+}
+
 fn parse_trope_drafts(raw: &str) -> Vec<TropeDraft> {
     let cleaned = strip_json_fence(raw);
     if cleaned.is_empty() {
@@ -1493,28 +1701,17 @@ fn parse_trope_drafts(raw: &str) -> Vec<TropeDraft> {
     };
     let mut out = Vec::new();
     for row in list {
-        let matched = row
-            .get("matched_title")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .trim();
-        let title = if !matched.is_empty() {
-            matched.to_string()
+        let matched = json_trimmed(&row, "matched_title");
+        let raw_title = if !matched.is_empty() {
+            matched
         } else {
-            row.get("title")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .trim()
-                .to_string()
+            json_trimmed(&row, "title")
         };
+        let (title, compact_en) = split_compact_title(&raw_title);
         if title.is_empty() || title.chars().count() > 24 {
             continue;
         }
-        let kind_raw = row
-            .get("kind")
-            .and_then(|v| v.as_str())
-            .unwrap_or("trope")
-            .trim();
+        let kind_raw = json_trimmed(&row, "kind");
         let kind = if kind_raw == "kink" { "kink" } else { "trope" };
         let keywords: Vec<String> = row
             .get("keywords")
@@ -1536,22 +1733,18 @@ fn parse_trope_drafts(raw: &str) -> Vec<TropeDraft> {
                     .collect()
             })
             .unwrap_or_default();
+        let mut title_en = json_trimmed(&row, "title_en");
+        if title_en.is_empty() {
+            title_en = compact_en;
+        }
         out.push(TropeDraft {
             kind: kind.into(),
             title,
-            content: row
-                .get("content")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .trim()
-                .to_string(),
+            title_en,
+            content: json_trimmed(&row, "content"),
+            content_en: json_trimmed(&row, "content_en"),
             keywords,
-            evidence: row
-                .get("evidence")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .trim()
-                .to_string(),
+            evidence: json_trimmed(&row, "evidence"),
             tags: crate::project::trope_tags::parse_tag_values(&tags),
         });
     }
@@ -2026,12 +2219,62 @@ mod tests {
     #[test]
     fn parse_trope_drafts_from_json() {
         let drafts = parse_trope_drafts(
-            r#"{"tropes":[{"kind":"kink","title":"真空出门","matched_title":"","content":"写过程","keywords":["暴露"],"evidence":"裙摆","tags":["暴露","真空出门"]}]} "#,
+            r#"{"tropes":[{"kind":"kink","title":"真空出门","title_en":"outdoor exhibitionism","matched_title":"","content":"写过程","content_en":"write the outing","keywords":["暴露"],"evidence":"裙摆","tags":["暴露","真空出门"]}]} "#,
         );
         assert_eq!(drafts.len(), 1);
         assert_eq!(drafts[0].kind, "kink");
         assert_eq!(drafts[0].title, "真空出门");
+        assert_eq!(drafts[0].title_en, "outdoor exhibitionism");
+        assert_eq!(drafts[0].content_en, "write the outing");
         assert_eq!(drafts[0].tags, vec!["暴露".to_string()]);
+    }
+
+    #[test]
+    fn parse_trope_drafts_strips_compact_en() {
+        let drafts = parse_trope_drafts(
+            r#"{"tropes":[{"kind":"kink","title":"真空出门|outdoor exhibitionism","matched_title":"真空出门|outdoor exhibitionism","content":"写过程","title_en":"","content_en":""}]}"#,
+        );
+        assert_eq!(drafts.len(), 1);
+        assert_eq!(drafts[0].title, "真空出门");
+        assert_eq!(drafts[0].title_en, "outdoor exhibitionism");
+    }
+
+    #[test]
+    fn import_novel_without_translate_is_kind_novel() {
+        let path = write_tmp(
+            "novel_plain.txt",
+            "===Alpha===\n\nbody a\n\n===Beta===\n\nbody b\n",
+        );
+        let parsed = parse_txt_chapters(&path).unwrap();
+        let root = std::env::temp_dir()
+            .join("kk_novel_import_novel_test")
+            .join(format!(
+                "n-{}",
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_nanos()
+            ));
+        let _ = fs::remove_dir_all(&root);
+        let report = write_imported_novel(
+            &root,
+            &path,
+            "Plain Book",
+            "Plain Book",
+            &parsed,
+            &["Alpha".into(), "Beta".into()],
+        )
+        .unwrap();
+        assert_eq!(report.kind, "novel");
+        assert!(!report.translate_attempted);
+        let opened = crate::project::open_project(&root).unwrap();
+        assert_eq!(opened.project.kind, "novel");
+        assert_eq!(opened.project.chapters.len(), 2);
+        assert_eq!(opened.project.chapters[0].title, "Alpha");
+        assert!(opened.project.chapters[0].title_src.is_empty());
+        let (_meta, body) = crate::project::read_chapter(&root, &opened.project.chapters[0].id).unwrap();
+        assert!(body.contains("body a"));
+        let _ = fs::remove_dir_all(&root);
     }
 
     #[test]

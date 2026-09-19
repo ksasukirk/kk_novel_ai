@@ -482,6 +482,15 @@ export async function importTxt(root, file, title) {
   return await openProject(r.root || root);
 }
 
+export async function importNovelTxt(file, title, opts = {}) {
+  return await invoke("import_novel_txt", {
+    file,
+    title: title || "",
+    translateTitles: !!opts.translateTitles,
+    translateLocale: opts.translateLocale || "",
+  });
+}
+
 export async function importDistill(root, opts = {}) {
   return await invoke("import_distill", {
     root: root || appState.projectRoot,

@@ -85,6 +85,7 @@
     "openTxtFailed": "Failed to open TXT: {e}",
     "readTxtFailed": "Failed to read TXT: {e}",
     "noChapterHeadings": "The file has no importable prose",
+    "titleTranslateEmpty": "Title translation was empty or invalid; imported with original titles",
     "sourceFileMissing": "Source file not found: {path}",
     "needAnalysisModel": "analysis_model / model is not set; cannot distill the knowledge base",
     "loreExtractJsonFailed": "lore_extract JSON parse failed: {e}; first 200 chars: {preview}",

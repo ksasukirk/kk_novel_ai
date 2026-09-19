@@ -101,9 +101,14 @@ CLI：`kk_novel_cli story plot get <root>` / `timeline` / `canon` / `relations` 
 
 导入创建 **`kind=knowledge_base`**（一书一库），**不是**写作工程。侧栏「知识库」入口；通用库在 `%APPDATA%/kk_novel_ai/universal_kb/`。
 
+作品页「导入小说」走 **`import_novel_txt`**，建成 **`kind=novel`** 写作工程（进最近作品）。弹窗默不翻译；勾选后一次分析模型只翻书名和章标题，正文保持原文。
+
 切章规则：优先行首 `===标题===`；若无匹配则回退「第N章」；再没有标题则按空行/换行段落攒成约 3500–4500 字一块，章名带大致字数范围（如 `第1段（约1–3200字）`）。
 
 ```bash
+# 导入为写作小说（默认不翻译标题）
+kk_novel_cli import novel-txt --file "book.txt" --title "书名"
+
 # 导入为知识库
 kk_novel_cli kb import-txt <kb_root> --file "test_files/《问道红尘》.txt" --title "问道红尘"
 

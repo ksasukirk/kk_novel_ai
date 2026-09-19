@@ -43,6 +43,9 @@ pub struct ChapterMeta {
     pub id: String,
     pub file: String,
     pub title: String,
+    /// 导入时原文标题（翻译后 `title` 为译文）
+    #[serde(default)]
+    pub title_src: String,
     #[serde(default)]
     pub summary: String,
     #[serde(default = "default_status")]
@@ -111,9 +114,12 @@ pub struct NovelProject {
     /// 全书大纲（写作页按纲生成 / 大纲页共用）
     #[serde(default)]
     pub book_outline: String,
-    /// 导入源 TXT 路径（知识库）
+    /// 导入源 TXT 路径（知识库 / 写作导入）
     #[serde(default)]
     pub source_file: Option<String>,
+    /// 导入时原文书名（翻译后 `title` 为译文）
+    #[serde(default)]
+    pub title_src: String,
     /// 写作作品挂接的知识库根路径；可用 "@universal" 表示通用库
     #[serde(default)]
     pub linked_kb_roots: Vec<String>,
@@ -389,6 +395,7 @@ pub fn create_project(root: &Path, title: &str) -> AppResult<OpenedProject> {
         style: "文笔流畅，节奏紧凑，避免流水账。禁止「不是…是…」「并非…而是…」式否定对照修辞，感官与判断直接写。".into(),
         book_outline: String::new(),
         source_file: None,
+        title_src: String::new(),
         linked_kb_roots: vec![crate::kb::CHARACTERS_MARKER.to_string()],
         volumes: vec![VolumeMeta {
             id: Uuid::new_v4().to_string(),
@@ -401,6 +408,7 @@ pub fn create_project(root: &Path, title: &str) -> AppResult<OpenedProject> {
             id: chapter_id,
             file: file.clone(),
             title: "第一章".into(),
+            title_src: String::new(),
             summary: String::new(),
             status: "draft".into(),
             pov_lore_id: None,
@@ -458,6 +466,7 @@ pub fn create_knowledge_base(
         style: String::new(),
         book_outline: String::new(),
         source_file: source_file.map(|s| s.to_string()),
+        title_src: String::new(),
         linked_kb_roots: vec![],
         volumes: vec![VolumeMeta {
             id: Uuid::new_v4().to_string(),
@@ -510,6 +519,7 @@ fn blank_chapter_meta(file: &str, title: &str) -> ChapterMeta {
         id: Uuid::new_v4().to_string(),
         file: file.to_string(),
         title: title.to_string(),
+        title_src: String::new(),
         summary: String::new(),
         status: "draft".into(),
         pov_lore_id: None,
@@ -568,6 +578,7 @@ fn recover_empty_project(root: &Path) -> NovelProject {
         style: String::new(),
         book_outline: String::new(),
         source_file: None,
+        title_src: String::new(),
         linked_kb_roots: vec![],
         volumes,
         chapters,
@@ -879,6 +890,7 @@ pub fn create_chapter(root: &Path, title: &str, summary: &str) -> AppResult<Chap
         id: Uuid::new_v4().to_string(),
         file: file.clone(),
         title: title.to_string(),
+        title_src: String::new(),
         summary: summary.to_string(),
         status: "draft".into(),
         pov_lore_id: None,
@@ -1919,6 +1931,7 @@ pub fn replace_all_chapters(root: &Path, chapters: &[(String, String)]) -> AppRe
             id,
             file,
             title: title.clone(),
+            title_src: String::new(),
             summary: String::new(),
             status: "draft".into(),
             pov_lore_id: None,

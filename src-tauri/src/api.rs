@@ -1127,6 +1127,18 @@ pub fn import_txt(root: &str, file: &str, title: &str) -> AppResult<Value> {
     Ok(serde_json::to_value(report)?)
 }
 
+pub async fn import_novel_txt(
+    file: &str,
+    title: &str,
+    translate_titles: bool,
+    translate_locale: &str,
+) -> AppResult<Value> {
+    let report =
+        import::import_novel_txt(Path::new(file), title, translate_titles, translate_locale)
+            .await?;
+    Ok(serde_json::to_value(report)?)
+}
+
 pub async fn import_distill(
     root: &str,
     from: u64,
@@ -1645,6 +1657,18 @@ pub async fn dispatch_rpc(req: Value) -> AppResult<Value> {
                 .unwrap_or("未命名小说");
             let root = req.get("root").and_then(|v| v.as_str()).unwrap_or("");
             import_txt(root, req_str(&req, "file")?, title)
+        }
+        "import_novel_txt" => {
+            let title = req.get("title").and_then(|v| v.as_str()).unwrap_or("");
+            let translate = req
+                .get("translate_titles")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+            let locale = req
+                .get("translate_locale")
+                .and_then(|v| v.as_str())
+                .unwrap_or("");
+            import_novel_txt(req_str(&req, "file")?, title, translate, locale).await
         }
         "import_distill" => {
             let from = req.get("from").and_then(|v| v.as_u64()).unwrap_or(1);

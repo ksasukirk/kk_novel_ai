@@ -55,8 +55,11 @@ export function titlesSimilar(a, b) {
   const nb = tropeNorm(b);
   if (!na || !nb) return false;
   if (na === nb) return true;
+  const latin = isMostlyLatin(na) || isMostlyLatin(nb);
   const [short, long] = charLen(na) <= charLen(nb) ? [na, nb] : [nb, na];
-  if (charLen(short) >= 3 && long.includes(short)) return true;
+  const minContains = latin ? 4 : 3;
+  if (charLen(short) >= minContains && long.includes(short)) return true;
+  if (latin) return false;
   const sa = new Set(Array.from(na));
   const sb = new Set(Array.from(nb));
   let inter = 0;
@@ -64,6 +67,13 @@ export function titlesSimilar(a, b) {
     if (sb.has(c)) inter += 1;
   });
   return inter >= 2 && jaccardChars(na, nb) >= 0.55;
+}
+
+function isMostlyLatin(s) {
+  const letters = Array.from(s || "").filter((c) => /\p{L}/u.test(c));
+  if (!letters.length) return false;
+  const ascii = letters.filter((c) => /[A-Za-z]/.test(c)).length;
+  return ascii * 2 >= letters.length;
 }
 
 function aliasList(entry) {
@@ -74,6 +84,8 @@ function aliasList(entry) {
     const n = tropeNorm(k);
     if (charLen(n) >= 2 && !out.includes(n)) out.push(n);
   }
+  const en = tropeNorm(entry && entry.attrs && entry.attrs.title_en);
+  if (charLen(en) >= 2 && !out.includes(en)) out.push(en);
   return out;
 }
 

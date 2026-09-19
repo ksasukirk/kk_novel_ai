@@ -347,6 +347,17 @@ enum ImportCmd {
         #[arg(long, default_value = "未命名小说")]
         title: String,
     },
+    /// 导入 TXT 为写作小说（kind=novel）；默认不翻译标题
+    NovelTxt {
+        #[arg(long)]
+        file: String,
+        #[arg(long, default_value = "")]
+        title: String,
+        #[arg(long, default_value_t = false)]
+        translate: bool,
+        #[arg(long, default_value = "")]
+        locale: String,
+    },
     /// 按章蒸馏知识库（实体/关系/Canon/总谱）
     Distill {
         root: String,
@@ -991,6 +1002,21 @@ async fn run_cmd(cli: Cli) -> i32 {
                 }))
                 .await
             }
+            ImportCmd::NovelTxt {
+                file,
+                title,
+                translate,
+                locale,
+            } => {
+                dispatch_rpc(json!({
+                    "cmd": "import_novel_txt",
+                    "file": file,
+                    "title": title,
+                    "translate_titles": translate,
+                    "translate_locale": locale
+                }))
+                .await
+            }
             ImportCmd::Distill {
                 root,
                 from,
@@ -1336,6 +1362,7 @@ fn tools_manifest() -> Value {
             {"cmd": "export_epub", "args": ["root", "output"], "desc": "导出 EPUB"},
             {"cmd": "export_pdf", "args": ["root", "output"], "desc": "导出 PDF"},
             {"cmd": "import_txt", "args": ["file", "root?", "title?"], "desc": "导入 TXT 为知识库（kind=knowledge_base）；root 空则在 novels 下自动建目录"},
+            {"cmd": "import_novel_txt", "args": ["file", "title?", "translate_titles?", "translate_locale?"], "desc": "导入 TXT 为写作小说（kind=novel）；默认不翻译标题"},
             {"cmd": "import_distill", "args": ["root", "from?", "to?", "apply?", "resume?", "job_id?", "instruction?"], "desc": "按章蒸馏知识库"},
             {"cmd": "tropes_scan", "args": ["root", "from?", "to?"], "desc": "按章抽取情节/喜好到全局仓（to=0 扫完全书）"},
             {"cmd": "trope_summary_status", "args": ["roots"], "desc": "批量读作品情节/喜好总结状态（未总结/已总结/已修改）"},

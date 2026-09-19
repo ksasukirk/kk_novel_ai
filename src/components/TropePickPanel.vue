@@ -19,6 +19,7 @@ import {
   toggleTropeSelection,
 } from "../services/tropeSelect.js";
 import { t } from "../i18n/index.js";
+import { displayTropeContent, displayTropeTitle } from "../utils/tropeI18n.js";
 
 const emit = defineEmits(["hide"]);
 
@@ -69,8 +70,10 @@ const visibleItems = computed(() => {
     list = list.filter((it) => {
       const hay = [
         it.title || "",
+        (it.attrs && it.attrs.title_en) || "",
         (it.keywords || []).join(" "),
         it.content || "",
+        (it.attrs && it.attrs.content_en) || "",
         itemCategoryTags(it).join(" "),
         (it.attrs && it.attrs.do) || "",
         (it.attrs && it.attrs.dont) || "",
@@ -103,9 +106,7 @@ function attrsOf(item) {
 }
 
 function snippetOf(item) {
-  const s = String((item && item.content) || "")
-    .replace(/\s+/g, " ")
-    .trim();
+  const s = displayTropeContent(item).replace(/\s+/g, " ").trim();
   if (s.length <= 80) return s;
   return s.slice(0, 80) + "…";
 }
@@ -117,7 +118,7 @@ function onToggle(item) {
 
 function onInsert(item, ev) {
   if (ev) ev.stopPropagation();
-  const title = String((item && item.title) || "").trim();
+  const title = displayTropeTitle(item);
   if (!title) return;
   insertInstructionText(`「${title}」`);
 }
@@ -212,7 +213,7 @@ function onHide() {
         @click="onToggle(item)"
       >
         <div class="card-top">
-          <strong class="card-title">{{ item.title }}</strong>
+          <strong class="card-title">{{ displayTropeTitle(item) }}</strong>
           <div class="card-ops">
             <button
               type="button"
@@ -236,8 +237,8 @@ function onHide() {
             $t(categoryLabelKey(tag))
           }}</span>
         </div>
-        <p v-if="item.content && expandedId !== item.id" class="snippet">{{ snippetOf(item) }}</p>
-        <p v-if="expandedId === item.id && item.content" class="full-content">{{ item.content }}</p>
+        <p v-if="displayTropeContent(item) && expandedId !== item.id" class="snippet">{{ snippetOf(item) }}</p>
+        <p v-if="expandedId === item.id && displayTropeContent(item)" class="full-content">{{ displayTropeContent(item) }}</p>
         <div v-if="expandedId === item.id && (attrsOf(item).do || attrsOf(item).dont)" class="do-dont">
           <p v-if="attrsOf(item).do">
             <span class="muted">{{ $t("trope.do") }}</span> {{ attrsOf(item).do }}

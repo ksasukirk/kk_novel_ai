@@ -29,7 +29,9 @@ function parseRefine(raw) {
     if (!row || typeof row !== "object") return null;
     const kind = String(row.kind || "").trim() === "kink" ? "kink" : "trope";
     const title = String(row.title || "").trim();
+    const titleEn = String(row.title_en || "").trim();
     const content = String(row.content || "").trim();
+    const contentEn = String(row.content_en || "").trim();
     const keywords = Array.isArray(row.keywords)
       ? row.keywords.map((k) => String(k || "").trim()).filter(Boolean)
       : [];
@@ -38,7 +40,7 @@ function parseRefine(raw) {
     const dontText = String(row.dont || "").trim();
     let intensity = String(row.intensity || "").trim();
     if (!/^[1-5]$/.test(intensity)) intensity = "";
-    return { kind, title, content, keywords, tags, doText, dontText, intensity };
+    return { kind, title, titleEn, content, contentEn, keywords, tags, doText, dontText, intensity };
   } catch {
     return null;
   }
@@ -49,7 +51,9 @@ function cardPayload(item) {
   return {
     kind: item.kind === "kink" ? "kink" : "trope",
     title: item.title || "",
+    title_en: attrs.title_en || "",
     content: item.content || "",
+    content_en: attrs.content_en || "",
     keywords: item.keywords || [],
     do: attrs.do || "",
     dont: attrs.dont || "",
@@ -100,6 +104,8 @@ export async function runTropeRefine(item, opts = {}) {
     if (parsed.doText) attrs.do = parsed.doText;
     if (parsed.dontText) attrs.dont = parsed.dontText;
     if (parsed.tags.length) attrs.tags = formatTropeTags(parsed.tags);
+    if (parsed.titleEn) attrs.title_en = parsed.titleEn;
+    if (parsed.contentEn) attrs.content_en = parsed.contentEn;
     const kind = isTropeKind(parsed.kind) ? parsed.kind : item.kind;
     const title =
       parsed.title && parsed.title.length <= 24 ? parsed.title : item.title;

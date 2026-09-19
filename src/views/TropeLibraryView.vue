@@ -29,6 +29,7 @@ import {
 } from "../utils/tropeCategories.js";
 import { tropesScanConfirmText } from "../utils/usageEstimate.js";
 import { runTropeRefine } from "../services/tropeRefine.js";
+import { displayTropeContent, displayTropeTitle } from "../utils/tropeI18n.js";
 
 const items = ref([]);
 const rosterPath = ref("");
@@ -66,7 +67,9 @@ function emptyForm(kind) {
     id: "",
     kind: kind === "kink" ? "kink" : "trope",
     title: "",
+    titleEn: "",
     content: "",
+    contentEn: "",
     keywords: "",
     intensity: "3",
     doText: "",
@@ -115,8 +118,10 @@ const visibleItems = computed(() => {
     list = list.filter((it) => {
       const hay = [
         it.title || "",
+        (it.attrs && it.attrs.title_en) || "",
         (it.keywords || []).join(" "),
         it.content || "",
+        (it.attrs && it.attrs.content_en) || "",
         itemCategoryTags(it).join(" "),
         String((it.attrs && it.attrs.tags) || ""),
       ]
@@ -212,7 +217,9 @@ async function edit(item) {
     id: item.id,
     kind: item.kind === "kink" ? "kink" : "trope",
     title: item.title || "",
+    titleEn: attrs.title_en || "",
     content: item.content || "",
+    contentEn: attrs.content_en || "",
     keywords: (item.keywords || []).join(", "),
     intensity: String(attrs.intensity || "3"),
     doText: attrs.do || "",
@@ -241,6 +248,8 @@ function buildPayload() {
   };
   if (form.value.doText.trim()) attrs.do = form.value.doText.trim();
   if (form.value.dontText.trim()) attrs.dont = form.value.dontText.trim();
+  if (form.value.titleEn.trim()) attrs.title_en = form.value.titleEn.trim();
+  if (form.value.contentEn.trim()) attrs.content_en = form.value.contentEn.trim();
   const tags = formatTropeTags(form.value.tags);
   attrs.tags = tags;
   return {
@@ -669,7 +678,7 @@ onUnmounted(() => {
             </button>
             <div class="lore-meta">
               <div class="card-head">
-                <strong>{{ item.title }}</strong>
+                <strong>{{ displayTropeTitle(item) }}</strong>
                 <div class="card-head-actions">
                   <button
                     type="button"
@@ -706,10 +715,10 @@ onUnmounted(() => {
                 <span v-for="kw in keywordChips(item)" :key="kw" class="chip kind-tag kw-chip">{{ kw }}</span>
               </div>
               <p
-                v-if="fieldOn('snippet') && item.content && expandedId !== item.id"
+                v-if="fieldOn('snippet') && displayTropeContent(item) && expandedId !== item.id"
                 class="snippet"
-              >{{ item.content }}</p>
-              <p v-if="expandedId === item.id && item.content" class="full-content">{{ item.content }}</p>
+              >{{ displayTropeContent(item) }}</p>
+              <p v-if="expandedId === item.id && displayTropeContent(item)" class="full-content">{{ displayTropeContent(item) }}</p>
               <div v-if="showDoDont(item)" class="do-dont">
                 <p v-if="attrsOf(item).do"><span class="muted">{{ $t("trope.do") }}</span> {{ attrsOf(item).do }}</p>
                 <p v-if="attrsOf(item).dont"><span class="muted">{{ $t("trope.dont") }}</span> {{ attrsOf(item).dont }}</p>
@@ -742,6 +751,10 @@ onUnmounted(() => {
             type="text"
             :placeholder="form.kind === 'kink' ? $t('trope.titlePhKink') : $t('trope.titlePhTrope')"
           />
+        </div>
+        <div class="field">
+          <label class="field-label">{{ $t("trope.nameEn") }}</label>
+          <input v-model="form.titleEn" type="text" :placeholder="$t('trope.nameEnPh')" />
         </div>
         <div class="field">
           <label class="field-label">{{ $t("lore.keywords") }}</label>
@@ -779,6 +792,10 @@ onUnmounted(() => {
         <div class="field">
           <label class="field-label">{{ $t("trope.content") }}</label>
           <textarea v-model="form.content" rows="10" :placeholder="$t('trope.contentPh')" />
+        </div>
+        <div class="field">
+          <label class="field-label">{{ $t("trope.contentEn") }}</label>
+          <textarea v-model="form.contentEn" rows="6" :placeholder="$t('trope.contentEnPh')" />
         </div>
         <div class="actions">
           <button type="button" class="app-btn app-btn-primary" :disabled="scan.running" @click="save()">{{ $t("trope.save") }}</button>

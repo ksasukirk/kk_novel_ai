@@ -121,6 +121,25 @@ pub fn prompt(name: &str) -> &'static str {
         ("ja", "novel_search.md") => include_str!("../prompts/ja/novel_search.md"),
         (_, "novel_search.md") => include_str!("../prompts/novel_search.md"),
 
+        ("en", "title_translate.md") => include_str!("../prompts/en/title_translate.md"),
+        ("ja", "title_translate.md") => include_str!("../prompts/ja/title_translate.md"),
+        (_, "title_translate.md") => include_str!("../prompts/title_translate.md"),
+
         _ => "",
+    }
+}
+
+/// 标题翻译 prompt 跟目标语，不跟 writing_locale。
+pub fn title_translate_prompt(locale: &str) -> &'static str {
+    let loc = crate::settings::AppSettings::normalize_locale_code(locale);
+    prompt_in_locale("title_translate.md", &loc)
+}
+
+fn prompt_in_locale(name: &str, loc: &str) -> &'static str {
+    match (loc, name) {
+        ("en", "title_translate.md") => include_str!("../prompts/en/title_translate.md"),
+        ("ja", "title_translate.md") => include_str!("../prompts/ja/title_translate.md"),
+        (_, "title_translate.md") => include_str!("../prompts/title_translate.md"),
+        _ => prompt(name),
     }
 }

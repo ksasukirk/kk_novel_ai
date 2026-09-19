@@ -85,6 +85,7 @@
     "openTxtFailed": "打开 TXT 失败: {e}",
     "readTxtFailed": "读 TXT 失败: {e}",
     "noChapterHeadings": "文件没有可导入的正文",
+    "titleTranslateEmpty": "标题翻译结果不可用，已用原文继续导入",
     "sourceFileMissing": "源文件不存在: {path}",
     "needAnalysisModel": "未配置 analysis_model / model，无法蒸馏知识库",
     "loreExtractJsonFailed": "lore_extract JSON 解析失败: {e}; 原文前200字: {preview}",
