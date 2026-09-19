@@ -84,7 +84,7 @@
     "unknownApplyMode": "Unknown apply mode: {mode} (none|auto)",
     "openTxtFailed": "Failed to open TXT: {e}",
     "readTxtFailed": "Failed to read TXT: {e}",
-    "noChapterHeadings": "No chapters found. Need ===Title=== or a leading 「Chapter N」 marker",
+    "noChapterHeadings": "The file has no importable prose",
     "sourceFileMissing": "Source file not found: {path}",
     "needAnalysisModel": "analysis_model / model is not set; cannot distill the knowledge base",
     "loreExtractJsonFailed": "lore_extract JSON parse failed: {e}; first 200 chars: {preview}",

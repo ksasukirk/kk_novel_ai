@@ -101,7 +101,7 @@ CLI：`kk_novel_cli story plot get <root>` / `timeline` / `canon` / `relations` 
 
 导入创建 **`kind=knowledge_base`**（一书一库），**不是**写作工程。侧栏「知识库」入口；通用库在 `%APPDATA%/kk_novel_ai/universal_kb/`。
 
-切章规则：优先行首 `===标题===`；若无匹配则回退「第N章」。
+切章规则：优先行首 `===标题===`；若无匹配则回退「第N章」；再没有标题则按空行/换行段落攒成约 3500–4500 字一块，章名带大致字数范围（如 `第1段（约1–3200字）`）。
 
 ```bash
 # 导入为知识库

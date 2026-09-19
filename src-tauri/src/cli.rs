@@ -339,7 +339,7 @@ enum ExportCmd {
 
 #[derive(Subcommand, Debug)]
 enum ImportCmd {
-    /// 从 TXT 导入作品（===标题=== 或第N章）
+    /// 从 TXT 导入作品（===标题=== / 第N章 / 无标题则按段落范围切）
     Txt {
         root: String,
         #[arg(long)]

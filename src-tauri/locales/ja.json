@@ -84,7 +84,7 @@
     "unknownApplyMode": "不明な apply モード: {mode}（none|auto）",
     "openTxtFailed": "TXT を開けません: {e}",
     "readTxtFailed": "TXT の読み取りに失敗: {e}",
-    "noChapterHeadings": "章を切り出せませんでした。===タイトル=== か「第N章」行頭マーカーが必要です",
+    "noChapterHeadings": "ファイルに取り込める本文がありません",
     "sourceFileMissing": "ソースファイルが存在しません: {path}",
     "needAnalysisModel": "analysis_model / model が未設定のため、知識庫を蒸留できません",
     "loreExtractJsonFailed": "lore_extract JSON の解析に失敗: {e}; 原文先頭200字: {preview}",

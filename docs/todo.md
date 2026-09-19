@@ -71,6 +71,15 @@
 | M67 | 作品页 AI 智能搜索（关键词 + 相似内容） | 完成 | `work_catalog.rs`、`novelSearch.js`、`novelSearchScore.js`、`ProjectHome.vue`、`novel_search.md` |
 | M68 | 空 JSON 文件不再弹出 serde EOF | 完成 | `error.rs` `json_is_blank` / `parse_json_at`；`settings.rs`；`project/mod.rs` `open_project`；`kb/mod.rs`；`story/mod.rs`；`chat.rs`；`src-tauri/locales/{zh-CN,en,ja}.json` |
 | M69 | 情节库/知识库导入 TXT 只弹一次文件框 | 完成 | `TropeLibraryView.vue` `onScanImport`；`KnowledgeHome.vue`；`api.rs` `import_txt`；`kbClient.js` |
+| M70 | TXT 无标题时按段落大致范围切章 | 完成 | `import/mod.rs` `chapters_from_paragraph_ranges`；`src-tauri/locales/{zh-CN,en,ja}.json` `noChapterHeadings` |
+
+### M70 明细 TODO
+
+| # | 项 | 状态 | 路径 |
+|---|---|---|---|
+| 1 | 无 `===` / 「第N章」时按段落攒块，标题带约起止字数 | 完成 | [`src-tauri/src/import/mod.rs`](../src-tauri/src/import/mod.rs) `chapters_from_paragraph_ranges` / `parse_txt_chapters` |
+| 2 | 空文件才报没有正文；三语文案 | 完成 | [`src-tauri/locales/zh-CN.json`](../src-tauri/locales/zh-CN.json)、[`en.json`](../src-tauri/locales/en.json)、[`ja.json`](../src-tauri/locales/ja.json) `errors.noChapterHeadings` |
+| 3 | 单测 + 切章说明 | 完成 | [`src-tauri/src/import/mod.rs`](../src-tauri/src/import/mod.rs) `tests`；[`docs/lmstudio.md`](../docs/lmstudio.md) §3.0 |
 
 ### M69 明细 TODO
 

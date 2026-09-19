@@ -143,7 +143,84 @@ fn match_fallback_heading(line: &str) -> Option<String> {
     None
 }
 
-/// 流式按行切章：优先 `===标题===`；若全文无此类标记则回退「第N章」
+fn non_ws_chars(s: &str) -> usize {
+    s.chars().filter(|c| !c.is_whitespace()).count()
+}
+
+fn split_plain_paragraphs(text: &str) -> Vec<String> {
+    let t = text.trim_start_matches('\u{feff}').trim();
+    if t.is_empty() {
+        return vec![];
+    }
+    let by_blank: Vec<String> = t
+        .split("\n\n")
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    if by_blank.len() >= 2 {
+        return by_blank;
+    }
+    let by_line: Vec<String> = t
+        .lines()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    if by_line.len() >= 2 {
+        return by_line;
+    }
+    vec![t.to_string()]
+}
+
+fn flush_range_buf(buf: &mut String, out: &mut Vec<ParsedChapter>, start: &mut usize) {
+    let body = buf.trim().to_string();
+    buf.clear();
+    let n = non_ws_chars(&body);
+    if n == 0 {
+        return;
+    }
+    let from = *start;
+    let to = from + n - 1;
+    out.push(ParsedChapter {
+        title: format!("第{}段（约{}–{}字）", out.len() + 1, from, to),
+        body,
+    });
+    *start = to + 1;
+}
+
+/// 无标题标记时：按空行/换行段落攒成大致字数块，标题带约起止字数
+fn chapters_from_paragraph_ranges(text: &str) -> Vec<ParsedChapter> {
+    const SOFT: usize = 3500;
+    const HARD: usize = 4500;
+    let paras = split_plain_paragraphs(text);
+    let mut out: Vec<ParsedChapter> = Vec::new();
+    let mut buf = String::new();
+    let mut start = 1usize;
+    for p in paras {
+        let extra = if buf.is_empty() { 0 } else { 2 };
+        let next = buf.chars().count() + extra + p.chars().count();
+        if !buf.is_empty() && next > HARD {
+            flush_range_buf(&mut buf, &mut out, &mut start);
+        }
+        if !buf.is_empty() {
+            buf.push_str("\n\n");
+        }
+        buf.push_str(&p);
+        while buf.chars().count() > HARD {
+            let take: String = buf.chars().take(HARD).collect();
+            let rest: String = buf.chars().skip(HARD).collect();
+            buf = take;
+            flush_range_buf(&mut buf, &mut out, &mut start);
+            buf = rest;
+        }
+        if buf.chars().count() >= SOFT {
+            flush_range_buf(&mut buf, &mut out, &mut start);
+        }
+    }
+    flush_range_buf(&mut buf, &mut out, &mut start);
+    out
+}
+
+/// 流式按行切章：优先 `===标题===`；否则「第N章」；再否则按段落大致范围切
 pub fn parse_txt_chapters(path: &Path) -> AppResult<Vec<ParsedChapter>> {
     let file = File::open(path).map_err(|e| AppError::t_fmt("errors.openTxtFailed", &[("e", &e.to_string())]))?;
     let reader = BufReader::new(file);
@@ -206,6 +283,10 @@ pub fn parse_txt_chapters(path: &Path) -> AppResult<Vec<ParsedChapter>> {
             title: prev,
             body: cur_body.trim().to_string(),
         });
+    }
+
+    if chapters.is_empty() {
+        chapters = chapters_from_paragraph_ranges(&all_lines.join("\n"));
     }
 
     if chapters.is_empty() {
@@ -1882,6 +1963,42 @@ mod tests {
         assert!(ch[0].body.contains("正文甲"));
         assert_eq!(ch[1].title, "第一章 寻仙");
         assert!(ch[1].body.contains("正文乙"));
+    }
+
+    #[test]
+    fn parse_cn_chapter_headings() {
+        let path = write_tmp(
+            "cn_chap.txt",
+            "第1章 开头\n\n正文甲\n\n第2章 后续\n\n正文乙\n",
+        );
+        let ch = parse_txt_chapters(&path).unwrap();
+        assert_eq!(ch.len(), 2);
+        assert_eq!(ch[0].title, "第1章 开头");
+        assert!(ch[0].body.contains("正文甲"));
+        assert_eq!(ch[1].title, "第2章 后续");
+    }
+
+    #[test]
+    fn parse_plain_prose_uses_paragraph_ranges() {
+        let mut raw = String::new();
+        for i in 0..12 {
+            raw.push_str(&format!("第{i}段散文。{}\n\n", "啊".repeat(400)));
+        }
+        let path = write_tmp("plain_paras.txt", &raw);
+        let ch = parse_txt_chapters(&path).unwrap();
+        assert!(ch.len() >= 2, "got {} chunks", ch.len());
+        assert!(ch[0].title.starts_with("第1段（约"), "{}", ch[0].title);
+        assert!(ch[0].title.contains("字）"), "{}", ch[0].title);
+        assert!(ch.iter().all(|c| !c.body.trim().is_empty()));
+        let last = ch.last().unwrap();
+        assert!(last.title.contains("段（约"), "{}", last.title);
+    }
+
+    #[test]
+    fn parse_empty_txt_still_errors() {
+        let path = write_tmp("empty_prose.txt", "  \n\n  ");
+        let err = parse_txt_chapters(&path).unwrap_err().to_string();
+        assert!(err.contains("正文") || err.to_lowercase().contains("prose") || !err.is_empty());
     }
 
     #[test]
