@@ -55,18 +55,18 @@
 | M51 | 按纲续写引擎：节拍进度 sidecar / beat_engine / 跨章队列 / prompt 加固 | 完成 | `writing/beat_engine.rs`、`outlineQueue.js`、`outline_to_beats.md`、`AiPanel.vue` |
 | M52 | 跨章连续阅读 + 目录滚动激活 | 完成 | `EditorView.vue`、`ContinuousChapterRead.vue`、`editorReadingProgress.js` |
 | M53 | 作品卡片 AI 生成书名 | 完成 | `project_suggest_title` / `project_apply_title`、`suggest_book_title.md`、`ProjectHome.vue` |
-| M54 | 情节/性癖库：全局页 + 本章多选注入 + 写后抽取 | 完成 | `TropeLibraryView.vue`、`ChapterMeta.trope_ids`、`writing` tropes 注入、`tropeExtract.js` |
-| M55 | 全书/导入提取情节性癖到全局库 | 完成 | `tropes_scan`、`TropeLibraryView` 扫描按钮、蒸馏 tropes 双写全局仓 |
-| M56 | 情节/性癖列表存储 + 自动保存 | 完成 | `lore/tropes.json`、`lore/kinks.json`；情节库编辑 debounce 保存 |
+| M54 | 情节/喜好库：全局页 + 本章多选注入 + 写后抽取 | 完成 | `TropeLibraryView.vue`、`ChapterMeta.trope_ids`、`writing` tropes 注入、`tropeExtract.js` |
+| M55 | 全书/导入提取情节喜好到全局库 | 完成 | `tropes_scan`、`TropeLibraryView` 扫描按钮、蒸馏 tropes 双写全局仓 |
+| M56 | 情节/喜好列表存储 + 自动保存 | 完成 | `lore/tropes.json`、`lore/kinks.json`；情节库编辑 debounce 保存 |
 | M57 | 情节库落到运行目录 novels/_library | 完成 | `paths::trope_library_dir`、`kb::ensure_trope_library`；旧角色仓 tropes 迁移 |
-| M58 | 近义情节/性癖合并补充（不新开、不覆盖） | 完成 | `project/trope_merge.rs`、`upsert_trope_list_entry`、`ensure_trope_library` compact、`tropeMatch.js`、`trope_extract.md` |
-| M59 | 作品卡情节/性癖总结按钮与三态标记 | 完成 | `project/trope_summary.rs`、`tropes_scan` 盖章、`trope_summary_status`、`ProjectHome.vue` |
+| M58 | 近义情节/喜好合并补充（不新开、不覆盖） | 完成 | `project/trope_merge.rs`、`upsert_trope_list_entry`、`ensure_trope_library` compact、`tropeMatch.js`、`trope_extract.md` |
+| M59 | 作品卡情节/喜好总结按钮与三态标记 | 完成 | `project/trope_summary.rs`、`tropes_scan` 盖章、`trope_summary_status`、`ProjectHome.vue` |
 | M60 | 情节扫描降本：冻结名单 + 前缀缓存 + 大切块 | 完成 | `writing/mod.rs` `format_known_tropes_compact` / `known_tropes_snapshot`；`import/mod.rs` `chunk_prose`；`prompts/trope_extract.md` |
 | M61 | 情节库卡片网格 + 规范分类标签 + 扫描约算花销 | 完成 | `TropeLibraryView.vue`、`tropeCategories.js`、`trope_tags.rs`、`usageEstimate.js`、`UsageBarChart.vue` |
 | M62 | 作品卡「重新总结」：已总结也可再扫 | 完成 | `ProjectHome.vue`、`usageEstimate.js`、`src/i18n/locales/{zh-CN,en,ja}.json` |
 | M63 | 一键重新总结 + 情节卡 AI 优化 + 情节库顶栏压紧 | 完成 | `ProjectHome.vue`、`TropeLibraryView.vue`、`tropeRefine.js`、`trope_refine.md` |
 | M64 | 情节库卡片删除始终确认 | 完成 | `TropeLibraryView.vue`、`confirmDialog.js` |
-| M65 | 写作页可筛选多选情节/性癖卡片 | 完成 | `TropePickPanel.vue`、`EditorView.vue`、`AiPanel.vue`、`tropeSelect.js` |
+| M65 | 写作页可筛选多选情节/喜好卡片 | 完成 | `TropePickPanel.vue`、`EditorView.vue`、`AiPanel.vue`、`tropeSelect.js` |
 | M66 | 目录变体行 + 切作品立刻进写作 + 防空载 | 完成 | `EditorView.vue`、`projectClient.js`、`ProjectHome.vue`、三语 `src/i18n/locales/*.json` |
 | M67 | 作品页 AI 智能搜索（关键词 + 相似内容） | 完成 | `work_catalog.rs`、`novelSearch.js`、`novelSearchScore.js`、`ProjectHome.vue`、`novel_search.md` |
 

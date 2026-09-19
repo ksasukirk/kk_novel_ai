@@ -61,7 +61,7 @@ pub struct ChapterMeta {
     pub character_knows: String,
     #[serde(default)]
     pub beats: Vec<SceneBeat>,
-    /// 本章勾选的情节/性癖库条目 id（生成强制注入，不进普通 lore RAG）
+    /// 本章勾选的情节/喜好库条目 id（生成强制注入，不进普通 lore RAG）
     #[serde(default)]
     pub trope_ids: Vec<String>,
 }
@@ -126,7 +126,7 @@ pub struct NovelProject {
     pub outline_mindmap: Option<OutlineMindMap>,
     pub created_at: String,
     pub updated_at: String,
-    /// 上次成功全书情节/性癖扫描完成时间（RFC3339）；空=未总结
+    /// 上次成功全书情节/喜好扫描完成时间（RFC3339）；空=未总结
     #[serde(default)]
     pub trope_summary_at: Option<String>,
     /// 总结时各章 id+正文的 SHA-256

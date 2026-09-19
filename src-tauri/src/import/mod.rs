@@ -69,7 +69,7 @@ pub struct DistillReport {
     pub applied: bool,
 }
 
-/// 情节/性癖扫描结果（只写入全局仓，不改本章 trope_ids）
+/// 情节/喜好扫描结果（只写入全局仓，不改本章 trope_ids）
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct TropesScanReport {
     pub ok: bool,
@@ -1293,7 +1293,7 @@ fn find_existing_trope(root: &Path, title: &str, keywords: &[String], kind: &str
     Ok(project::find_similar_trope(&list, title, keywords, kind).cloned())
 }
 
-/// 按标题去重写入指定仓（情节/性癖）。返回 (条目, 是否新建)
+/// 按标题去重写入指定仓（情节/喜好）。返回 (条目, 是否新建)
 pub fn upsert_trope_entry(
     root: &Path,
     draft: &TropeDraft,
@@ -1559,7 +1559,7 @@ fn apply_usage_to_scan_report(report: &mut TropesScanReport, usage: &TokenUsage,
     report.model_used = model_used.to_string();
 }
 
-/// 按章扫描正文，抽取情节/性癖写入全局仓。`to==0` 表示扫到最后一章。
+/// 按章扫描正文，抽取情节/喜好写入全局仓。`to==0` 表示扫到最后一章。
 pub async fn tropes_scan_range(
     root: &Path,
     from: usize,

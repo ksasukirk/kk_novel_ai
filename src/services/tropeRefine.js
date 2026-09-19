@@ -1,5 +1,5 @@
 /**
- * 情节/性癖卡 AI 优化写法
+ * 情节/喜好卡 AI 优化写法
  * 代码路径: kk_novel_ai/src/services/tropeRefine.js
  */
 import { invoke } from "./tauri.js";

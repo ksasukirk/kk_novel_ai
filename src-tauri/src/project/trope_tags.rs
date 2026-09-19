@@ -1,4 +1,4 @@
-//! 情节/性癖规范分类标签（与前端 tropeCategories.js 对齐）
+//! 情节/喜好规范分类标签（与前端 tropeCategories.js 对齐）
 //! 代码路径: kk_novel_ai/src-tauri/src/project/trope_tags.rs
 
 pub const CANON_TAGS: &[&str] = &[

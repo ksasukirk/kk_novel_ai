@@ -1,5 +1,5 @@
 <!--
-  写作页情节/性癖卡片：筛选 + 多选注入本章，可填入指令
+  写作页情节/喜好卡片：筛选 + 多选注入本章，可填入指令
   代码路径: kk_novel_ai/src/components/TropePickPanel.vue
 -->
 <script setup>

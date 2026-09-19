@@ -1,4 +1,4 @@
-//! 作品情节/性癖总结状态：正文指纹 + dirty 标记
+//! 作品情节/喜好总结状态：正文指纹 + dirty 标记
 //! 代码路径: kk_novel_ai/src-tauri/src/project/trope_summary.rs
 
 use super::{

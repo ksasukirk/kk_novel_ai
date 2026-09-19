@@ -77,7 +77,7 @@ pub fn novels_dir() -> AppResult<PathBuf> {
     Ok(dir)
 }
 
-/// 全局情节/性癖库（与作品并列，不进作品列表）
+/// 全局情节/喜好库（与作品并列，不进作品列表）
 /// - 桌面：`{运行根}/novels/_library`
 /// - 移动端：`{应用数据}/novels/_library`
 pub fn trope_library_dir() -> AppResult<PathBuf> {

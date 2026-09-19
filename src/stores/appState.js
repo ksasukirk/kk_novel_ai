@@ -85,7 +85,7 @@ export const appState = reactive({
   draftAnchorBlockKey: "",
   /** 本篇+全局角色（已合并） */
   characterList: [],
-  /** 本篇+全局情节/性癖（已合并） */
+  /** 本篇+全局情节/喜好（已合并） */
   tropeList: [],
   /** @type {Array<{term:string,id:string,entry:any}>} */
   characterNameTerms: [],

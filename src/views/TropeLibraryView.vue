@@ -1,5 +1,5 @@
 <!--
-  情节库：全局情节套路 / 性癖（不依赖作品）
+  情节库：全局情节套路 / 喜好（不依赖作品）
   代码路径: kk_novel_ai/src/views/TropeLibraryView.vue
 -->
 <script setup>

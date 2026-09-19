@@ -45,7 +45,7 @@ export const aiPanelForm = reactive({
     syncMsg: "",
   error: "",
   floatExpanded: false,
-  /** 本轮/本章勾选的情节性癖 id */
+  /** 本轮/本章勾选的情节喜好 id */
   selectedTropeIds: [],
 });
 

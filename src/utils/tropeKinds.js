@@ -1,5 +1,5 @@
 /**
- * 情节/性癖 lore kind
+ * 情节/喜好 lore kind
  * 代码路径: kk_novel_ai/src/utils/tropeKinds.js
  */
 export function isTropeKind(kind) {

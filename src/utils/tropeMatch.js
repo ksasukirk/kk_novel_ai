@@ -1,5 +1,5 @@
 /**
- * 情节/性癖近义判断（与 Rust project/trope_merge.rs 对齐）
+ * 情节/喜好近义判断（与 Rust project/trope_merge.rs 对齐）
  * 代码路径: kk_novel_ai/src/utils/tropeMatch.js
  */
 

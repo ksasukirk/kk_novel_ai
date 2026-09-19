@@ -6,7 +6,7 @@
 
 | 项 | 值 |
 |---|---|
-| 当前版本 | `0.2.41`（`package.json` / `src-tauri/Cargo.toml` / `src-tauri/tauri.conf.json` 同步） |
+| 当前版本 | `0.2.42`（`package.json` / `src-tauri/Cargo.toml` / `src-tauri/tauri.conf.json` 同步） |
 | 标识符 | `com.kk.kk-novel-ai` |
 | 仓库 | [https://github.com/ksasukirk/kk_novel_ai](https://github.com/ksasukirk/kk_novel_ai) |
 | 作者 | kk |
@@ -21,7 +21,7 @@
 
 **用量与分析**：侧栏「分析」页展示 DeepSeek 官方余额、本应用累计花费 / token、近 14 天趋势与按模型柱状图；无履历时按当前单价与写作参数做约算（不写假账）。业务 AI 调用会记入全局 `gen_log.jsonl` 与作品目录 `gen_activity.jsonl`（见第 8 节）。全书情节扫描也会累计 token / 费用并写入履历。柱状图右侧预留数值槽，最长条不再裁切数值（见 [`UsageBarChart.vue`](src/components/analytics/UsageBarChart.vue)）。
 
-**情节 / 性癖库**：侧栏「情节库」维护可复用的情节套路与性癖写法卡，落在运行目录 `novels/_library`（与作品并列，不进作品列表）；编辑后自动保存为 `lore/tropes.json` / `kinks.json` 列表。浏览为**卡片网格**，点卡打开右侧抽屉编辑；可按规范分类标签筛选，抽取时由模型从表内打标（不另开补标调用）；单卡可点 **AI 优化** 重写写法与标签，写回同一 id。扫描或写后抽取时**近义玩法会合并进旧卡**（保留原标题与 id，只补新写法），打开库时也会压缩近义重复。全书扫描会**冻结全局库名单**、把规则放进 system、正文单独作为 user，并按约 **7000～8000 字**切块，方便 DeepSeek 前缀缓存、少打重复目录。本章可在写作页右侧**卡片栏**按种类、分类、搜索筛选后多选，点「填入」把标题写入当前指令，续写时强制注入；AI 面板只显示已选，点标签可取消。删除情节卡**始终确认**，不受「删除不需确认」影响。作品首页卡片可总结并显示未总结 / 已总结 / 已修改三态，已总结的卡也可点**重新总结**再扫一遍（确认框带约算）；也可**一键总结**排队扫待处理书，或**一键重新总结**把列表里有正文的书再扫一遍，确认框会约算次数与闲时/高峰费用。作品页可按书名 / 情节关键词即时过滤，并一键**智能搜**按大纲与情节卡做相似排序（见第 1 节）。
+**情节 / 喜好库**：侧栏「情节库」维护可复用的情节套路与喜好写法卡，落在运行目录 `novels/_library`（与作品并列，不进作品列表）；编辑后自动保存为 `lore/tropes.json` / `kinks.json` 列表。浏览为**卡片网格**，点卡打开右侧抽屉编辑；可按规范分类标签筛选，抽取时由模型从表内打标（不另开补标调用）；单卡可点 **AI 优化** 重写写法与标签，写回同一 id。扫描或写后抽取时**近义玩法会合并进旧卡**（保留原标题与 id，只补新写法），打开库时也会压缩近义重复。全书扫描会**冻结全局库名单**、把规则放进 system、正文单独作为 user，并按约 **7000～8000 字**切块，方便 DeepSeek 前缀缓存、少打重复目录。本章可在写作页右侧**卡片栏**按种类、分类、搜索筛选后多选，点「填入」把标题写入当前指令，续写时强制注入；AI 面板只显示已选，点标签可取消。删除情节卡**始终确认**，不受「删除不需确认」影响。作品首页卡片可总结并显示未总结 / 已总结 / 已修改三态，已总结的卡也可点**重新总结**再扫一遍（确认框带约算）；也可**一键总结**排队扫待处理书，或**一键重新总结**把列表里有正文的书再扫一遍，确认框会约算次数与闲时/高峰费用。作品页可按书名 / 情节关键词即时过滤，并一键**智能搜**按大纲与情节卡做相似排序（见第 1 节）。
 
 ---
 
@@ -47,8 +47,8 @@
 | R16 | v0.2.28 对话助手人设 + 大纲导图/编辑分栏 | 完成 | [`ChatView.vue`](src/views/ChatView.vue)、[`chatClient.js`](src/services/chatClient.js)、[`OutlineView.vue`](src/views/OutlineView.vue)、[`MindMapBoard.vue`](src/components/MindMapBoard.vue) |
 | R17 | v0.2.29 界面/写作多语言 + 拆章 JSON 加固 | 完成 | [`src/i18n/`](src/i18n/)、[`src-tauri/src/i18n.rs`](src-tauri/src/i18n.rs)、[`prompt_i18n.rs`](src-tauri/src/prompt_i18n.rs)、[`SettingsView.vue`](src/views/SettingsView.vue)、[`outlineChapters.js`](src/utils/outlineChapters.js)、[`llmJson.js`](src/utils/llmJson.js) |
 | R18 | v0.2.30 按纲写完收束 + 半句补全 + 记忆去脏 | 完成 | [`writing/mod.rs`](src-tauri/src/writing/mod.rs)、[`continuity.rs`](src-tauri/src/writing/continuity.rs)、[`outlineQueue.js`](src/services/outlineQueue.js)、[`outlineSnapshot.js`](src/utils/outlineSnapshot.js)、[`scene_complete.md`](src-tauri/prompts/scene_complete.md) |
-| R19 | v0.2.31 情节/性癖库 + 本章勾选注入 + 写后抽取 | 完成 | [`TropeLibraryView.vue`](src/views/TropeLibraryView.vue)、[`tropeExtract.js`](src/services/tropeExtract.js)、[`writing/mod.rs`](src-tauri/src/writing/mod.rs)、[`AiPanel.vue`](src/components/AiPanel.vue)、[`StoryView.vue`](src/views/StoryView.vue)、[`trope_extract.md`](src-tauri/prompts/trope_extract.md) |
-| R20 | v0.2.32 全书/导入扫描情节性癖到全局库 | 完成 | [`tropeScan.js`](src/services/tropeScan.js)、[`TropeLibraryView.vue`](src/views/TropeLibraryView.vue)、[`import/mod.rs`](src-tauri/src/import/mod.rs)、[`commands.rs`](src-tauri/src/commands.rs)、[`cli.rs`](src-tauri/src/cli.rs) |
+| R19 | v0.2.31 情节/喜好库 + 本章勾选注入 + 写后抽取 | 完成 | [`TropeLibraryView.vue`](src/views/TropeLibraryView.vue)、[`tropeExtract.js`](src/services/tropeExtract.js)、[`writing/mod.rs`](src-tauri/src/writing/mod.rs)、[`AiPanel.vue`](src/components/AiPanel.vue)、[`StoryView.vue`](src/views/StoryView.vue)、[`trope_extract.md`](src-tauri/prompts/trope_extract.md) |
+| R20 | v0.2.32 全书/导入扫描情节喜好到全局库 | 完成 | [`tropeScan.js`](src/services/tropeScan.js)、[`TropeLibraryView.vue`](src/views/TropeLibraryView.vue)、[`import/mod.rs`](src-tauri/src/import/mod.rs)、[`commands.rs`](src-tauri/src/commands.rs)、[`cli.rs`](src-tauri/src/cli.rs) |
 | R21 | v0.2.33 情节库独立目录 + 列表自动保存 + 扫描用量进度 | 完成 | [`paths.rs`](src-tauri/src/paths.rs)、[`kb/mod.rs`](src-tauri/src/kb/mod.rs)、[`project/mod.rs`](src-tauri/src/project/mod.rs)、[`import/mod.rs`](src-tauri/src/import/mod.rs)、[`TropeLibraryView.vue`](src/views/TropeLibraryView.vue)、[`tropeScan.js`](src/services/tropeScan.js)、[`GenProgressBar.vue`](src/components/GenProgressBar.vue) |
 | R22 | v0.2.34 近义合并补充 + 作品卡总结三态 | 完成 | [`trope_merge.rs`](src-tauri/src/project/trope_merge.rs)、[`trope_summary.rs`](src-tauri/src/project/trope_summary.rs)、[`ProjectHome.vue`](src/views/ProjectHome.vue)、[`tropeMatch.js`](src/utils/tropeMatch.js)、[`trope_extract.md`](src-tauri/prompts/trope_extract.md) |
 | R23 | v0.2.35 一键总结排队 / 批量进度 / 可取消 | 完成 | [`tropeScan.js`](src/services/tropeScan.js) `scanTropesQueue`、[`ProjectHome.vue`](src/views/ProjectHome.vue)、[`GenProgressBar.vue`](src/components/GenProgressBar.vue)、[`trope_summary.rs`](src-tauri/src/project/trope_summary.rs) `has_prose` |
@@ -62,26 +62,28 @@
 | R31 | v0.2.40 发版：已总结也可重新总结 + 版本对齐 | 完成 | [`package.json`](package.json)、[`src-tauri/Cargo.toml`](src-tauri/Cargo.toml)、[`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json)、[`ProjectHome.vue`](src/views/ProjectHome.vue)、[`usageEstimate.js`](src/utils/usageEstimate.js)、本文 |
 | R32 | 一键重新总结 + 情节卡 AI 优化 + 情节库顶栏压紧 | 完成 | [`ProjectHome.vue`](src/views/ProjectHome.vue)、[`TropeLibraryView.vue`](src/views/TropeLibraryView.vue)、[`tropeRefine.js`](src/services/tropeRefine.js)、[`trope_refine.md`](src-tauri/prompts/trope_refine.md) |
 | R33 | 情节库卡片删除始终确认 | 完成 | [`TropeLibraryView.vue`](src/views/TropeLibraryView.vue)、[`confirmDialog.js`](src/services/confirmDialog.js) |
-| R34 | 写作页可筛选多选情节/性癖卡片 | 完成 | [`TropePickPanel.vue`](src/components/TropePickPanel.vue)、[`EditorView.vue`](src/views/EditorView.vue)、[`AiPanel.vue`](src/components/AiPanel.vue)、[`tropeSelect.js`](src/services/tropeSelect.js) |
+| R34 | 写作页可筛选多选情节/喜好卡片 | 完成 | [`TropePickPanel.vue`](src/components/TropePickPanel.vue)、[`EditorView.vue`](src/views/EditorView.vue)、[`AiPanel.vue`](src/components/AiPanel.vue)、[`tropeSelect.js`](src/services/tropeSelect.js) |
 | R35 | 目录变体行 + 点作品卡立刻进写作 + 切书防空载 | 完成 | [`EditorView.vue`](src/views/EditorView.vue)、[`projectClient.js`](src/services/projectClient.js)、[`ProjectHome.vue`](src/views/ProjectHome.vue)、[`zh-CN.json`](src/i18n/locales/zh-CN.json)、[`en.json`](src/i18n/locales/en.json)、[`ja.json`](src/i18n/locales/ja.json) |
 | R36 | 作品页 AI 智能搜索 | 完成 | [`ProjectHome.vue`](src/views/ProjectHome.vue)、[`work_catalog.rs`](src-tauri/src/project/work_catalog.rs)、[`novelSearch.js`](src/services/novelSearch.js)、[`novelSearchScore.js`](src/utils/novelSearchScore.js)、[`novel_search.md`](src-tauri/prompts/novel_search.md) |
 | R37 | v0.2.41 发版：智能搜索 / 情节筛选勾选 / 一键再扫 + 版本对齐 | 完成 | [`package.json`](package.json)、[`src-tauri/Cargo.toml`](src-tauri/Cargo.toml)、[`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json)、[`ProjectHome.vue`](src/views/ProjectHome.vue)、[`EditorView.vue`](src/views/EditorView.vue)、本文 |
+| R38 | v0.2.42 发版：中日文「性癖」改称「喜好」+ 版本对齐 | 完成 | [`package.json`](package.json)、[`src-tauri/Cargo.toml`](src-tauri/Cargo.toml)、[`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json)、[`src/i18n/locales/zh-CN.json`](src/i18n/locales/zh-CN.json)、[`src/i18n/locales/ja.json`](src/i18n/locales/ja.json)、[`src-tauri/prompts/`](src-tauri/prompts/)、本文 |
 
 ---
 
-## 1. 本版（0.2.41）做了什么
+## 1. 本版（0.2.42）做了什么
 
-相对 `0.2.40`，本版让作品首页能按书名和情节关键词即时过滤，并一键**智能搜**按大纲与情节卡做相似排序；写作页右侧用卡片栏筛选多选情节 / 性癖，点作品卡立刻进写作，切书不再把过期正文写回。情节库单卡可 **AI 优化** 写法与标签，删除始终确认；作品列表可**一键重新总结**，把有正文的书（含已总结）再扫一遍。npm / Cargo / Tauri 版本对齐到 `0.2.41`。
+相对 `0.2.41`，本版把中文和日文里用户能看见的「性癖」统一改成「喜好」：界面按钮、错误提示、续写 / 摘要 / 抽取提示词都改口。情节库、本章勾选注入、扫描合并和磁盘上的 `lore/kinks.json` 都还在，内部 kind 仍是 `kink`，已有库和章节勾选不用迁移。英文界面仍用 kink。npm / Cargo / Tauri 版本对齐到 `0.2.42`。
 
-- **作品页智能搜索**：输入即按书名 / 情节关键词过滤；点智能搜会先本地打分，再用分析模型按压缩目录卡重排，卡片上显示命中理由，无结果有空态。目录卡缓存在应用数据 `work_catalog.json`，指纹未变不重扫。见 [`ProjectHome.vue`](src/views/ProjectHome.vue)、[`novelSearch.js`](src/services/novelSearch.js)、[`novelSearchScore.js`](src/utils/novelSearchScore.js)、[`work_catalog.rs`](src-tauri/src/project/work_catalog.rs)、三语 [`novel_search.md`](src-tauri/prompts/novel_search.md)。
-- **一键重新总结**：作品页可把列表里有正文的书（含已总结）排队再扫进全局库，确认框按 `variant: "allAgain"` 约算次数与闲时 / 高峰费用。见 [`ProjectHome.vue`](src/views/ProjectHome.vue) `onRescanAll`、[`usageEstimate.js`](src/utils/usageEstimate.js)。
-- **情节卡 AI 优化**：情节库卡片或抽屉点「优化」，只重写这一张卡的写法与标签，解析后写回同一 id，不读章节。见 [`TropeLibraryView.vue`](src/views/TropeLibraryView.vue)、[`tropeRefine.js`](src/services/tropeRefine.js)、[`writing/mod.rs`](src-tauri/src/writing/mod.rs)、三语 [`trope_refine.md`](src-tauri/prompts/trope_refine.md)。顶栏去掉长介绍，卡片区更紧。
-- **删除始终确认**：情节库删卡走强制确认，即使用户开了「删除不需确认」也会弹窗。见 [`TropeLibraryView.vue`](src/views/TropeLibraryView.vue) `remove`、[`confirmDialog.js`](src/services/confirmDialog.js)。
-- **写作页筛选多选**：右侧卡片栏可按种类、分类、搜索筛选后点卡多选；「填入」把标题写入当前指令；AI 面板只显示已选，点标签可取消。勾选仍写入本章 `trope_ids`。见 [`TropePickPanel.vue`](src/components/TropePickPanel.vue)、[`EditorView.vue`](src/views/EditorView.vue)、[`AiPanel.vue`](src/components/AiPanel.vue)、[`tropeSelect.js`](src/services/tropeSelect.js)。栏显隐记在 [`layoutPrefs.js`](src/utils/layoutPrefs.js) `kk_editor_trope_picker`。
-- **目录变体行 + 点书立刻进写作**：展开章目录可看到变体 / 生成块子行（`*` 当前、`-` 其它、`~` 分支提示）；点作品卡立刻切到写作页，打开失败则退回原导航。切书会清编辑缓存，过期的读章结果不写回，等待读章时不伪造空块。见 [`EditorView.vue`](src/views/EditorView.vue)、[`projectClient.js`](src/services/projectClient.js)、[`ProjectHome.vue`](src/views/ProjectHome.vue)。
-- **版本对齐**：[`package.json`](package.json)、[`src-tauri/Cargo.toml`](src-tauri/Cargo.toml)（及 [`Cargo.lock`](src-tauri/Cargo.lock)）、[`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json) 均为 `0.2.41`；里程碑见 [`docs/todo.md`](docs/todo.md) M63–M67。
+- **界面改口**：情节库介绍、写作页卡片栏、作品卡总结提示、总谱「本章情节/喜好」、设置里的写后自动抽取说明，中文和日文都显示「喜好」。见 [`src/i18n/locales/zh-CN.json`](src/i18n/locales/zh-CN.json)、[`ja.json`](src/i18n/locales/ja.json)、[`TropeLibraryView.vue`](src/views/TropeLibraryView.vue)、[`TropePickPanel.vue`](src/components/TropePickPanel.vue)、[`tropeKinds.js`](src/utils/tropeKinds.js)。
+- **提示词改口**：续写、缓存续写、章摘要、块摘要、补字、场景收束、抽取、单卡优化和智能搜的中日模板，把「情节/性癖」改成「情节/喜好」；勾选仍须按卡内写法兑现，未勾选不当必达。见 [`src-tauri/prompts/continue_chapter.md`](src-tauri/prompts/continue_chapter.md)、[`trope_extract.md`](src-tauri/prompts/trope_extract.md)、[`trope_refine.md`](src-tauri/prompts/trope_refine.md)、[`novel_search.md`](src-tauri/prompts/novel_search.md) 及 [`src-tauri/prompts/ja/`](src-tauri/prompts/ja/) 对应文件。
+- **后端可见文案**：空标题错误、CLI 子命令说明、写作引擎种类标签同步改口。见 [`src-tauri/locales/zh-CN.json`](src-tauri/locales/zh-CN.json)、[`ja.json`](src-tauri/locales/ja.json)、[`cli.rs`](src-tauri/src/cli.rs)、[`writing/mod.rs`](src-tauri/src/writing/mod.rs)、[`import/mod.rs`](src-tauri/src/import/mod.rs)。
+- **版本对齐**：[`package.json`](package.json)、[`src-tauri/Cargo.toml`](src-tauri/Cargo.toml)（及 [`Cargo.lock`](src-tauri/Cargo.lock)）、[`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json) 均为 `0.2.42`。里程碑用语同步见 [`docs/todo.md`](docs/todo.md) M54–M67；模型说明见 [`docs/lmstudio.md`](docs/lmstudio.md)。
 
-**上一版（0.2.40）及更早已交付、本版继续可用的体验**：
+**上一版（0.2.41）及更早已交付、本版继续可用的体验**：
+
+- **作品页智能搜索**：输入即按书名 / 情节关键词过滤；点智能搜会先本地打分，再用分析模型按压缩目录卡重排，卡片上显示命中理由。目录卡缓存在应用数据 `work_catalog.json`。见 [`ProjectHome.vue`](src/views/ProjectHome.vue)、[`novelSearch.js`](src/services/novelSearch.js)、[`work_catalog.rs`](src-tauri/src/project/work_catalog.rs)。
+- **一键重新总结 / 情节卡 AI 优化 / 删除始终确认**：有正文的书可排队再扫；单卡「优化」只重写这一张；删卡强制确认。见 [`ProjectHome.vue`](src/views/ProjectHome.vue)、[`TropeLibraryView.vue`](src/views/TropeLibraryView.vue)、[`tropeRefine.js`](src/services/tropeRefine.js)、[`confirmDialog.js`](src/services/confirmDialog.js)。
+- **写作页筛选多选 + 点书立刻进写作**：右侧卡片栏按种类、分类、搜索多选后填入指令；点作品卡立刻进写作，切书不把过期正文写回。见 [`TropePickPanel.vue`](src/components/TropePickPanel.vue)、[`EditorView.vue`](src/views/EditorView.vue)、[`projectClient.js`](src/services/projectClient.js)。
 
 - **已总结也可再扫**：作品卡在「已总结」时按钮为「重新总结」，确认框按 `variant: "again"` 约算。见 [`ProjectHome.vue`](src/views/ProjectHome.vue)、[`usageEstimate.js`](src/utils/usageEstimate.js)。
 
@@ -94,14 +96,14 @@
 - **近义合并、不新开、不覆盖**：扫描 / 抽取命中近义玩法只补写法；打开库时 compact。
 - **作品卡总结三态**：未总结 / 已总结 / 已修改；单卡「总结」或「重新总结」对该书全书扫描；改正文打 dirty；扫描成功盖章。
 - **独立全局库目录**：`novels/_library` 列表 JSON；编辑自动保存；扫描进度含分块百分比与用量。
-- **全书 / 导入扫描进库**、情节 / 性癖注入续写、按纲写完收束、界面 / 写作多语言、拆章 JSON 加固、对话助手人设、大纲导图、角色 / 设定跨页刷新、插图与分镜、应用内更新，以及 `python build.py` 默认发版流水线（见第 9 节）。
+- **全书 / 导入扫描进库**、情节 / 喜好注入续写、按纲写完收束、界面 / 写作多语言、拆章 JSON 加固、对话助手人设、大纲导图、角色 / 设定跨页刷新、插图与分镜、应用内更新，以及 `python build.py` 默认发版流水线（见第 9 节）。
 
 ---
 
 ## 2. 它做什么
 
-- 以**本地作品目录**为真相源：`project.json`、章节 Markdown、lore / memory / 总谱 / 分镜 JSON；对话会话另存（不混进章节）；情节 / 性癖条目存全局 `novels/_library`（列表 JSON，近义合并补充，规范分类标签可筛），作品内也可有同 kind lore；可由全书扫描或蒸馏写入全局库；`project.json` 可记情节总结游标（时间 / 指纹 / dirty）。作品页可用书名 / 情节关键词即时过滤，并一键智能搜按大纲与情节卡做相似排序。
-- 续写、润色、拆章、按纲节拍、设定召回、知识库蒸馏，都走同一套 Rust 写作引擎；按纲整章可一次写完本章纲，并自动补半句 / 收束；本章勾选的情节 / 性癖会注入生成。
+- 以**本地作品目录**为真相源：`project.json`、章节 Markdown、lore / memory / 总谱 / 分镜 JSON；对话会话另存（不混进章节）；情节 / 喜好条目存全局 `novels/_library`（列表 JSON，近义合并补充，规范分类标签可筛），作品内也可有同 kind lore；可由全书扫描或蒸馏写入全局库；`project.json` 可记情节总结游标（时间 / 指纹 / dirty）。作品页可用书名 / 情节关键词即时过滤，并一键智能搜按大纲与情节卡做相似排序。
+- 续写、润色、拆章、按纲节拍、设定召回、知识库蒸馏，都走同一套 Rust 写作引擎；按纲整章可一次写完本章纲，并自动补半句 / 收束；本章勾选的情节 / 喜好会注入生成。
 - 桌面 GUI（Tauri 2 + Vue 3）负责编辑与预览；界面可切中 / 英 / 日；写作 Prompt 可按写作语言独立选择；独立「对话」页做本作 / 自由聊（可配助手人设）；独立「情节库」页以卡片网格维护套路卡、自动保存、单卡 AI 优化，并可批量扫描（带用量进度与确认约算）；作品首页可单卡总结或**重新总结**、**一键总结** / **一键重新总结**排队，并可用关键词过滤与智能搜排序；点作品卡立刻进写作。CLI / NDJSON RPC 给脚本编排；GUI 在线时 CLI 默认可经本机 IPC 驱动同一套预览（见 [`src-tauri/src/ipc/mod.rs`](src-tauri/src/ipc/mod.rs)、[`src/services/guiBridge.js`](src/services/guiBridge.js)）。
 - Windows 桌面为主，Android APK 由 `build_android.py` 引导工具链后打包（见 [`docs/android-setup.md`](docs/android-setup.md)）。
 - **持续迭代**：会吸取更多建议来优化本软件；写作模型**最好使用 DeepSeek**（设置页配置端点与模型槽）。
@@ -129,7 +131,7 @@
 | 应用更新 | GitHub Release 检查 / 下载 | [`src-tauri/src/update.rs`](src-tauri/src/update.rs) |
 | LLM JSON 容错 | 前端近似 JSON 修复 + 拆章抢救 | [`src/utils/llmJson.js`](src/utils/llmJson.js)、[`src/utils/outlineChapters.js`](src/utils/outlineChapters.js) |
 | 按纲快照校验 | 正文门槛 + 拒脏占位 | [`src/utils/outlineSnapshot.js`](src/utils/outlineSnapshot.js)、[`scripts/check-outline-snapshot.mjs`](scripts/check-outline-snapshot.mjs) |
-| 情节 / 性癖库 | `novels/_library` 列表 JSON + 卡片网格 + 规范 tags + 近义合并 + 单卡 AI 优化 + 删除强制确认 + 作品卡总结三态 / 重新总结 + 一键总结 / 一键重新总结 + 扫描约算 + 扫描降本 + 写作页卡片栏多选 + 本章 `trope_ids` + 写后抽取 | [`TropeLibraryView.vue`](src/views/TropeLibraryView.vue)、[`TropePickPanel.vue`](src/components/TropePickPanel.vue)、[`ProjectHome.vue`](src/views/ProjectHome.vue)、[`tropeScan.js`](src/services/tropeScan.js)、[`tropeExtract.js`](src/services/tropeExtract.js)、[`tropeRefine.js`](src/services/tropeRefine.js)、[`tropeSelect.js`](src/services/tropeSelect.js)、[`tropeMatch.js`](src/utils/tropeMatch.js)、[`tropeCategories.js`](src/utils/tropeCategories.js)、[`layoutPrefs.js`](src/utils/layoutPrefs.js)、[`usageEstimate.js`](src/utils/usageEstimate.js)、[`trope_merge.rs`](src-tauri/src/project/trope_merge.rs)、[`trope_summary.rs`](src-tauri/src/project/trope_summary.rs)、[`trope_tags.rs`](src-tauri/src/project/trope_tags.rs)、[`paths.rs`](src-tauri/src/paths.rs)、[`kb/mod.rs`](src-tauri/src/kb/mod.rs)、[`import/mod.rs`](src-tauri/src/import/mod.rs)、[`writing/mod.rs`](src-tauri/src/writing/mod.rs) |
+| 情节 / 喜好库 | `novels/_library` 列表 JSON + 卡片网格 + 规范 tags + 近义合并 + 单卡 AI 优化 + 删除强制确认 + 作品卡总结三态 / 重新总结 + 一键总结 / 一键重新总结 + 扫描约算 + 扫描降本 + 写作页卡片栏多选 + 本章 `trope_ids` + 写后抽取 | [`TropeLibraryView.vue`](src/views/TropeLibraryView.vue)、[`TropePickPanel.vue`](src/components/TropePickPanel.vue)、[`ProjectHome.vue`](src/views/ProjectHome.vue)、[`tropeScan.js`](src/services/tropeScan.js)、[`tropeExtract.js`](src/services/tropeExtract.js)、[`tropeRefine.js`](src/services/tropeRefine.js)、[`tropeSelect.js`](src/services/tropeSelect.js)、[`tropeMatch.js`](src/utils/tropeMatch.js)、[`tropeCategories.js`](src/utils/tropeCategories.js)、[`layoutPrefs.js`](src/utils/layoutPrefs.js)、[`usageEstimate.js`](src/utils/usageEstimate.js)、[`trope_merge.rs`](src-tauri/src/project/trope_merge.rs)、[`trope_summary.rs`](src-tauri/src/project/trope_summary.rs)、[`trope_tags.rs`](src-tauri/src/project/trope_tags.rs)、[`paths.rs`](src-tauri/src/paths.rs)、[`kb/mod.rs`](src-tauri/src/kb/mod.rs)、[`import/mod.rs`](src-tauri/src/import/mod.rs)、[`writing/mod.rs`](src-tauri/src/writing/mod.rs) |
 | 作品智能搜索 | 压缩目录卡缓存 + 本地打分 + 分析模型重排 | [`work_catalog.rs`](src-tauri/src/project/work_catalog.rs)、[`novelSearch.js`](src/services/novelSearch.js)、[`novelSearchScore.js`](src/utils/novelSearchScore.js)、[`ProjectHome.vue`](src/views/ProjectHome.vue)、[`novel_search.md`](src-tauri/prompts/novel_search.md) |
 | 对话会话 | 本地 JSON 落盘（含人设字段） | [`src-tauri/src/chat.rs`](src-tauri/src/chat.rs) |
 
@@ -209,7 +211,7 @@ kk_novel_ai/
 | 壳 / 侧栏 / 页眉 | [`src/components/shell/AppSidebar.vue`](src/components/shell/AppSidebar.vue)、[`PageHeader.vue`](src/components/shell/PageHeader.vue)、[`PageBackground.vue`](src/components/shell/PageBackground.vue) | 布局、主题、移动抽屉；i18n 键；页眉可跟生成进度 |
 | 作品 | [`src/views/ProjectHome.vue`](src/views/ProjectHome.vue)、[`projectClient.js`](src/services/projectClient.js)、[`novelSearch.js`](src/services/novelSearch.js) | 新建/打开/最近、仪表盘、书名建议；关键词即时过滤与智能搜排序；点卡立刻进写作；情节总结三态、单卡总结 / 重新总结、一键总结 / 一键重新总结排队与取消、确认约算 |
 | 知识库 | [`src/views/KnowledgeHome.vue`](src/views/KnowledgeHome.vue) | 一书一库、通用库；导入走此页；蒸馏 tropes 双写全局 `_library` |
-| 写作 | [`src/views/EditorView.vue`](src/views/EditorView.vue)、[`src/components/AiPanel.vue`](src/components/AiPanel.vue)、[`TropePickPanel.vue`](src/components/TropePickPanel.vue)、[`ChapterBlockEditor.vue`](src/components/ChapterBlockEditor.vue) | 章树（含变体 / 生成块子行）、块编辑（含插图块）、按纲队列、流式预览；切书清缓存防空载；情节/性癖卡片筛选多选；指令按任务分槽 |
+| 写作 | [`src/views/EditorView.vue`](src/views/EditorView.vue)、[`src/components/AiPanel.vue`](src/components/AiPanel.vue)、[`TropePickPanel.vue`](src/components/TropePickPanel.vue)、[`ChapterBlockEditor.vue`](src/components/ChapterBlockEditor.vue) | 章树（含变体 / 生成块子行）、块编辑（含插图块）、按纲队列、流式预览；切书清缓存防空载；情节/喜好卡片筛选多选；指令按任务分槽 |
 | 对话 | [`src/views/ChatView.vue`](src/views/ChatView.vue)、[`chatClient.js`](src/services/chatClient.js)、[`chatState.js`](src/stores/chatState.js) | 本作 / 自由聊；助手人设落盘；气泡显示名；不写章节 |
 | 大纲 | [`src/views/OutlineView.vue`](src/views/OutlineView.vue)、[`CastSidePanel.vue`](src/components/CastSidePanel.vue)、[`MindMapBoard.vue`](src/components/MindMapBoard.vue) | 结构导图 / 大纲编辑分栏；导图 `fill` 全高；拆章走 `outlineChapters` |
 | 总谱 | [`src/views/StoryView.vue`](src/views/StoryView.vue)、[`MindMapBoard.vue`](src/components/MindMapBoard.vue) | 故事线 / 时间线 / 关系 / Canon / 分镜；本章焦点含情节多选；lore 随 `castRevision` 重载 |
@@ -292,15 +294,15 @@ MyNovel/
   lore/characters/*.json
   lore/world/*.json
   lore/tropes.json           # 本篇情节列表（若有；旧单文件会迁入）
-  lore/kinks.json            # 本篇性癖列表（若有）
+  lore/kinks.json            # 本篇喜好列表（若有）
 ```
 
-全局情节 / 性癖库（[`paths.rs`](src-tauri/src/paths.rs) `trope_library_dir`、[`kb/mod.rs`](src-tauri/src/kb/mod.rs)）：
+全局情节 / 喜好库（[`paths.rs`](src-tauri/src/paths.rs) `trope_library_dir`、[`kb/mod.rs`](src-tauri/src/kb/mod.rs)）：
 
 ```text
 {novels}/_library/           # 桌面=运行根 novels；移动端=应用数据 novels
   lore/tropes.json           # 全局情节套路列表（近义会合并进旧卡；attrs.tags 为规范分类）
-  lore/kinks.json            # 全局性癖写法列表
+  lore/kinks.json            # 全局喜好写法列表
 ```
 
 应用数据（Windows 典型 `%APPDATA%\kk_novel_ai\`，[`paths.rs`](src-tauri/src/paths.rs)）：`settings.json`（含 `ui_locale` / `writing_locale` / `writing_auto_trope`）、`ipc.json`、`gen_log.jsonl`、用量账本、`work_catalog.json`（作品页智能搜用的压缩目录卡缓存）、`chat/free.json`（自由聊会话，含人设字段）、全局角色仓 `character_roster/`（人物与世界观；tropes 已迁出）。旧作品无 `gen_activity` 时分析页回退全局日志或按配置约算。滚动摘要重建时会跳过不可用的写后快照（过短 / 过长 / 脏占位），见 [`project/mod.rs`](src-tauri/src/project/mod.rs)。
@@ -391,4 +393,4 @@ CLI 调试优先用 `kk_novel_cli`（构建后在 `src-tauri/target/...`）。�
 | N18 | 按纲收束钩子启发式再精 | 现依章纲末句压缩匹配正文尾部 | [`continuity.rs`](src-tauri/src/writing/continuity.rs)、[`writing/mod.rs`](src-tauri/src/writing/mod.rs) |
 | N19 | 情节库跨作品文件级导入导出 | 已独立 `_library` 列表存盘与近义合并、卡片分类；仍可补文件级导入导出 UI | [`TropeLibraryView.vue`](src/views/TropeLibraryView.vue)、[`kb/mod.rs`](src-tauri/src/kb/mod.rs)、[`paths.rs`](src-tauri/src/paths.rs)、[`trope_merge.rs`](src-tauri/src/project/trope_merge.rs) |
 
-已知约束：Debug GUI 依赖 Vite `5173`；Release 读 `frontend-dist/`；蒸馏与全书扫描依赖可用的分析模型（推荐 DeepSeek）+ `analysis_model`，长书请用 `--from` / `--to` 分段。DeepSeek 官方仅提供余额 API，无 Bearer 可查的「今日已用 token」；今日/累计消耗以本应用履历与账本为准。插图需自行配置兼容文生图端点；未配置时仍可写正文，不可出图。本作对话需先打开作品；自由聊写在应用数据目录。界面与写作语言默认 `zh-CN`；未译键回退中文。按纲完整度补写有次数与章长上限，极端短写仍可能需手动续写。情节 / 性癖注入以本章 `trope_ids` 为准；未勾选条目不会当必达；写后抽取可在设置中关闭；全书扫描只写全局 `_library`，不改本章勾选；扫描开书冻结名单并大切块以降本；近义玩法会合并进旧卡而非新开；规范 tags 白名单入库；旧角色仓 tropes 会在首次 ensure 时迁走并 compact；改正文后作品卡会标「已修改」直至再次成功扫描盖章；一键总结按顺序排队，可取消，空书（无正文）不进队；已总结也可点「重新总结」再扫，或用「一键重新总结」把有正文的书再扫一遍（均带约算确认）；情节库删卡始终弹确认；单卡 AI 优化只改这一张、不读章；作品页关键词过滤不调模型，智能搜会走分析模型并记入履历，目录卡缓存在 `work_catalog.json`；点作品卡会立刻进写作，打开失败退回原页；切书时过期读章不会写回正文。扫描 / 总结确认框费用为约算，实际以账本为准。
+已知约束：Debug GUI 依赖 Vite `5173`；Release 读 `frontend-dist/`；蒸馏与全书扫描依赖可用的分析模型（推荐 DeepSeek）+ `analysis_model`，长书请用 `--from` / `--to` 分段。DeepSeek 官方仅提供余额 API，无 Bearer 可查的「今日已用 token」；今日/累计消耗以本应用履历与账本为准。插图需自行配置兼容文生图端点；未配置时仍可写正文，不可出图。本作对话需先打开作品；自由聊写在应用数据目录。界面与写作语言默认 `zh-CN`；未译键回退中文。按纲完整度补写有次数与章长上限，极端短写仍可能需手动续写。情节 / 喜好注入以本章 `trope_ids` 为准；未勾选条目不会当必达；写后抽取可在设置中关闭；全书扫描只写全局 `_library`，不改本章勾选；扫描开书冻结名单并大切块以降本；近义玩法会合并进旧卡而非新开；规范 tags 白名单入库；旧角色仓 tropes 会在首次 ensure 时迁走并 compact；改正文后作品卡会标「已修改」直至再次成功扫描盖章；一键总结按顺序排队，可取消，空书（无正文）不进队；已总结也可点「重新总结」再扫，或用「一键重新总结」把有正文的书再扫一遍（均带约算确认）；情节库删卡始终弹确认；单卡 AI 优化只改这一张、不读章；作品页关键词过滤不调模型，智能搜会走分析模型并记入履历，目录卡缓存在 `work_catalog.json`；点作品卡会立刻进写作，打开失败退回原页；切书时过期读章不会写回正文。扫描 / 总结确认框费用为约算，实际以账本为准。

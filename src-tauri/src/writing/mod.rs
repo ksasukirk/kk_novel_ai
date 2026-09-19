@@ -30,9 +30,9 @@ pub enum WritingTask {
     StorySync,
     BlockDigest,
     CastExtract,
-    /** 本块情节/性癖抽取，写入全局库 */
+    /** 本块情节/喜好抽取，写入全局库 */
     TropeExtract,
-    /** 已有情节/性癖卡 AI 优化写法，不改库身份 */
+    /** 已有情节/喜好卡 AI 优化写法，不改库身份 */
     TropeRefine,
     /** 先分析需要几节，再由前端排队续写 */
     SectionPlan,
@@ -176,10 +176,10 @@ pub struct WritingRequest {
     /// outline_to_chapters：full | append
     #[serde(default)]
     pub split_mode: Option<String>,
-    /// 本轮勾选的情节/性癖 id；Some（含空数组）覆盖本章；None 回退 chapter.trope_ids
+    /// 本轮勾选的情节/喜好 id；Some（含空数组）覆盖本章；None 回退 chapter.trope_ids
     #[serde(default)]
     pub selected_trope_ids: Option<Vec<String>>,
-    /// 扫描时冻结的情节/性癖名单；Some 时 `trope_extract` 不再读盘，前缀可跨块缓存
+    /// 扫描时冻结的情节/喜好名单；Some 时 `trope_extract` 不再读盘，前缀可跨块缓存
     #[serde(default)]
     pub known_tropes_snapshot: Option<String>,
 }
@@ -587,7 +587,7 @@ fn tropes_to_text(entries: &[&LoreEntry]) -> String {
     entries
         .iter()
         .map(|e| {
-            let kind_label = if e.kind == "kink" { "性癖" } else { "情节" };
+            let kind_label = if e.kind == "kink" { "喜好" } else { "情节" };
             let intensity = e.attrs.get("intensity").map(|s| s.as_str()).unwrap_or("");
             let do_line = e.attrs.get("do").map(|s| s.as_str()).unwrap_or("");
             let dont_line = e.attrs.get("dont").map(|s| s.as_str()).unwrap_or("");
@@ -958,7 +958,7 @@ pub fn assemble_messages_with_scores(
         });
     }
 
-    // 情节/性癖抽取：对照已知名单，不拉 RAG。规则+名单放 system，正文单独 user，便于前缀缓存。
+    // 情节/喜好抽取：对照已知名单，不拉 RAG。规则+名单放 system，正文单独 user，便于前缀缓存。
     if task == WritingTask::TropeExtract {
         let block_text = if !req.selection.trim().is_empty() {
             req.selection.clone()
@@ -1717,7 +1717,7 @@ fn collect_known_character_names(root: &Path, project: &project::NovelProject) -
     names
 }
 
-/// 收集本篇 + 全局库 + 挂接库中的情节/性癖条目，供 digest / 写后抽取对照
+/// 收集本篇 + 全局库 + 挂接库中的情节/喜好条目，供 digest / 写后抽取对照
 fn collect_known_trope_entries(root: &Path, project: &project::NovelProject) -> Vec<LoreEntry> {
     let mut out: Vec<LoreEntry> = Vec::new();
     let mut push_entry = |e: &LoreEntry| {

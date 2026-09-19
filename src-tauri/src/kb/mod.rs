@@ -189,7 +189,7 @@ pub fn ensure_character_roster() -> AppResult<OpenedKb> {
     Ok(OpenedKb { root, project })
 }
 
-/// 把 src 仓里的情节/性癖搬到 dest（按 id / 近义合并去重），并从 src 删除。
+/// 把 src 仓里的情节/喜好搬到 dest（按 id / 近义合并去重），并从 src 删除。
 pub fn migrate_tropes_between(src: &Path, dest: &Path) -> AppResult<u32> {
     if !src.exists() {
         return Ok(0);
@@ -224,7 +224,7 @@ pub fn migrate_tropes_between(src: &Path, dest: &Path) -> AppResult<u32> {
     Ok(moved)
 }
 
-/// 确保全局情节/性癖库存在：`{novels}/_library/lore/{tropes,kinks}.json`
+/// 确保全局情节/喜好库存在：`{novels}/_library/lore/{tropes,kinks}.json`
 /// 首次会把旧角色仓里的 tropes/kinks 迁过来。
 pub fn ensure_trope_library() -> AppResult<PathBuf> {
     let root = trope_library_dir()?;

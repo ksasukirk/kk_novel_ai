@@ -1,5 +1,5 @@
 /**
- * 生成写入后自动抽取情节/性癖 → 全局库
+ * 生成写入后自动抽取情节/喜好 → 全局库
  * 代码路径: kk_novel_ai/src/services/tropeExtract.js
  */
 import { invoke } from "./tauri.js";

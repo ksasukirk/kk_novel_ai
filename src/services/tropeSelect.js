@@ -1,5 +1,5 @@
 /**
- * 本章勾选情节/性癖（写入 chapter.trope_ids，续写注入）
+ * 本章勾选情节/喜好（写入 chapter.trope_ids，续写注入）
  * 代码路径: kk_novel_ai/src/services/tropeSelect.js
  */
 import { appState } from "../stores/appState.js";

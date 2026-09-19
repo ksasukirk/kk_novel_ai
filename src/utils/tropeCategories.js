@@ -1,5 +1,5 @@
 /**
- * 情节/性癖规范分类标签（与后端 trope_tags.rs 对齐）
+ * 情节/喜好规范分类标签（与后端 trope_tags.rs 对齐）
  * 代码路径: kk_novel_ai/src/utils/tropeCategories.js
  */
 

@@ -1,4 +1,4 @@
-//! 情节/性癖近义合并：同类补内容，不新开重复条、不覆盖旧正文
+//! 情节/喜好近义合并：同类补内容，不新开重复条、不覆盖旧正文
 //! 代码路径: kk_novel_ai/src-tauri/src/project/trope_merge.rs
 
 use super::{
@@ -129,7 +129,7 @@ fn distinctive_keyword_overlap(a: &LoreEntry, b: &LoreEntry) -> bool {
     has_long && shared.len() >= 2
 }
 
-/// 两条是否视为同一情节/性癖（须同 kind）
+/// 两条是否视为同一情节/喜好（须同 kind）
 pub fn tropes_are_similar(a: &LoreEntry, b: &LoreEntry) -> bool {
     if !is_trope_kind(&a.kind) || !is_trope_kind(&b.kind) || a.kind != b.kind {
         return false;

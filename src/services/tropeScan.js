@@ -1,5 +1,5 @@
 /**
- * 全书情节/性癖扫描：调后端 tropes_scan，写入全局仓
+ * 全书情节/喜好扫描：调后端 tropes_scan，写入全局仓
  * 代码路径: kk_novel_ai/src/services/tropeScan.js
  */
 import { reactive } from "vue";

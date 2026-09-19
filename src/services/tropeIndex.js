@@ -1,5 +1,5 @@
 /**
- * 加载本篇+全局情节/性癖到 appState.tropeList
+ * 加载本篇+全局情节/喜好到 appState.tropeList
  * 代码路径: kk_novel_ai/src/services/tropeIndex.js
  */
 import { appState } from "../stores/appState.js";
@@ -17,7 +17,7 @@ function normalizeTitle(s) {
 }
 
 /**
- * 合并本篇优先的情节/性癖列表
+ * 合并本篇优先的情节/喜好列表
  * @param {{ local?: any[], global?: any[] }} scoped
  */
 export function coalesceTropes(scoped) {

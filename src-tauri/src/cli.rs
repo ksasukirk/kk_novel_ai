@@ -411,7 +411,7 @@ enum KbCmd {
 
 #[derive(Subcommand, Debug)]
 enum TropesCmd {
-    /// 按章抽取情节/性癖到全局仓（不改本章勾选）
+    /// 按章抽取情节/喜好到全局仓（不改本章勾选）
     Scan {
         root: String,
         #[arg(long, default_value_t = 1)]
@@ -420,7 +420,7 @@ enum TropesCmd {
         #[arg(long, default_value_t = 0)]
         to: u64,
     },
-    /// 批量读作品情节/性癖总结状态
+    /// 批量读作品情节/喜好总结状态
     Status {
         roots: Vec<String>,
     },
@@ -1318,7 +1318,7 @@ fn tools_manifest() -> Value {
             {"cmd": "lore_list", "args": ["root"], "desc": "列出设定"},
             {"cmd": "lore_list_scoped", "args": ["root"], "desc": "本篇+全局角色仓分栏列表"},
             {"cmd": "character_roster_ensure", "desc": "确保全局角色仓存在"},
-            {"cmd": "trope_library_ensure", "desc": "确保 novels/_library 情节性癖库存在（并从旧角色仓迁移）"},
+            {"cmd": "trope_library_ensure", "desc": "确保 novels/_library 情节喜好库存在（并从旧角色仓迁移）"},
             {"cmd": "project_ensure_characters_link", "args": ["root"], "desc": "作品挂接 @characters"},
             {"cmd": "lore_upsert", "args": ["root", "entry"], "desc": "写入设定（含 unique）"},
             {"cmd": "memory_upsert_block_note", "args": ["root", "chapter_id", "block_key", "summary"], "desc": "写入/覆盖块记忆"},
@@ -1337,8 +1337,8 @@ fn tools_manifest() -> Value {
             {"cmd": "export_pdf", "args": ["root", "output"], "desc": "导出 PDF"},
             {"cmd": "import_txt", "args": ["root", "file", "title?"], "desc": "导入 TXT 为知识库（kind=knowledge_base）"},
             {"cmd": "import_distill", "args": ["root", "from?", "to?", "apply?", "resume?", "job_id?", "instruction?"], "desc": "按章蒸馏知识库"},
-            {"cmd": "tropes_scan", "args": ["root", "from?", "to?"], "desc": "按章抽取情节/性癖到全局仓（to=0 扫完全书）"},
-            {"cmd": "trope_summary_status", "args": ["roots"], "desc": "批量读作品情节/性癖总结状态（未总结/已总结/已修改）"},
+            {"cmd": "tropes_scan", "args": ["root", "from?", "to?"], "desc": "按章抽取情节/喜好到全局仓（to=0 扫完全书）"},
+            {"cmd": "trope_summary_status", "args": ["roots"], "desc": "批量读作品情节/喜好总结状态（未总结/已总结/已修改）"},
             {"cmd": "import_apply_pending", "args": ["root", "job_id"], "desc": "应用 distill pending"},
             {"cmd": "kb_registry_list", "desc": "列出小说知识库 + 通用库"},
             {"cmd": "kb_universal_open", "desc": "打开/初始化通用知识库"},
