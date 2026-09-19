@@ -72,6 +72,8 @@
     "dirAlreadyHasProject": "This folder already has a work. Choose another folder or open it",
     "dirAlreadyHasProjectOrKb": "This folder already has a work or knowledge base. Choose another folder or open it",
     "projectJsonMissing": "project.json not found: {path}",
+    "jsonEmpty": "File is empty, not valid JSON: {path}",
+    "jsonInvalid": "Invalid JSON: {path} ({e})",
     "dirMissing": "Folder not found: {path}",
     "notADirectory": "Not a folder: {path}",
     "loreEntryMissing": "Lore entry not found",

@@ -72,6 +72,8 @@
     "dirAlreadyHasProject": "目录已存在作品，请换目录或直接打开",
     "dirAlreadyHasProjectOrKb": "目录已存在作品/知识库，请换目录或直接打开",
     "projectJsonMissing": "未找到 project.json: {path}",
+    "jsonEmpty": "文件是空的，不是有效 JSON：{path}",
+    "jsonInvalid": "JSON 损坏：{path}（{e}）",
     "dirMissing": "目录不存在: {path}",
     "notADirectory": "不是目录: {path}",
     "loreEntryMissing": "设定条目不存在",

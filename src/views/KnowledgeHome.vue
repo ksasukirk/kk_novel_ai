@@ -14,7 +14,7 @@ import StoryView from "./StoryView.vue";
 import { appConfirmDelete } from "../services/confirmDialog.js";
 import { createBackdropDismiss } from "../utils/backdropDismiss.js";
 import { useToastError } from "../services/toast.js";
-import { t } from "../i18n/index.js";
+import { isCancelledMsg, t } from "../i18n/index.js";
 
 const error = useToastError();
 const showImport = ref(false);
@@ -133,15 +133,18 @@ async function onImportConfirm() {
   importing.value = true;
   try {
     const filePicked = await project.pickFile(t("knowledge.pickTxt"), ["txt", "md"]);
-    const dirPicked = await project.pickDirectory();
-    const name = importTitle.value.trim() || t("knowledge.untitledKb");
+    const filePath = String((filePicked && filePicked.path) || "");
+    if (!filePath) return;
+    const base = filePath.replace(/^.*[\\/]/, "").replace(/\.(txt|md)$/i, "");
+    const name = importTitle.value.trim() || base.trim() || t("knowledge.untitledKb");
     appState.statusMessage = t("knowledge.importingStatus");
-    await kb.importIntoKb(dirPicked.path, filePicked.path, name);
+    await kb.importIntoKb("", filePath, name);
     await refresh();
     showImport.value = false;
     subNav.value = "home";
     appState.statusMessage = t("knowledge.ready", { name });
   } catch (e) {
+    if (isCancelledMsg(e && e.message ? e.message : e)) return;
     error.value = String(e.message || e);
   } finally {
     importing.value = false;

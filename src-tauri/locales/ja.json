@@ -72,6 +72,8 @@
     "dirAlreadyHasProject": "フォルダに既に作品があります。別のフォルダにするか、そのまま開いてください",
     "dirAlreadyHasProjectOrKb": "フォルダに既に作品/知識庫があります。別のフォルダにするか、そのまま開いてください",
     "projectJsonMissing": "project.json が見つかりません: {path}",
+    "jsonEmpty": "ファイルが空で、有効な JSON ではありません: {path}",
+    "jsonInvalid": "JSON が壊れています: {path}（{e}）",
     "dirMissing": "フォルダが存在しません: {path}",
     "notADirectory": "フォルダではありません: {path}",
     "loreEntryMissing": "設定項目が存在しません",

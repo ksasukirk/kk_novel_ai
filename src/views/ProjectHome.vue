@@ -1430,7 +1430,6 @@ function heatCellTitle(d) {
 }
 .work-bar {
   min-height: 72px;
-  max-height: 88px;
   padding: 10px 12px;
   border: none;
   border-radius: var(--radius-md);
@@ -1443,11 +1442,11 @@ function heatCellTitle(d) {
   align-items: stretch;
   gap: 8px;
   color: var(--text);
+  overflow: hidden;
   transition: box-shadow 0.15s ease, background 0.15s ease, transform 0.15s ease;
 }
 .work-bar.has-reason {
   min-height: 88px;
-  max-height: 128px;
 }
 .work-bar.selected {
   box-shadow: 0 0 0 2px var(--accent), var(--shadow-sm);
@@ -1512,6 +1511,7 @@ function heatCellTitle(d) {
   align-items: center;
   flex-wrap: wrap;
   gap: 6px;
+  flex-shrink: 0;
 }
 .plus {
   font-size: 22px;
@@ -1553,6 +1553,7 @@ function heatCellTitle(d) {
   background: rgba(180, 60, 80, 0.12);
 }
 .row-title {
+  flex-shrink: 0;
   font-size: 14px;
   font-weight: 750;
   line-height: 1.25;
@@ -1561,6 +1562,7 @@ function heatCellTitle(d) {
   white-space: nowrap;
 }
 .row-path {
+  flex-shrink: 0;
   font-size: 11px;
   line-height: 1.3;
   overflow: hidden;

@@ -22,7 +22,11 @@ fn read_json_or_default<T: Default + for<'de> Deserialize<'de>>(path: &Path) -> 
     if !path.exists() {
         return Ok(T::default());
     }
-    Ok(serde_json::from_str(&fs::read_to_string(path)?)?)
+    let text = fs::read_to_string(path)?;
+    if crate::error::json_is_blank(&text) {
+        return Ok(T::default());
+    }
+    Ok(serde_json::from_str(&text).unwrap_or_default())
 }
 
 fn write_json<T: Serialize>(path: &Path, value: &T) -> AppResult<()> {

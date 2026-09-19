@@ -1335,7 +1335,7 @@ fn tools_manifest() -> Value {
             {"cmd": "export_txt", "args": ["root", "output"], "desc": "导出 TXT"},
             {"cmd": "export_epub", "args": ["root", "output"], "desc": "导出 EPUB"},
             {"cmd": "export_pdf", "args": ["root", "output"], "desc": "导出 PDF"},
-            {"cmd": "import_txt", "args": ["root", "file", "title?"], "desc": "导入 TXT 为知识库（kind=knowledge_base）"},
+            {"cmd": "import_txt", "args": ["file", "root?", "title?"], "desc": "导入 TXT 为知识库（kind=knowledge_base）；root 空则在 novels 下自动建目录"},
             {"cmd": "import_distill", "args": ["root", "from?", "to?", "apply?", "resume?", "job_id?", "instruction?"], "desc": "按章蒸馏知识库"},
             {"cmd": "tropes_scan", "args": ["root", "from?", "to?"], "desc": "按章抽取情节/喜好到全局仓（to=0 扫完全书）"},
             {"cmd": "trope_summary_status", "args": ["roots"], "desc": "批量读作品情节/喜好总结状态（未总结/已总结/已修改）"},

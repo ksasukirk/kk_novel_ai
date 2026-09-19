@@ -497,6 +497,89 @@ pub fn migrate_to_knowledge_base(root: &Path, source_file: Option<&str>) -> AppR
     Ok(opened)
 }
 
+fn folder_title(root: &Path) -> String {
+    root.file_name()
+        .and_then(|n| n.to_str())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "未命名小说".into())
+}
+
+fn blank_chapter_meta(file: &str, title: &str) -> ChapterMeta {
+    ChapterMeta {
+        id: Uuid::new_v4().to_string(),
+        file: file.to_string(),
+        title: title.to_string(),
+        summary: String::new(),
+        status: "draft".into(),
+        pov_lore_id: None,
+        focus_arc_ids: vec![],
+        must_do: String::new(),
+        must_not: String::new(),
+        reader_knows: String::new(),
+        character_knows: String::new(),
+        beats: vec![],
+        trope_ids: vec![],
+    }
+}
+
+/// 空 `project.json` 从目录名 + chapters 正文文件拼回一份元数据（避免 serde EOF 弹窗）
+fn recover_empty_project(root: &Path) -> NovelProject {
+    let mut chapters: Vec<ChapterMeta> = Vec::new();
+    if let Ok(rd) = fs::read_dir(chapters_dir(root)) {
+        let mut files: Vec<String> = rd
+            .flatten()
+            .filter(|e| e.path().is_file())
+            .filter_map(|e| e.file_name().into_string().ok())
+            .filter(|n| {
+                !n.starts_with('.')
+                    && (n.ends_with(".md") || n.ends_with(".txt") || n.ends_with(".markdown"))
+            })
+            .collect();
+        files.sort();
+        for file in files {
+            let stem = file.rsplit_once('.').map(|(s, _)| s).unwrap_or(&file);
+            let title = stem
+                .split_once('-')
+                .map(|(_, rest)| rest.trim())
+                .filter(|s| !s.is_empty())
+                .unwrap_or(stem)
+                .to_string();
+            chapters.push(blank_chapter_meta(&file, &title));
+        }
+    }
+    let chapter_ids: Vec<String> = chapters.iter().map(|c| c.id.clone()).collect();
+    let volumes = if chapter_ids.is_empty() {
+        vec![]
+    } else {
+        vec![VolumeMeta {
+            id: Uuid::new_v4().to_string(),
+            title: "第一卷".into(),
+            chapter_ids,
+            arc_goal: String::new(),
+            arc_summary: String::new(),
+        }]
+    };
+    NovelProject {
+        id: Uuid::new_v4().to_string(),
+        title: folder_title(root),
+        kind: "novel".into(),
+        genre: String::new(),
+        style: String::new(),
+        book_outline: String::new(),
+        source_file: None,
+        linked_kb_roots: vec![],
+        volumes,
+        chapters,
+        outline_mindmap: None,
+        created_at: now(),
+        updated_at: now(),
+        trope_summary_at: None,
+        trope_summary_fingerprint: None,
+        trope_summary_dirty: false,
+    }
+}
+
 pub fn open_project(root: &Path) -> AppResult<OpenedProject> {
     let path = project_json(root);
     if !path.exists() {
@@ -506,7 +589,13 @@ pub fn open_project(root: &Path) -> AppResult<OpenedProject> {
         ));
     }
     let text = fs::read_to_string(&path)?;
-    let project: NovelProject = serde_json::from_str(&text)?;
+    let project: NovelProject = if crate::error::json_is_blank(&text) {
+        let recovered = recover_empty_project(root);
+        save_project_meta(root, &recovered)?;
+        recovered
+    } else {
+        crate::error::parse_json_at(&text, &path)?
+    };
     if !memory_json(root).exists() {
         fs::write(
             memory_json(root),
@@ -717,7 +806,17 @@ pub fn load_stats(root: &Path) -> AppResult<ProjectStats> {
             ..Default::default()
         });
     }
-    Ok(serde_json::from_str(&fs::read_to_string(path)?)?)
+    let text = fs::read_to_string(path)?;
+    if crate::error::json_is_blank(&text) {
+        return Ok(ProjectStats {
+            goal_chars: default_goal(),
+            ..Default::default()
+        });
+    }
+    Ok(serde_json::from_str(&text).unwrap_or_else(|_| ProjectStats {
+        goal_chars: default_goal(),
+        ..Default::default()
+    }))
 }
 
 pub fn save_stats(root: &Path, stats: &ProjectStats) -> AppResult<()> {
@@ -879,7 +978,11 @@ pub fn load_memory(root: &Path) -> AppResult<MemoryStore> {
     if !path.exists() {
         return Ok(MemoryStore::default());
     }
-    Ok(serde_json::from_str(&fs::read_to_string(path)?)?)
+    let text = fs::read_to_string(path)?;
+    if crate::error::json_is_blank(&text) {
+        return Ok(MemoryStore::default());
+    }
+    Ok(serde_json::from_str(&text).unwrap_or_default())
 }
 
 pub fn save_memory(root: &Path, memory: &MemoryStore) -> AppResult<()> {
@@ -2014,5 +2117,35 @@ mod tests {
         assert_eq!(listed[0].title, "裙下暴露");
         assert!(listed[0].content.contains("long body here"));
         assert!(listed[0].content.contains("extra note"));
+    }
+
+    fn tmp_project_root(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir()
+            .join("kk_novel_open_project_test")
+            .join(name);
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(dir.join("chapters")).unwrap();
+        dir
+    }
+
+    #[test]
+    fn open_empty_project_json_recovers_from_chapter_files() {
+        let root = tmp_project_root("empty_json");
+        fs::write(root.join("project.json"), "").unwrap();
+        fs::write(root.join("chapters").join("0001-hello.md"), "# hi\n").unwrap();
+        let opened = open_project(&root).unwrap();
+        assert_eq!(opened.project.chapters.len(), 1);
+        assert_eq!(opened.project.chapters[0].title, "hello");
+        assert!(!opened.project.title.is_empty());
+        let saved = fs::read_to_string(root.join("project.json")).unwrap();
+        assert!(saved.contains("hello"));
+    }
+
+    #[test]
+    fn json_is_blank_treats_whitespace_and_bom() {
+        assert!(crate::error::json_is_blank(""));
+        assert!(crate::error::json_is_blank("  \n\t"));
+        assert!(crate::error::json_is_blank("\u{feff}"));
+        assert!(!crate::error::json_is_blank("{}"));
     }
 }

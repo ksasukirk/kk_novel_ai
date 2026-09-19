@@ -9,7 +9,7 @@ import * as project from "../services/projectClient.js";
 import * as kb from "../services/kbClient.js";
 import { appConfirm, appConfirmDelete } from "../services/confirmDialog.js";
 import { useToastError } from "../services/toast.js";
-import { t } from "../i18n/index.js";
+import { isCancelledMsg, t } from "../i18n/index.js";
 import { isTropeKind, tropeKindLabelKey } from "../utils/tropeKinds.js";
 import { cancelTropeScan, formatScanUsage, scanTropesFromRoot, tropeScanState } from "../services/tropeScan.js";
 import {
@@ -339,14 +339,16 @@ async function onScanImport() {
   error.value = "";
   try {
     const filePicked = await project.pickFile(t("knowledge.pickTxt"), ["txt", "md"]);
-    const dirPicked = await project.pickDirectory();
     const filePath = String((filePicked && filePicked.path) || "");
+    if (!filePath) return;
     const base = filePath.replace(/^.*[\\/]/, "").replace(/\.(txt|md)$/i, "");
     const name = importTitle.value.trim() || base.trim() || t("knowledge.untitledKb");
     appState.statusMessage = t("knowledge.importingStatus");
-    const opened = await kb.importIntoKb(dirPicked.path, filePicked.path, name);
+    const opened = await kb.importIntoKb("", filePath, name, { applyKb: false });
     appState.activeNav = "tropes";
-    const n = ((opened.project && opened.project.chapters) || []).length;
+    const n =
+      Number(opened.chapter_count) ||
+      ((opened.project && opened.project.chapters) || []).length;
     const ok = await appConfirm(t("trope.scanConfirmImportUnknown", { n }), {
       title: t("trope.scanImport"),
     });
@@ -354,8 +356,9 @@ async function onScanImport() {
       await refresh();
       return;
     }
-    await runScan(opened.root || dirPicked.path);
+    await runScan(opened.import_root || opened.root);
   } catch (e) {
+    if (isCancelledMsg(e && e.message ? e.message : e)) return;
     error.value = String(e.message || e);
   }
 }

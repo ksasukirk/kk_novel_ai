@@ -56,13 +56,29 @@ export async function migrateKb(root, opts = {}) {
   });
 }
 
-export async function importIntoKb(root, file, title) {
-  snapshotWritingIfNeeded();
-  const r = await invoke("import_txt", { root, file, title });
-  const opened = await invoke("project_open", { root: r.root || root });
-  applyKb(opened);
-  appState.kbSubNav = "home";
-  return opened;
+/**
+ * 导入 TXT 为知识库。root 空则在 novels 下按书名自动建目录。
+ * @param {string} [root]
+ * @param {string} file
+ * @param {string} title
+ * @param {{ applyKb?: boolean }} [opts] applyKb 默认 true；情节库扫描传 false，不抢走当前写作工程
+ */
+export async function importIntoKb(root, file, title, opts = {}) {
+  const applyKbNav = opts.applyKb !== false;
+  if (applyKbNav) snapshotWritingIfNeeded();
+  const r = await invoke("import_txt", { root: root || "", file, title });
+  const dest = String((r && r.root) || root || "");
+  const opened = await invoke("project_open", { root: dest });
+  if (applyKbNav) {
+    applyKb(opened);
+    appState.kbSubNav = "home";
+  }
+  return {
+    ...(opened || {}),
+    chapter_count: r.chapter_count,
+    import_root: dest,
+    root: dest || (opened && opened.root) || "",
+  };
 }
 
 export function kbIsUniversal() {

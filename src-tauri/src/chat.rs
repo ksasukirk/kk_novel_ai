@@ -56,7 +56,18 @@ fn session_path(mode: &str, project_root: Option<&str>) -> AppResult<PathBuf> {
 pub fn chat_session_get(mode: &str, project_root: Option<&str>) -> AppResult<Value> {
     let path = session_path(mode, project_root)?;
     let mut session = if path.exists() {
-        serde_json::from_str(&fs::read_to_string(&path)?)?
+        let text = fs::read_to_string(&path)?;
+        if crate::error::json_is_blank(&text) {
+            ChatSession {
+                mode: mode.into(),
+                ..Default::default()
+            }
+        } else {
+            serde_json::from_str(&text).unwrap_or_else(|_| ChatSession {
+                mode: mode.into(),
+                ..Default::default()
+            })
+        }
     } else {
         ChatSession {
             mode: mode.into(),

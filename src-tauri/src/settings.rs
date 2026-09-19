@@ -622,7 +622,20 @@ pub fn load_settings() -> AppResult<AppSettings> {
         return Ok(defaults);
     }
     let text = fs::read_to_string(&path)?;
-    let mut settings: AppSettings = serde_json::from_str(&text)?;
+    if crate::error::json_is_blank(&text) {
+        let mut defaults = AppSettings::default();
+        defaults.sync_max_tokens_to_target();
+        save_settings(&defaults)?;
+        return Ok(defaults);
+    }
+    let mut settings: AppSettings = match serde_json::from_str(&text) {
+        Ok(s) => s,
+        Err(_) => {
+            let mut defaults = AppSettings::default();
+            defaults.sync_max_tokens_to_target();
+            return Ok(defaults);
+        }
+    };
     // 兼容：仅有 last_project_path 时补进 recent
     if settings.recent_projects.is_empty() {
         if let Some(p) = settings.last_project_path.clone() {

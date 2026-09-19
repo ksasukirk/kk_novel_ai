@@ -46,7 +46,11 @@ pub fn load_registry() -> AppResult<KbRegistry> {
     if !path.exists() {
         return Ok(KbRegistry::default());
     }
-    Ok(serde_json::from_str(&fs::read_to_string(path)?)?)
+    let text = fs::read_to_string(path)?;
+    if crate::error::json_is_blank(&text) {
+        return Ok(KbRegistry::default());
+    }
+    Ok(serde_json::from_str(&text).unwrap_or_default())
 }
 
 pub fn save_registry(reg: &KbRegistry) -> AppResult<()> {
@@ -321,7 +325,12 @@ pub fn sync_to_universal(novel_root: &Path) -> AppResult<Value> {
     let mut sources_index: Value = {
         let p = uni.root.join("sources_index.json");
         if p.exists() {
-            serde_json::from_str(&fs::read_to_string(p)?)?
+            let text = fs::read_to_string(&p)?;
+            if crate::error::json_is_blank(&text) {
+                json!({})
+            } else {
+                serde_json::from_str(&text).unwrap_or_else(|_| json!({}))
+            }
         } else {
             json!({})
         }

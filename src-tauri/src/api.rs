@@ -1112,7 +1112,17 @@ pub fn export_pdf(root: &str, output: &str) -> AppResult<Value> {
 }
 
 pub fn import_txt(root: &str, file: &str, title: &str) -> AppResult<Value> {
-    let report = import::import_txt(Path::new(root), Path::new(file), title)?;
+    let title = if title.trim().is_empty() {
+        "未命名小说"
+    } else {
+        title
+    };
+    let root_buf = if root.trim().is_empty() {
+        crate::paths::allocate_novel_folder(title)?
+    } else {
+        PathBuf::from(root)
+    };
+    let report = import::import_txt(&root_buf, Path::new(file), title)?;
     // import_txt 内部已登记 registry + recent_knowledge_bases
     Ok(serde_json::to_value(report)?)
 }
@@ -1633,7 +1643,8 @@ pub async fn dispatch_rpc(req: Value) -> AppResult<Value> {
                 .get("title")
                 .and_then(|v| v.as_str())
                 .unwrap_or("未命名小说");
-            import_txt(req_str(&req, "root")?, req_str(&req, "file")?, title)
+            let root = req.get("root").and_then(|v| v.as_str()).unwrap_or("");
+            import_txt(root, req_str(&req, "file")?, title)
         }
         "import_distill" => {
             let from = req.get("from").and_then(|v| v.as_u64()).unwrap_or(1);

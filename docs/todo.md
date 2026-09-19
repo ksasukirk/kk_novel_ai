@@ -69,6 +69,25 @@
 | M65 | 写作页可筛选多选情节/喜好卡片 | 完成 | `TropePickPanel.vue`、`EditorView.vue`、`AiPanel.vue`、`tropeSelect.js` |
 | M66 | 目录变体行 + 切作品立刻进写作 + 防空载 | 完成 | `EditorView.vue`、`projectClient.js`、`ProjectHome.vue`、三语 `src/i18n/locales/*.json` |
 | M67 | 作品页 AI 智能搜索（关键词 + 相似内容） | 完成 | `work_catalog.rs`、`novelSearch.js`、`novelSearchScore.js`、`ProjectHome.vue`、`novel_search.md` |
+| M68 | 空 JSON 文件不再弹出 serde EOF | 完成 | `error.rs` `json_is_blank` / `parse_json_at`；`settings.rs`；`project/mod.rs` `open_project`；`kb/mod.rs`；`story/mod.rs`；`chat.rs`；`src-tauri/locales/{zh-CN,en,ja}.json` |
+| M69 | 情节库/知识库导入 TXT 只弹一次文件框 | 完成 | `TropeLibraryView.vue` `onScanImport`；`KnowledgeHome.vue`；`api.rs` `import_txt`；`kbClient.js` |
+
+### M69 明细 TODO
+
+| # | 项 | 状态 | 路径 |
+|---|---|---|---|
+| 1 | `import_txt` 的 `root` 可空，空则 `allocate_novel_folder` | 完成 | [`src-tauri/src/api.rs`](../src-tauri/src/api.rs) `import_txt`；[`src-tauri/src/cli.rs`](../src-tauri/src/cli.rs) |
+| 2 | 情节库「导入 TXT 后提取」只弹一次文件框 | 完成 | [`src/views/TropeLibraryView.vue`](../src/views/TropeLibraryView.vue) `onScanImport`；[`src/services/kbClient.js`](../src/services/kbClient.js) `importIntoKb` `applyKb` |
+| 3 | 知识库导入同样只选 TXT，目录自动建在 novels | 完成 | [`src/views/KnowledgeHome.vue`](../src/views/KnowledgeHome.vue) `onImportConfirm`；[`src/i18n/locales/zh-CN.json`](../src/i18n/locales/zh-CN.json)、[`en.json`](../src/i18n/locales/en.json)、[`ja.json`](../src/i18n/locales/ja.json) `knowledge.importDialogHint` / `pickFiles` |
+
+### M68 明细 TODO
+
+| # | 项 | 状态 | 路径 |
+|---|---|---|---|
+| 1 | 空/BOM JSON 识别；损坏文件带路径人话 | 完成 | [`src-tauri/src/error.rs`](../src-tauri/src/error.rs)；[`src-tauri/locales/zh-CN.json`](../src-tauri/locales/zh-CN.json)、[`en.json`](../src-tauri/locales/en.json)、[`ja.json`](../src-tauri/locales/ja.json) `errors.jsonEmpty` / `jsonInvalid` |
+| 2 | `settings.json` 空文件按缺失回默认；损坏不挡打开 | 完成 | [`src-tauri/src/settings.rs`](../src-tauri/src/settings.rs) `load_settings` |
+| 3 | 空 `project.json` 从目录名 + `chapters/*.md` 拼回元数据并写回 | 完成 | [`src-tauri/src/project/mod.rs`](../src-tauri/src/project/mod.rs) `recover_empty_project` / `open_project` |
+| 4 | `stats.json` / `memory.json` / 知识库注册表 / `sources_index.json` / 总谱 / 对话会话空文件当默认 | 完成 | [`src-tauri/src/project/mod.rs`](../src-tauri/src/project/mod.rs) `load_stats` / `load_memory`；[`src-tauri/src/kb/mod.rs`](../src-tauri/src/kb/mod.rs) `load_registry` / `sources_index.json`；[`src-tauri/src/story/mod.rs`](../src-tauri/src/story/mod.rs) `read_json_or_default`；[`src-tauri/src/chat.rs`](../src-tauri/src/chat.rs) `chat_session_get` |
 
 ### M67 明细 TODO
 

@@ -1,7 +1,9 @@
 //! 统一错误类型
 //! 代码路径: kk_novel_ai/src-tauri/src/error.rs
 
+use serde::de::DeserializeOwned;
 use serde_json::json;
+use std::path::Path;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -40,4 +42,28 @@ impl From<AppError> for String {
     fn from(value: AppError) -> Self {
         value.to_string()
     }
+}
+
+/// 空文件 / 只空白 / 只有 BOM：serde 会报 `EOF while parsing a value at line 1 column 0`
+pub fn json_is_blank(text: &str) -> bool {
+    text.trim_start_matches('\u{feff}').trim().is_empty()
+}
+
+/// 必填 JSON：空文件给人话路径，损坏带 serde 细节
+pub fn parse_json_at<T: DeserializeOwned>(text: &str, path: &Path) -> AppResult<T> {
+    if json_is_blank(text) {
+        return Err(AppError::t_fmt(
+            "errors.jsonEmpty",
+            &[("path", &path.display().to_string())],
+        ));
+    }
+    serde_json::from_str(text).map_err(|e| {
+        AppError::t_fmt(
+            "errors.jsonInvalid",
+            &[
+                ("path", &path.display().to_string()),
+                ("e", &e.to_string()),
+            ],
+        )
+    })
 }
