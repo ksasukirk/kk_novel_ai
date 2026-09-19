@@ -66,16 +66,16 @@
 | R35 | 目录变体行 + 点作品卡立刻进写作 + 切书防空载 | 完成 | [`EditorView.vue`](src/views/EditorView.vue)、[`projectClient.js`](src/services/projectClient.js)、[`ProjectHome.vue`](src/views/ProjectHome.vue)、[`zh-CN.json`](src/i18n/locales/zh-CN.json)、[`en.json`](src/i18n/locales/en.json)、[`ja.json`](src/i18n/locales/ja.json) |
 | R36 | 作品页 AI 智能搜索 | 完成 | [`ProjectHome.vue`](src/views/ProjectHome.vue)、[`work_catalog.rs`](src-tauri/src/project/work_catalog.rs)、[`novelSearch.js`](src/services/novelSearch.js)、[`novelSearchScore.js`](src/utils/novelSearchScore.js)、[`novel_search.md`](src-tauri/prompts/novel_search.md) |
 | R37 | v0.2.41 发版：智能搜索 / 情节筛选勾选 / 一键再扫 + 版本对齐 | 完成 | [`package.json`](package.json)、[`src-tauri/Cargo.toml`](src-tauri/Cargo.toml)、[`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json)、[`ProjectHome.vue`](src/views/ProjectHome.vue)、[`EditorView.vue`](src/views/EditorView.vue)、本文 |
-| R38 | v0.2.42 发版：中日文「性癖」改称「喜好」+ 版本对齐 | 完成 | [`package.json`](package.json)、[`src-tauri/Cargo.toml`](src-tauri/Cargo.toml)、[`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json)、[`src/i18n/locales/zh-CN.json`](src/i18n/locales/zh-CN.json)、[`src/i18n/locales/ja.json`](src/i18n/locales/ja.json)、[`src-tauri/prompts/`](src-tauri/prompts/)、本文 |
+| R38 | v0.2.42 发版：中日文界面统一称「喜好」+ 版本对齐 | 完成 | [`package.json`](package.json)、[`src-tauri/Cargo.toml`](src-tauri/Cargo.toml)、[`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json)、[`src/i18n/locales/zh-CN.json`](src/i18n/locales/zh-CN.json)、[`src/i18n/locales/ja.json`](src/i18n/locales/ja.json)、[`src-tauri/prompts/`](src-tauri/prompts/)、本文 |
 
 ---
 
 ## 1. 本版（0.2.42）做了什么
 
-相对 `0.2.41`，本版把中文和日文里用户能看见的「性癖」统一改成「喜好」：界面按钮、错误提示、续写 / 摘要 / 抽取提示词都改口。情节库、本章勾选注入、扫描合并和磁盘上的 `lore/kinks.json` 都还在，内部 kind 仍是 `kink`，已有库和章节勾选不用迁移。英文界面仍用 kink。npm / Cargo / Tauri 版本对齐到 `0.2.42`。
+相对 `0.2.41`，本版把中文和日文里用户能看见的种类名统一为「喜好」：界面按钮、错误提示、续写 / 摘要 / 抽取提示词都按这个叫。情节库、本章勾选注入、扫描合并和磁盘上的 `lore/kinks.json` 都还在，内部 kind 仍是 `kink`，已有库和章节勾选不用迁移。英文界面仍用 kink。npm / Cargo / Tauri 版本对齐到 `0.2.42`。
 
 - **界面改口**：情节库介绍、写作页卡片栏、作品卡总结提示、总谱「本章情节/喜好」、设置里的写后自动抽取说明，中文和日文都显示「喜好」。见 [`src/i18n/locales/zh-CN.json`](src/i18n/locales/zh-CN.json)、[`ja.json`](src/i18n/locales/ja.json)、[`TropeLibraryView.vue`](src/views/TropeLibraryView.vue)、[`TropePickPanel.vue`](src/components/TropePickPanel.vue)、[`tropeKinds.js`](src/utils/tropeKinds.js)。
-- **提示词改口**：续写、缓存续写、章摘要、块摘要、补字、场景收束、抽取、单卡优化和智能搜的中日模板，把「情节/性癖」改成「情节/喜好」；勾选仍须按卡内写法兑现，未勾选不当必达。见 [`src-tauri/prompts/continue_chapter.md`](src-tauri/prompts/continue_chapter.md)、[`trope_extract.md`](src-tauri/prompts/trope_extract.md)、[`trope_refine.md`](src-tauri/prompts/trope_refine.md)、[`novel_search.md`](src-tauri/prompts/novel_search.md) 及 [`src-tauri/prompts/ja/`](src-tauri/prompts/ja/) 对应文件。
+- **提示词改口**：续写、缓存续写、章摘要、块摘要、补字、场景收束、抽取、单卡优化和智能搜的中日模板，情节库种类名统一写成「情节/喜好」；勾选仍须按卡内写法兑现，未勾选不当必达。见 [`src-tauri/prompts/continue_chapter.md`](src-tauri/prompts/continue_chapter.md)、[`trope_extract.md`](src-tauri/prompts/trope_extract.md)、[`trope_refine.md`](src-tauri/prompts/trope_refine.md)、[`novel_search.md`](src-tauri/prompts/novel_search.md) 及 [`src-tauri/prompts/ja/`](src-tauri/prompts/ja/) 对应文件。
 - **后端可见文案**：空标题错误、CLI 子命令说明、写作引擎种类标签同步改口。见 [`src-tauri/locales/zh-CN.json`](src-tauri/locales/zh-CN.json)、[`ja.json`](src-tauri/locales/ja.json)、[`cli.rs`](src-tauri/src/cli.rs)、[`writing/mod.rs`](src-tauri/src/writing/mod.rs)、[`import/mod.rs`](src-tauri/src/import/mod.rs)。
 - **版本对齐**：[`package.json`](package.json)、[`src-tauri/Cargo.toml`](src-tauri/Cargo.toml)（及 [`Cargo.lock`](src-tauri/Cargo.lock)）、[`src-tauri/tauri.conf.json`](src-tauri/tauri.conf.json) 均为 `0.2.42`。里程碑用语同步见 [`docs/todo.md`](docs/todo.md) M54–M67；模型说明见 [`docs/lmstudio.md`](docs/lmstudio.md)。
 
