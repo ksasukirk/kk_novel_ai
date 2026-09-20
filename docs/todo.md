@@ -73,6 +73,15 @@
 | M69 | 情节库/知识库导入 TXT 只弹一次文件框 | 完成 | `TropeLibraryView.vue` `onScanImport`；`KnowledgeHome.vue`；`api.rs` `import_txt`；`kbClient.js` |
 | M70 | TXT 无标题时按段落大致范围切章 | 完成 | `import/mod.rs` `chapters_from_paragraph_ranges`；`src-tauri/locales/{zh-CN,en,ja}.json` `noChapterHeadings` |
 | M71 | 作品库导入 TXT 写作工程 + 可选标题翻译 + 情节卡中英 | 完成 | `import_novel_txt`、`title_translate.md`、`trope_extract.md` `title_en`、`ProjectHome.vue`、`tropeI18n.js` |
+| M72 | 写作页按段/按章翻译正文（导入不翻全文） | 完成 | `writing/translate.rs` `chapter_translate`；`ChapterBlockEditor.vue` 段下选语言；`EditorView.vue` 翻译本章 |
+
+### M72 明细 TODO
+
+| # | 项 | 状态 | 路径 |
+|---|---|---|---|
+| 1 | 分析模型按块切段翻译；已是目标语则跳过；不写盘由前端写回 | 完成 | [`src-tauri/src/writing/translate.rs`](../src-tauri/src/writing/translate.rs)；[`src-tauri/prompts/body_translate.md`](../src-tauri/prompts/body_translate.md)、[`en/body_translate.md`](../src-tauri/prompts/en/body_translate.md)、[`ja/body_translate.md`](../src-tauri/prompts/ja/body_translate.md)；[`src-tauri/src/prompt_i18n.rs`](../src-tauri/src/prompt_i18n.rs)；[`src-tauri/src/api.rs`](../src-tauri/src/api.rs) `chapter_translate`；[`src-tauri/src/commands.rs`](../src-tauri/src/commands.rs)；[`src-tauri/src/lib.rs`](../src-tauri/src/lib.rs)；[`src-tauri/src/cli.rs`](../src-tauri/src/cli.rs) |
+| 2 | 每段粘条：选 zh/en/ja + 翻译本段；工具栏翻译本章（多段先确认） | 完成 | [`src/components/ChapterBlockEditor.vue`](../src/components/ChapterBlockEditor.vue)；[`src/views/EditorView.vue`](../src/views/EditorView.vue)；[`src/services/draftAccept.js`](../src/services/draftAccept.js) `translateBlock` / `translateOpenChapter` |
+| 3 | 三语文案；导入说明改为正文到写作页再翻 | 完成 | [`src/i18n/locales/zh-CN.json`](../src/i18n/locales/zh-CN.json)、[`en.json`](../src/i18n/locales/en.json)、[`ja.json`](../src/i18n/locales/ja.json) `editor.translate*` / `draft.needTranslate`；[`src-tauri/locales/zh-CN.json`](../src-tauri/locales/zh-CN.json)、[`en.json`](../src-tauri/locales/en.json)、[`ja.json`](../src-tauri/locales/ja.json) `errors.translateEmpty`；[`docs/lmstudio.md`](../docs/lmstudio.md) §3.0 |
 
 ### M71 明细 TODO
 

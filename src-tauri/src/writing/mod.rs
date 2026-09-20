@@ -7,6 +7,7 @@ pub mod continuity;
 pub mod dedupe;
 pub mod retrieve;
 pub mod rhetoric;
+pub mod translate;
 
 use crate::error::{AppError, AppResult};
 use crate::llm::{ChatMessage, ChatOptions, LmStudioClient, TokenUsage};

@@ -645,6 +645,23 @@ pub fn chapter_push_history(root: String, chapter_id: String, content: String) -
 }
 
 #[tauri::command]
+pub async fn chapter_translate(
+    root: String,
+    chapter_id: String,
+    locale: Option<String>,
+    selection: Option<String>,
+) -> Result<Value, String> {
+    api::chapter_translate(
+        &root,
+        &chapter_id,
+        locale.as_deref().unwrap_or(""),
+        selection.as_deref().unwrap_or(""),
+    )
+    .await
+    .map_err(Into::into)
+}
+
+#[tauri::command]
 pub async fn rag_rebuild(root: String) -> Result<Value, String> {
     api::rag_rebuild(&root).await.map_err(Into::into)
 }

@@ -1260,6 +1260,15 @@ pub fn chapter_push_history(root: &str, chapter_id: &str, content: &str) -> AppR
     Ok(json!({ "ok": true }))
 }
 
+pub async fn chapter_translate(
+    root: &str,
+    chapter_id: &str,
+    locale: &str,
+    selection: &str,
+) -> AppResult<Value> {
+    writing::translate::chapter_translate_json(root, chapter_id, locale, selection).await
+}
+
 pub async fn rag_rebuild(root: &str) -> AppResult<Value> {
     let s = settings::load_settings()?;
     let client = LmStudioClient::new();
@@ -1744,6 +1753,17 @@ pub async fn dispatch_rpc(req: Value) -> AppResult<Value> {
                 req_str(&req, "chapter_id")?,
                 req_str(&req, "content")?,
             )
+        }
+        "chapter_translate" => {
+            let locale = req.get("locale").and_then(|v| v.as_str()).unwrap_or("");
+            let selection = req.get("selection").and_then(|v| v.as_str()).unwrap_or("");
+            chapter_translate(
+                req_str(&req, "root")?,
+                req_str(&req, "chapter_id")?,
+                locale,
+                selection,
+            )
+            .await
         }
         "rag_rebuild" => rag_rebuild(req_str(&req, "root")?).await,
         "gen_log_list" => {

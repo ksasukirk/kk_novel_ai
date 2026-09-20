@@ -14,13 +14,14 @@ import AiPanel from "../components/AiPanel.vue";
 import ChapterBlockEditor from "../components/ChapterBlockEditor.vue";
 import ContinuousChapterRead from "../components/ContinuousChapterRead.vue";
 import EditorDraftPreview from "../components/EditorDraftPreview.vue";
-import { isTrailingEditorDraft, noteEditorUserScroll, noteEditorScrollIntent, rejectDraft, deleteGenBlock, withBranchContext, trailingDraftJobs, anchoredJobsFor } from "../services/draftAccept.js";
+import { isTrailingEditorDraft, noteEditorUserScroll, noteEditorScrollIntent, rejectDraft, deleteGenBlock, withBranchContext, trailingDraftJobs, anchoredJobsFor, translateOpenChapter } from "../services/draftAccept.js";
 import { visibleGenJobs } from "../stores/genJobs.js";
 import { appConfirmDelete } from "../services/confirmDialog.js";
 import {
   blocksFromContent,
   contentFromBlocks,
   genBlocksToc,
+  isIllustrationBlock,
 } from "../utils/genBlock.js";
 import {
   activatePathToNode,
@@ -45,7 +46,7 @@ import {
   saveChapterProgress,
 } from "../services/editorReadingProgress.js";
 import { isMobileUx, watchMobileViewport } from "../utils/platform.js";
-import { t, tLocale } from "../i18n/index.js";
+import { t, tLocale, UI_LOCALES, normalizeLocale } from "../i18n/index.js";
 import TropePickPanel from "../components/TropePickPanel.vue";
 import {
   aiPanelLayoutButtonLabel,
@@ -80,6 +81,10 @@ function writingT(key, values) {
 
 const mobileUx = ref(isMobileUx());
 const tocDrawerOpen = ref(false);
+const chapterTranslateLocale = ref(
+  normalizeLocale(appState.settings && appState.settings.ui_locale)
+);
+const translatingChapter = ref(false);
 const tocVisible = ref(readEditorTocVisible());
 const tropesDrawerOpen = ref(false);
 const tropesVisible = ref(readEditorTropePickerVisible());
@@ -1160,6 +1165,34 @@ async function deleteTocChapter(ch, ev) {
   }
 }
 
+async function onTranslateChapter() {
+  error.value = "";
+  if (!appState.chapterId || translatingChapter.value) return;
+  const n = (appState.chapterBlocks || []).filter(
+    (b) => b && b.key && !isIllustrationBlock(b) && String(b.text || "").trim()
+  ).length;
+  if (!n) {
+    error.value = t("draft.needTranslate");
+    return;
+  }
+  if (n > 1) {
+    const ok = await appConfirm(t("editor.translateChapterQ", { n }), {
+      title: t("editor.translateChapter"),
+      confirmText: t("common.start"),
+      cancelText: t("common.cancel"),
+    });
+    if (!ok) return;
+  }
+  translatingChapter.value = true;
+  try {
+    await translateOpenChapter(chapterTranslateLocale.value);
+  } catch (e) {
+    error.value = String(e.message || e);
+  } finally {
+    translatingChapter.value = false;
+  }
+}
+
 async function onSave() {
   try {
     await project.saveChapter();
@@ -1849,6 +1882,25 @@ watch(
           class="muted tip"
         >{{ $t("editor.reading") }}</span>
         <span class="muted">{{ $t("editor.chars", { n: wordCount }) }}{{ appState.dirty ? $t("editor.unsaved") : "" }}</span>
+        <label class="typo-ctrl muted" :title="$t('editor.translateChapterHint')">
+          {{ $t("editor.translateTo") }}
+          <select
+            v-model="chapterTranslateLocale"
+            class="typo-select"
+            :disabled="translatingChapter"
+          >
+            <option v-for="loc in UI_LOCALES" :key="loc.id" :value="loc.id">{{ loc.native }}</option>
+          </select>
+        </label>
+        <button
+          type="button"
+          class="app-btn"
+          :disabled="translatingChapter || !appState.chapterId"
+          :title="$t('editor.translateChapterHint')"
+          @click="onTranslateChapter"
+        >
+          {{ translatingChapter ? $t("editor.translating") : $t("editor.translateChapter") }}
+        </button>
         <label class="typo-ctrl muted">
           {{ $t("editor.font") }}
           <select v-model="fontFamily" class="typo-select">

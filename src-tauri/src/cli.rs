@@ -216,6 +216,15 @@ enum ChapterCmd {
         #[arg(long)]
         status: Option<String>,
     },
+    /// 翻译章正文或一段选区（不写盘，stdout 返回译文）
+    Translate {
+        root: String,
+        chapter_id: String,
+        #[arg(long, default_value = "zh-CN")]
+        locale: String,
+        #[arg(long, default_value = "")]
+        selection: String,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -830,6 +839,21 @@ async fn run_cmd(cli: Cli) -> i32 {
                 }
                 dispatch_rpc(payload).await
             }
+            ChapterCmd::Translate {
+                root,
+                chapter_id,
+                locale,
+                selection,
+            } => {
+                dispatch_rpc(json!({
+                    "cmd": "chapter_translate",
+                    "root": root,
+                    "chapter_id": chapter_id,
+                    "locale": locale,
+                    "selection": selection
+                }))
+                .await
+            }
         },
         Commands::Lore { action } => match action {
             LoreCmd::List { root } => dispatch_rpc(json!({ "cmd": "lore_list", "root": root })).await,
@@ -1338,6 +1362,7 @@ fn tools_manifest() -> Value {
             {"cmd": "project_apply_title", "args": ["root", "title"], "desc": "写入书名并刷新最近列表"},
             {"cmd": "chapter_read", "args": ["root", "chapter_id"], "desc": "读章节"},
             {"cmd": "chapter_write", "args": ["root", "chapter_id", "content"], "desc": "写章节"},
+            {"cmd": "chapter_translate", "args": ["root", "chapter_id", "locale?", "selection?"], "desc": "翻译章正文或选区（不写盘；长文自动切块；已是目标语则跳过）"},
             {"cmd": "chapter_create", "args": ["root", "title", "summary?"], "desc": "新建章节"},
             {"cmd": "chapter_delete", "args": ["root", "chapter_id"], "desc": "删除章节"},
             {"cmd": "chapter_update_meta", "args": ["root", "chapter_id", "title?", "summary?", "status?"], "desc": "更新章纲"},

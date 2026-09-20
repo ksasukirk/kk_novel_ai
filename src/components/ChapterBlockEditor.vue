@@ -22,6 +22,7 @@ import {
   generateVariantBlock,
   forkFromBlock,
   switchBlockVariant,
+  translateBlock,
   isDraftAnchoredTo,
   anchoredJobsFor,
 } from "../services/draftAccept.js";
@@ -49,7 +50,7 @@ import {
 import CharacterHoverCard from "./CharacterHoverCard.vue";
 import EditorDraftPreview from "./EditorDraftPreview.vue";
 import { useToastError } from "../services/toast.js";
-import { t, tLocale } from "../i18n/index.js";
+import { t, tLocale, UI_LOCALES, normalizeLocale } from "../i18n/index.js";
 
 function writingT(key, values) {
   return tLocale(appState.settings?.writing_locale || "zh-CN", key, values);
@@ -74,6 +75,10 @@ const rewritingKey = ref("");
 const polishingKey = ref("");
 const digestingKey = ref("");
 const illustratingKey = ref("");
+const translatingKey = ref("");
+const blockTranslateLocale = ref(
+  normalizeLocale(appState.settings && appState.settings.ui_locale)
+);
 const illusUrls = reactive({});
 const illusStale = reactive({});
 const copiedInstrKey = ref("");
@@ -332,6 +337,7 @@ function onCardLeave() {
 
 function blockBusy(block) {
   if (illustratingKey.value && block?.key === illustratingKey.value) return true;
+  if (translatingKey.value && block?.key === translatingKey.value) return true;
   return anchoredJobsFor(block?.key).length > 0;
 }
 
@@ -548,6 +554,19 @@ async function onForkBranch(block) {
     await forkFromBlock(block.key);
   } catch (e) {
     blockError.value = String(e.message || e);
+  }
+}
+
+async function onTranslateBlock(block) {
+  blockError.value = "";
+  if (!block?.key || blockBusy(block) || translatingKey.value) return;
+  translatingKey.value = block.key;
+  try {
+    await translateBlock(block.key, blockTranslateLocale.value);
+  } catch (e) {
+    blockError.value = String(e.message || e);
+  } finally {
+    translatingKey.value = "";
   }
 }
 
@@ -922,6 +941,40 @@ defineExpose({
             {{ $t("common.delete") }}
           </button>
         </div>
+        <div
+          v-if="!isIllustrationBlock(block)"
+          class="block-sticky-actions block-translate-row"
+        >
+          <select
+            v-model="blockTranslateLocale"
+            class="block-translate-locale"
+            :disabled="readonly || !!translatingKey || blockBusy(block)"
+            :title="$t('editor.translateTo')"
+            @click.stop
+          >
+            <option v-for="loc in UI_LOCALES" :key="loc.id" :value="loc.id">
+              {{ loc.native }}
+            </option>
+          </select>
+          <button
+            type="button"
+            class="block-act"
+            :disabled="
+              readonly ||
+              !!translatingKey ||
+              blockBusy(block) ||
+              !String(block.text || '').trim()
+            "
+            :title="$t('editor.translateBlockHint')"
+            @click.stop="onTranslateBlock(block)"
+          >
+            {{
+              translatingKey === block.key
+                ? $t("editor.translating")
+                : $t("editor.translateBlock")
+            }}
+          </button>
+        </div>
       </div>
 
       <EditorDraftPreview
@@ -1184,6 +1237,19 @@ defineExpose({
   align-items: center;
   justify-content: flex-end;
   gap: 6px;
+}
+.block-translate-row {
+  flex: 1 1 100%;
+  justify-content: flex-end;
+}
+.block-translate-locale {
+  min-width: 88px;
+  padding: 3px 8px;
+  font-size: 11px;
+  border-radius: var(--radius-pill);
+  border: 1px solid color-mix(in srgb, var(--muted) 28%, transparent);
+  background: var(--surface-solid, #fff);
+  color: var(--text);
 }
 .block-act.block-act-emphasis {
   background: var(--accent-soft);

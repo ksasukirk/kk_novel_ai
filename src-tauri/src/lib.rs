@@ -139,6 +139,7 @@ pub fn run() {
             commands::stats_get,
             commands::stats_set_goal,
             commands::chapter_push_history,
+            commands::chapter_translate,
             commands::rag_rebuild,
             commands::pick_directory,
             commands::pick_import_directory,

@@ -5,6 +5,7 @@
 import { nextTick } from "vue";
 import { appState } from "../stores/appState.js";
 import { cancelAllGenerations, cancelJob, runWriting } from "./llmClient.js";
+import { invoke } from "./tauri.js";
 import { pushAiUndo } from "./aiUndo.js";
 import { isBackgroundAnalysisTask } from "../utils/writingTasks.js";
 import { saveChapter, applyBranchDoc, syncBranchDocFromEditor, loadChapter } from "./projectClient.js";
@@ -12,6 +13,7 @@ import {
   contentFromBlocks,
   createGenBlock,
   createPlainBlock,
+  isIllustrationBlock,
 } from "../utils/genBlock.js";
 import {
   addVariant,
@@ -1085,4 +1087,91 @@ export function switchBlockVariant(nodeId, variantId) {
   const doc = ensureBranchDoc();
   applyDocAndProject(switchVariant(doc, nodeId, variantId));
   appState.statusMessage = t("draft.switched");
+}
+
+/**
+ * 把一块正文译成目标语并写回（长文后端自动切块）
+ * @param {string} blockKey
+ * @param {string} locale zh-CN | en | ja
+ */
+export async function translateBlock(blockKey, locale) {
+  if (!blockKey || !appState.projectRoot || !appState.chapterId) {
+    throw new Error(t("draft.needTranslate"));
+  }
+  const block = (appState.chapterBlocks || []).find((b) => b.key === blockKey);
+  if (!block || isIllustrationBlock(block)) {
+    throw new Error(t("draft.blockMissing"));
+  }
+  const src = String(block.text || "").trim();
+  if (!src) throw new Error(t("draft.translateEmpty"));
+  if (appState.dirty) await saveChapter();
+  appState.statusMessage = t("editor.translating");
+  const r = await invoke("chapter_translate", {
+    root: appState.projectRoot,
+    chapterId: appState.chapterId,
+    locale: locale || "",
+    selection: src,
+  });
+  if (r && r.skipped) {
+    appState.statusMessage = t("editor.translateSkipped");
+    return { skipped: true };
+  }
+  const body = String((r && r.text) || "").trim();
+  if (!body) throw new Error(t("draft.translateEmpty"));
+  await pushAiUndo(t("draft.undoTranslate"));
+  await commitEditorWrite(() => {
+    const hit = findNodeByBlockKey(ensureBranchDoc(), blockKey);
+    if (hit) {
+      const next = replaceVariantText(
+        ensureBranchDoc(),
+        hit.node.id,
+        hit.variant.id,
+        {
+          ...hit.variant,
+          text: body,
+          chars: [...body].length,
+        }
+      );
+      applyDocAndProject(next);
+      return blockKey;
+    }
+    const blocks = ensureBlockList();
+    const idx = blocks.findIndex((b) => b.key === blockKey);
+    if (idx < 0) return blockKey;
+    const prev = blocks[idx];
+    blocks[idx] = {
+      ...prev,
+      text: body,
+      chars: prev.type === "gen" ? [...body].length : prev.chars,
+      digest: prev.type === "gen" ? "" : prev.digest,
+    };
+    appState.chapterBlocks = blocks;
+    appState.chapterContent = contentFromBlocks(blocks);
+    syncBranchDocFromEditor();
+    return blockKey;
+  }, t("draft.translateSaved"));
+  return { skipped: false };
+}
+
+/**
+ * 依次翻译本章所有正文块（插图跳过）
+ */
+export async function translateOpenChapter(locale) {
+  const keys = (appState.chapterBlocks || [])
+    .filter((b) => b && b.key && !isIllustrationBlock(b) && String(b.text || "").trim())
+    .map((b) => b.key);
+  if (!keys.length) throw new Error(t("draft.needTranslate"));
+  let skipped = 0;
+  let done = 0;
+  for (let i = 0; i < keys.length; i += 1) {
+    appState.statusMessage = t("editor.translateProgress", {
+      current: i + 1,
+      total: keys.length,
+    });
+    const r = await translateBlock(keys[i], locale);
+    if (r && r.skipped) skipped += 1;
+    else done += 1;
+  }
+  appState.statusMessage = t("editor.translateChapterDone", { n: done, skipped });
+  return { done, skipped };
 }
