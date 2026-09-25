@@ -10,13 +10,29 @@ import {
 } from "../utils/characterNameIndex.js";
 
 let loading = null;
+/** @type {{ root: string, revision: number } | null} */
+let lastLoaded = null;
 
 export async function refreshCharacterNameIndex() {
   if (!appState.projectRoot) {
     appState.characterList = [];
     appState.characterNameTerms = [];
     appState.characterById = {};
+    lastLoaded = null;
     return null;
+  }
+  const root = appState.projectRoot;
+  const revision = Number(appState.castRevision) || 0;
+  if (
+    lastLoaded &&
+    lastLoaded.root === root &&
+    lastLoaded.revision === revision
+  ) {
+    return {
+      list: appState.characterList,
+      terms: appState.characterNameTerms,
+      byId: appState.characterById,
+    };
   }
   if (loading) return loading;
   loading = (async () => {
@@ -28,11 +44,13 @@ export async function refreshCharacterNameIndex() {
       appState.characterList = list;
       appState.characterNameTerms = terms;
       appState.characterById = Object.fromEntries(byId);
+      lastLoaded = { root, revision };
       return { list, terms, byId };
     } catch (e) {
       appState.characterList = [];
       appState.characterNameTerms = [];
       appState.characterById = {};
+      lastLoaded = null;
       throw e;
     } finally {
       loading = null;

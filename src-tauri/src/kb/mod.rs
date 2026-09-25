@@ -136,6 +136,7 @@ pub fn ensure_universal() -> AppResult<OpenedKb> {
         trope_summary_at: None,
         trope_summary_fingerprint: None,
         trope_summary_dirty: false,
+        legacy_sections_collapsed: true,
     };
     project::save_project_meta(&root, &project)?;
     fs::write(
@@ -186,6 +187,7 @@ pub fn ensure_character_roster() -> AppResult<OpenedKb> {
         trope_summary_at: None,
         trope_summary_fingerprint: None,
         trope_summary_dirty: false,
+        legacy_sections_collapsed: true,
     };
     project::save_project_meta(&root, &project)?;
     fs::write(

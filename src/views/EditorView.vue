@@ -191,10 +191,25 @@ let restoringProgress = false;
 let preloadBodiesToken = 0;
 /** 写作页补水：避免切作品时旧 load 覆盖新书 */
 let hydrateEditorToken = 0;
+/** 连续阅读可见窗口半径（当前章 ±N） */
+const EDITOR_WINDOW_RADIUS = 2;
+const PRELOAD_CONCURRENCY = 4;
+/** 可见窗口下标（含端） */
+const windowLo = ref(0);
+const windowHi = ref(0);
+/** 切作品 / 清缓存后需强制补水 */
+let editorHydrateDirty = true;
+let lastHydratedRoot = "";
+let lastHydratedChapterKey = "";
 
 function clearEditorCaches() {
   preloadBodiesToken += 1;
   hydrateEditorToken += 1;
+  editorHydrateDirty = true;
+  lastHydratedRoot = "";
+  lastHydratedChapterKey = "";
+  windowLo.value = 0;
+  windowHi.value = 0;
   for (const bag of [
     chapterBodyCache,
     tocByChapter,
@@ -208,6 +223,87 @@ function clearEditorCaches() {
   activeBlockKey.value = "";
 }
 
+function chapterIndexOf(id) {
+  if (!id) return -1;
+  return chapters.value.findIndex((c) => c && c.id === id);
+}
+
+function resetWindowAround(chapterId) {
+  const list = chapters.value;
+  if (!list.length) {
+    windowLo.value = 0;
+    windowHi.value = 0;
+    return;
+  }
+  let idx = chapterIndexOf(chapterId);
+  if (idx < 0) idx = 0;
+  windowLo.value = Math.max(0, idx - EDITOR_WINDOW_RADIUS);
+  windowHi.value = Math.min(list.length - 1, idx + EDITOR_WINDOW_RADIUS);
+}
+
+function ensureChapterInWindow(chapterId) {
+  const idx = chapterIndexOf(chapterId);
+  if (idx < 0) return;
+  if (idx < windowLo.value || idx > windowHi.value) {
+    resetWindowAround(chapterId);
+  }
+}
+
+/**
+ * 向上扩窗时补偿 scrollTop，避免正文跳动
+ * @param {"up"|"down"} direction
+ */
+async function expandWindowToward(direction) {
+  const list = chapters.value;
+  if (!list.length) return false;
+  if (direction === "up" && windowLo.value > 0) {
+    const scroller = getEditorScroller();
+    const anchorId = list[windowLo.value] && list[windowLo.value].id;
+    const beforeTop =
+      (anchorId && findChapterSection(scroller, anchorId)?.offsetTop) || 0;
+    const scrollBefore = (scroller && scroller.scrollTop) || 0;
+    windowLo.value = Math.max(0, windowLo.value - EDITOR_WINDOW_RADIUS);
+    await nextTick();
+    const afterTop =
+      (anchorId && findChapterSection(scroller, anchorId)?.offsetTop) || 0;
+    if (scroller) scroller.scrollTop = scrollBefore + (afterTop - beforeTop);
+    return true;
+  }
+  if (direction === "down" && windowHi.value < list.length - 1) {
+    windowHi.value = Math.min(list.length - 1, windowHi.value + EDITOR_WINDOW_RADIUS);
+    return true;
+  }
+  return false;
+}
+
+async function mapPool(items, limit, fn) {
+  if (!items.length) return [];
+  const ret = new Array(items.length);
+  let cursor = 0;
+  async function worker() {
+    while (cursor < items.length) {
+      const i = cursor++;
+      ret[i] = await fn(items[i], i);
+    }
+  }
+  const n = Math.min(Math.max(1, limit), items.length);
+  await Promise.all(Array.from({ length: n }, () => worker()));
+  return ret;
+}
+
+function needsEditorHydrate() {
+  if (editorHydrateDirty) return true;
+  if (!appState.projectRoot || !appState.chapterId) return false;
+  if (appState.projectRoot !== lastHydratedRoot) return true;
+  const key = chapters.value.map((c) => c.id).join("|");
+  if (key !== lastHydratedChapterKey) return true;
+  if (!appState.chapterBranchDoc) return true;
+  if (!(appState.chapterId in chapterBodyCache) && !appState.chapterBlocks?.length) {
+    return true;
+  }
+  return false;
+}
+
 async function hydrateEditor() {
   if (appState.activeNav !== "editor") return;
   if (!appState.projectRoot || !appState.chapterId) {
@@ -217,6 +313,8 @@ async function hydrateEditor() {
   const token = ++hydrateEditorToken;
   const root = appState.projectRoot;
   const chapterId = appState.chapterId;
+  ensureChapterInWindow(chapterId);
+  resetWindowAround(chapterId);
   const needLoad =
     !appState.chapterBranchDoc ||
     !(Array.isArray(appState.chapterBlocks) && appState.chapterBlocks.length);
@@ -240,7 +338,86 @@ async function hydrateEditor() {
   cacheCurrentChapterBody();
   syncCurrentToc();
   void preloadChapterBodies();
-  void refreshAllTocs();
+  void refreshWindowTocs();
+  lastHydratedRoot = root;
+  lastHydratedChapterKey = chapters.value.map((c) => c.id).join("|");
+  editorHydrateDirty = false;
+}
+
+function cacheCurrentChapterBody() {
+  const id = appState.chapterId;
+  if (!id) return;
+  // 切作品后块尚未读回时不要把空数组当成「本章就是空的」
+  if (
+    !appState.chapterBranchDoc &&
+    (!Array.isArray(appState.chapterBlocks) || !appState.chapterBlocks.length)
+  ) {
+    return;
+  }
+  chapterBodyCache[id] = snapshotBlocks(appState.chapterBlocks);
+}
+
+/**
+ * 预载可见窗口内邻章正文（优先 batch IPC）
+ */
+async function preloadChapterBodies() {
+  if (!appState.projectRoot) return;
+  const token = ++preloadBodiesToken;
+  const list = visibleChapters.value;
+  const missing = [];
+  for (const ch of list) {
+    if (!ch?.id) continue;
+    if (ch.id === appState.chapterId) {
+      if (appState.chapterBranchDoc) {
+        chapterBodyCache[ch.id] = snapshotBlocks(appState.chapterBlocks);
+      }
+      continue;
+    }
+    if (!chapterBodyCache[ch.id]) missing.push(ch);
+  }
+  if (!missing.length) return;
+  try {
+    const rows = await project.peekChaptersBatch(missing.map((c) => c.id));
+    if (token !== preloadBodiesToken) return;
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    for (const ch of missing) {
+      const peek = byId.get(ch.id);
+      if (!peek || peek.error) {
+        chapterBodyCache[ch.id] = [];
+        continue;
+      }
+      chapterBodyCache[ch.id] = snapshotBlocks(peek.blocks || []);
+      if (bodyEmptyByChapter[ch.id] === undefined) {
+        bodyEmptyByChapter[ch.id] =
+          peek.body_empty != null
+            ? !!peek.body_empty
+            : isChapterBodyEmpty(peek.content || "", ch.title || "");
+      }
+      if (peek.doc && !tocByChapter[ch.id]) {
+        branchTocByChapter[ch.id] = branchTocTree(peek.doc);
+        tocByChapter[ch.id] = genBlocksToc(peek.blocks || []);
+      }
+    }
+  } catch {
+    // batch 失败则逐章回退
+    await mapPool(missing, PRELOAD_CONCURRENCY, async (ch) => {
+      if (token !== preloadBodiesToken) return;
+      try {
+        const peek = await project.peekChapterRead(ch.id);
+        if (token !== preloadBodiesToken) return;
+        chapterBodyCache[ch.id] = snapshotBlocks(peek.blocks || []);
+        if (bodyEmptyByChapter[ch.id] === undefined) {
+          bodyEmptyByChapter[ch.id] = isChapterBodyEmpty(
+            peek.content || "",
+            ch.title || ""
+          );
+        }
+      } catch {
+        if (token !== preloadBodiesToken) return;
+        chapterBodyCache[ch.id] = [];
+      }
+    });
+  }
 }
 
 function escapeAttrSelector(value) {
@@ -294,46 +471,6 @@ function snapshotBlocks(blocks) {
   return blocks.map((b) => (b && typeof b === "object" ? { ...b } : b));
 }
 
-function cacheCurrentChapterBody() {
-  const id = appState.chapterId;
-  if (!id) return;
-  // 切作品后块尚未读回时不要把空数组当成「本章就是空的」
-  if (
-    !appState.chapterBranchDoc &&
-    (!Array.isArray(appState.chapterBlocks) || !appState.chapterBlocks.length)
-  ) {
-    return;
-  }
-  chapterBodyCache[id] = snapshotBlocks(appState.chapterBlocks);
-}
-
-/**
- * 预载全书邻章正文，供连续滚动阅读
- */
-async function preloadChapterBodies() {
-  if (!appState.projectRoot) return;
-  const token = ++preloadBodiesToken;
-  const list = chapters.value;
-  for (const ch of list) {
-    if (token !== preloadBodiesToken) return;
-    if (!ch?.id) continue;
-    if (ch.id === appState.chapterId) {
-      if (appState.chapterBranchDoc) {
-        chapterBodyCache[ch.id] = snapshotBlocks(appState.chapterBlocks);
-      }
-      continue;
-    }
-    try {
-      const blocks = await project.peekChapterBlocks(ch.id);
-      if (token !== preloadBodiesToken) return;
-      chapterBodyCache[ch.id] = snapshotBlocks(blocks);
-    } catch {
-      if (token !== preloadBodiesToken) return;
-      chapterBodyCache[ch.id] = [];
-    }
-  }
-}
-
 function scrollChapterSectionToTop(chapterId) {
   const scroller = getEditorScroller();
   const sec = findChapterSection(scroller, chapterId);
@@ -373,6 +510,13 @@ async function patchTypography(partial) {
 }
 
 const chapters = computed(() => (appState.project && appState.project.chapters) || []);
+const visibleChapters = computed(() => {
+  const list = chapters.value;
+  if (!list.length) return [];
+  const lo = Math.max(0, Math.min(windowLo.value, list.length - 1));
+  const hi = Math.max(lo, Math.min(windowHi.value, list.length - 1));
+  return list.slice(lo, hi + 1);
+});
 const wordCount = computed(() => (appState.chapterContent || "").replace(/\s/g, "").length);
 const showEditorDraft = computed(() => trailingDraftJobs().length > 0 || isTrailingEditorDraft());
 const trailingJobs = computed(() => trailingDraftJobs());
@@ -928,21 +1072,27 @@ async function loadTocForChapter(chapterId) {
   if (!chapterId || !appState.projectRoot) return;
   if (chapterId === appState.chapterId) {
     syncCurrentToc();
+    syncCurrentBodyEmpty();
     return;
   }
   if (tocLoading[chapterId]) return;
+  if (tocByChapter[chapterId] && bodyEmptyByChapter[chapterId] !== undefined) return;
   tocLoading[chapterId] = true;
   try {
-    const doc = await project.peekChapterBranchDoc(chapterId);
+    const peek = await project.peekChapterRead(chapterId);
+    const doc = peek.doc;
     if (doc) {
       branchTocByChapter[chapterId] = branchTocTree(doc);
-      tocByChapter[chapterId] = genBlocksToc(activePathBlocks(doc));
+      tocByChapter[chapterId] = genBlocksToc(peek.blocks || activePathBlocks(doc));
     } else {
-      const blocks = await project.peekChapterBlocks(chapterId);
-      tocByChapter[chapterId] = genBlocksToc(blocks);
+      tocByChapter[chapterId] = genBlocksToc(peek.blocks || []);
       branchTocByChapter[chapterId] = [];
     }
-    await refreshBodyEmpty(chapterId);
+    const ch = chapters.value.find((c) => c.id === chapterId);
+    bodyEmptyByChapter[chapterId] = isChapterBodyEmpty(
+      peek.content || "",
+      (ch && ch.title) || ""
+    );
   } catch (e) {
     tocByChapter[chapterId] = [];
     branchTocByChapter[chapterId] = [];
@@ -952,18 +1102,50 @@ async function loadTocForChapter(chapterId) {
   }
 }
 
-async function refreshAllTocs() {
-  const list = chapters.value;
-  await Promise.all(
-    list.map(async (ch) => {
-      if (ch.id === appState.chapterId) {
-        syncCurrentToc();
-        return;
-      }
-      await loadTocForChapter(ch.id);
-      await refreshBodyEmpty(ch.id);
-    })
+/** 仅刷新可见窗口内章节 TOC（不再全书扫；缺 TOC 的走 batch） */
+async function refreshWindowTocs() {
+  const list = visibleChapters.value;
+  if (!list.length) return;
+  syncCurrentToc();
+  syncCurrentBodyEmpty();
+  const need = list.filter(
+    (ch) =>
+      ch?.id &&
+      ch.id !== appState.chapterId &&
+      !(tocByChapter[ch.id] && bodyEmptyByChapter[ch.id] !== undefined)
   );
+  if (!need.length) return;
+  try {
+    const rows = await project.peekChaptersBatch(need.map((c) => c.id));
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    for (const ch of need) {
+      const peek = byId.get(ch.id);
+      if (!peek || peek.error) continue;
+      if (peek.doc) {
+        branchTocByChapter[ch.id] = branchTocTree(peek.doc);
+        tocByChapter[ch.id] = genBlocksToc(peek.blocks || []);
+      } else {
+        tocByChapter[ch.id] = genBlocksToc(peek.blocks || []);
+        branchTocByChapter[ch.id] = [];
+      }
+      bodyEmptyByChapter[ch.id] =
+        peek.body_empty != null
+          ? !!peek.body_empty
+          : isChapterBodyEmpty(peek.content || "", ch.title || "");
+      if (!chapterBodyCache[ch.id]) {
+        chapterBodyCache[ch.id] = snapshotBlocks(peek.blocks || []);
+      }
+    }
+  } catch {
+    await mapPool(need, PRELOAD_CONCURRENCY, async (ch) => {
+      await loadTocForChapter(ch.id);
+    });
+  }
+}
+
+/** @deprecated 兼容旧调用名 */
+async function refreshAllTocs() {
+  return refreshWindowTocs();
 }
 
 async function selectChapter(id, opts = {}) {
@@ -990,8 +1172,11 @@ async function selectChapter(id, opts = {}) {
     await project.loadChapter(id);
     tocFocusChapterId.value = id;
     expanded[id] = true;
+    resetWindowAround(id);
     chapterBodyCache[id] = snapshotBlocks(appState.chapterBlocks);
     syncCurrentToc();
+    void preloadChapterBodies();
+    void refreshWindowTocs();
 
     await nextTick();
     await nextTick();
@@ -1366,7 +1551,36 @@ function onEditorScroll() {
   tocSpyRaf = requestAnimationFrame(() => {
     tocSpyRaf = 0;
     syncActiveBlockFromScroll();
+    void maybeExpandWindowFromScroll();
   });
+}
+
+async function maybeExpandWindowFromScroll() {
+  if (appState.activeNav !== "editor") return;
+  const scroller = getEditorScroller();
+  if (!scroller) return;
+  const list = chapters.value;
+  if (!list.length) return;
+  const nearTop = scroller.scrollTop < 140;
+  const nearBottom =
+    scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 180;
+  let changed = false;
+  if (nearTop) changed = (await expandWindowToward("up")) || changed;
+  if (nearBottom) changed = (await expandWindowToward("down")) || changed;
+  const focusId = tocFocusChapterId.value || appState.chapterId;
+  const idx = chapterIndexOf(focusId);
+  if (idx >= 0) {
+    if (idx <= windowLo.value) {
+      changed = (await expandWindowToward("up")) || changed;
+    }
+    if (idx >= windowHi.value) {
+      changed = (await expandWindowToward("down")) || changed;
+    }
+  }
+  if (changed) {
+    void preloadChapterBodies();
+    void refreshWindowTocs();
+  }
 }
 
 function onEditorScrollIntent() {
@@ -1483,7 +1697,11 @@ watch(
     if (v === "editor") {
       void refreshCharacterNameIndex().catch(() => {});
       void refreshTropeIndex().catch(() => {});
-      void hydrateEditor();
+      if (needsEditorHydrate()) {
+        void hydrateEditor();
+      } else {
+        syncCurrentToc();
+      }
       nextTick(() => syncActiveBlockFromScroll());
     }
   }
@@ -1493,7 +1711,11 @@ onActivated(() => {
   if (appState.activeNav !== "editor") return;
   void refreshCharacterNameIndex().catch(() => {});
   void refreshTropeIndex().catch(() => {});
-  void hydrateEditor();
+  if (needsEditorHydrate()) {
+    void hydrateEditor();
+  } else {
+    syncCurrentToc();
+  }
   nextTick(() => syncActiveBlockFromScroll());
 });
 
@@ -1503,6 +1725,7 @@ watch(
     if (!id) return;
     tocFocusChapterId.value = id;
     expanded[id] = true;
+    ensureChapterInWindow(id);
     cacheCurrentChapterBody();
     syncCurrentToc();
     nextTick(() => syncActiveBlockFromScroll());
@@ -1528,9 +1751,11 @@ watch(
     if (id) {
       expanded[id] = true;
       tocFocusChapterId.value = id;
+      resetWindowAround(id);
       syncCurrentToc();
     }
-    void refreshAllTocs();
+    editorHydrateDirty = true;
+    void refreshWindowTocs();
     void preloadChapterBodies();
   }
 );
@@ -1934,7 +2159,7 @@ watch(
       <div class="editor-wrap">
         <div class="editor-scroll">
           <section
-            v-for="ch in chapters"
+            v-for="ch in visibleChapters"
             :key="ch.id"
             class="continuous-chapter"
             :class="{

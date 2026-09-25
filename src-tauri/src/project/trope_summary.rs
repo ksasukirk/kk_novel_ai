@@ -215,6 +215,7 @@ mod tests {
             trope_summary_at: None,
             trope_summary_fingerprint: None,
             trope_summary_dirty: false,
+            legacy_sections_collapsed: true,
         };
         save_project_meta(root, &project).unwrap();
         ch_id

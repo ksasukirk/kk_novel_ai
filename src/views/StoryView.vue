@@ -564,18 +564,27 @@ function syncFocusDraft(force) {
   loadedSnap.focusChapterId = cid;
 }
 
+let lastActivatedKey = "";
+
 watch(
   () => appState.projectRoot,
   () => {
     resetLoadedSnaps();
+    lastActivatedKey = "";
     void refreshAll();
   }
 );
 watch(() => appState.storyRevision, () => {
-  if (appState.projectRoot) void refreshAll();
+  if (appState.projectRoot) {
+    lastActivatedKey = `${appState.projectRoot || ""}|${Number(appState.storyRevision) || 0}|${Number(appState.castRevision) || 0}`;
+    void refreshAll();
+  }
 });
 watch(() => appState.castRevision, () => {
-  if (appState.projectRoot) void reloadLore();
+  if (appState.projectRoot) {
+    lastActivatedKey = `${appState.projectRoot || ""}|${Number(appState.storyRevision) || 0}|${Number(appState.castRevision) || 0}`;
+    void reloadLore();
+  }
 });
 watch(() => appState.chapterId, () => {
   syncFocusDraft(true);
@@ -588,12 +597,21 @@ watch(
   },
   { deep: true }
 );
+
 onMounted(async () => {
   await refreshAll();
   await loadBeatProgress();
   void refreshTropeIndex().catch(() => {});
+  lastActivatedKey =
+    `${appState.projectRoot || ""}|${Number(appState.storyRevision) || 0}|${Number(appState.castRevision) || 0}`;
 });
 onActivated(() => {
+  const key = `${appState.projectRoot || ""}|${Number(appState.storyRevision) || 0}|${Number(appState.castRevision) || 0}`;
+  if (key === lastActivatedKey) {
+    void refreshTropeIndex().catch(() => {});
+    return;
+  }
+  lastActivatedKey = key;
   if (appState.projectRoot) void reloadLore();
   void refreshTropeIndex().catch(() => {});
 });

@@ -18,9 +18,11 @@ use crate::error::{AppError, AppResult};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+use std::time::SystemTime;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -141,7 +143,65 @@ pub struct NovelProject {
     /// 总结后正文已变，待重扫
     #[serde(default)]
     pub trope_summary_dirty: bool,
+    /// 各章多小节已合并为整章一块；为 true 时打开跳过前端 migrate 全扫
+    #[serde(default)]
+    pub legacy_sections_collapsed: bool,
 }
+
+struct ProjectMetaCacheEntry {
+    mtime: SystemTime,
+    project: NovelProject,
+}
+
+static PROJECT_META_CACHE: Mutex<Option<HashMap<PathBuf, ProjectMetaCacheEntry>>> =
+    Mutex::new(None);
+
+fn project_cache_key(root: &Path) -> PathBuf {
+    root.canonicalize().unwrap_or_else(|_| root.to_path_buf())
+}
+
+fn project_json_mtime(root: &Path) -> Option<SystemTime> {
+    fs::metadata(project_json(root))
+        .and_then(|m| m.modified())
+        .ok()
+}
+
+/// 丢弃指定作品的 project.json 元数据缓存
+#[allow(dead_code)]
+pub fn invalidate_project_cache(root: &Path) {
+    if let Ok(mut guard) = PROJECT_META_CACHE.lock() {
+        if let Some(map) = guard.as_mut() {
+            map.remove(&project_cache_key(root));
+        }
+    }
+}
+
+fn put_project_cache(root: &Path, project: &NovelProject) {
+    let mtime = project_json_mtime(root).unwrap_or(SystemTime::UNIX_EPOCH);
+    if let Ok(mut guard) = PROJECT_META_CACHE.lock() {
+        let map = guard.get_or_insert_with(HashMap::new);
+        map.insert(
+            project_cache_key(root),
+            ProjectMetaCacheEntry {
+                mtime,
+                project: project.clone(),
+            },
+        );
+    }
+}
+
+fn get_cached_project(root: &Path) -> Option<NovelProject> {
+    let mtime = project_json_mtime(root)?;
+    let guard = PROJECT_META_CACHE.lock().ok()?;
+    let map = guard.as_ref()?;
+    let entry = map.get(&project_cache_key(root))?;
+    if entry.mtime == mtime {
+        Some(entry.project.clone())
+    } else {
+        None
+    }
+}
+
 fn default_kind_novel() -> String {
     "novel".into()
 }
@@ -426,6 +486,7 @@ pub fn create_project(root: &Path, title: &str) -> AppResult<OpenedProject> {
         trope_summary_at: None,
         trope_summary_fingerprint: None,
         trope_summary_dirty: false,
+        legacy_sections_collapsed: true,
     };
     save_project_meta(root, &project)?;
     let _ = crate::kb::ensure_character_roster();
@@ -482,6 +543,7 @@ pub fn create_knowledge_base(
         trope_summary_at: None,
         trope_summary_fingerprint: None,
         trope_summary_dirty: false,
+        legacy_sections_collapsed: true,
     };
     save_project_meta(root, &project)?;
     fs::write(
@@ -588,10 +650,20 @@ fn recover_empty_project(root: &Path) -> NovelProject {
         trope_summary_at: None,
         trope_summary_fingerprint: None,
         trope_summary_dirty: false,
+        legacy_sections_collapsed: false,
     }
 }
 
 pub fn open_project(root: &Path) -> AppResult<OpenedProject> {
+    if let Some(project) = get_cached_project(root) {
+        // 热路径：仅确保目录存在，跳过重复 parse
+        let _ = fs::create_dir_all(chapters_dir(root));
+        let _ = fs::create_dir_all(lore_dir(root));
+        return Ok(OpenedProject {
+            root: root.to_path_buf(),
+            project,
+        });
+    }
     let path = project_json(root);
     if !path.exists() {
         return Err(AppError::t_fmt(
@@ -615,6 +687,7 @@ pub fn open_project(root: &Path) -> AppResult<OpenedProject> {
     }
     fs::create_dir_all(chapters_dir(root))?;
     fs::create_dir_all(lore_dir(root))?;
+    put_project_cache(root, &project);
     Ok(OpenedProject {
         root: root.to_path_buf(),
         project,
@@ -704,6 +777,7 @@ pub fn save_project_meta(root: &Path, project: &NovelProject) -> AppResult<()> {
     let mut p = project.clone();
     p.updated_at = now();
     fs::write(project_json(root), serde_json::to_string_pretty(&p)?)?;
+    put_project_cache(root, &p);
     Ok(())
 }
 

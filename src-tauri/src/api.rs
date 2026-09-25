@@ -12,8 +12,31 @@ use crate::writing::{self, WritingRequest};
 use serde_json::{json, Value};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
+
+/// 开发验收：chapter_read / peek_batch 累计次数
+static CHAPTER_READ_COUNT: AtomicU64 = AtomicU64::new(0);
+static CHAPTER_PEEK_BATCH_COUNT: AtomicU64 = AtomicU64::new(0);
+
+fn note_chapter_read() {
+    CHAPTER_READ_COUNT.fetch_add(1, Ordering::Relaxed);
+}
+
+/// 调试用：读章计数（打开多章后应 ≈ 窗口大小，而非全书）
+pub fn chapter_io_debug_stats() -> Value {
+    json!({
+        "ok": true,
+        "chapter_read": CHAPTER_READ_COUNT.load(Ordering::Relaxed),
+        "chapters_peek_batch": CHAPTER_PEEK_BATCH_COUNT.load(Ordering::Relaxed),
+    })
+}
+
+pub fn chapter_io_debug_reset() {
+    CHAPTER_READ_COUNT.store(0, Ordering::Relaxed);
+    CHAPTER_PEEK_BATCH_COUNT.store(0, Ordering::Relaxed);
+}
 
 pub fn settings_get() -> AppResult<Value> {
     let settings = settings::load_settings()?;
@@ -326,7 +349,9 @@ pub fn project_open(root: &str) -> AppResult<Value> {
     let emb_path = Path::new(root).join("embeddings.sqlite");
     if !emb_path.exists() && s.resolve_embedding_model().is_some() {
         let root_owned = root.to_string();
+        // 延迟重建，避免与打开后章节 peek 抢盘
         tauri::async_runtime::spawn(async move {
+            tokio::time::sleep(Duration::from_secs(4)).await;
             let Ok(settings) = settings::load_settings() else {
                 return;
             };
@@ -815,9 +840,60 @@ pub fn project_apply_title(root: &str, title: &str, rename_folder: bool) -> AppR
 }
 
 pub fn chapter_read(root: &str, chapter_id: &str) -> AppResult<Value> {
+    note_chapter_read();
     let (meta, content) = project::read_chapter(Path::new(root), chapter_id)?;
     let blocks = project::read_genblocks(Path::new(root), chapter_id);
     Ok(json!({ "ok": true, "meta": meta, "content": content, "blocks": blocks }))
+}
+
+/// 一次 IPC 批量 peek 多章（窗口预载用）；复用工程缓存，减少往返
+pub fn chapters_peek_batch(root: &str, chapter_ids: &[String]) -> AppResult<Value> {
+    CHAPTER_PEEK_BATCH_COUNT.fetch_add(1, Ordering::Relaxed);
+    // 预热缓存
+    let _ = project::open_project(Path::new(root))?;
+    let mut items: Vec<Value> = Vec::with_capacity(chapter_ids.len());
+    for id in chapter_ids {
+        note_chapter_read();
+        match project::read_chapter(Path::new(root), id) {
+            Ok((meta, content)) => {
+                let blocks = project::read_genblocks(Path::new(root), id);
+                let body_empty = chapter_body_empty_rough(&content, &meta.title);
+                items.push(json!({
+                    "id": id,
+                    "content": content,
+                    "blocks": blocks,
+                    "body_empty": body_empty,
+                    "meta": meta,
+                }));
+            }
+            Err(e) => {
+                items.push(json!({
+                    "id": id,
+                    "error": e.to_string(),
+                    "content": "",
+                    "blocks": Value::Null,
+                    "body_empty": true,
+                }));
+            }
+        }
+    }
+    Ok(json!({ "ok": true, "items": items }))
+}
+
+fn chapter_body_empty_rough(content: &str, title: &str) -> bool {
+    let mut t = content.trim().to_string();
+    if t.is_empty() {
+        return true;
+    }
+    // 粗对齐前端 isChapterBodyEmpty：去标题行后过短则空
+    if let Some(rest) = t.strip_prefix('#') {
+        let line_end = rest.find('\n').unwrap_or(rest.len());
+        let head = rest[..line_end].trim();
+        if head == title || head.is_empty() {
+            t = rest[line_end..].trim().to_string();
+        }
+    }
+    t.chars().filter(|c| !c.is_whitespace()).count() < 8
 }
 
 pub fn chapter_write(
@@ -1469,6 +1545,24 @@ pub async fn dispatch_rpc(req: Value) -> AppResult<Value> {
         }
         "chapter_read" => {
             chapter_read(req_str(&req, "root")?, req_str(&req, "chapter_id")?)
+        }
+        "chapters_peek_batch" => {
+            let root = req_str(&req, "root")?;
+            let ids: Vec<String> = req
+                .get("chapter_ids")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter()
+                        .filter_map(|x| x.as_str().map(|s| s.to_string()))
+                        .collect()
+                })
+                .unwrap_or_default();
+            chapters_peek_batch(root, &ids)
+        }
+        "chapter_io_debug_stats" => Ok(chapter_io_debug_stats()),
+        "chapter_io_debug_reset" => {
+            chapter_io_debug_reset();
+            Ok(json!({ "ok": true }))
         }
         "chapter_write" => {
             let content = req_str(&req, "content")?;

@@ -7,9 +7,10 @@ Kk Novel Ai Tauri 打包脚本（Windows EXE；可选 Android APK）
   2. 构建一次前端（frontend-dist）
   3. 默认只构建 Windows；`--platform android|all` 时委托 build_android.py
      （自动引导 JDK/SDK、init gen/android、签名侧载 APK，对齐 asc_ai）
-  4. release 构建成功后默认用 Cursor Auto 模型按上次 tag 的 diff 重写 README.md，
+  4. release 构建成功后默认尝试用 Cursor Auto 模型按上次 tag 的 diff 重写 README.md，
      再 git add -A 提交全部工作区改动、push，并把 exe/apk 上传到 GitHub Release
-     （`--no-github-release` 跳过整段；`--no-cursor-readme` 只跳过 Cursor；
+     （Agent 未登录 / 无 CURSOR_API_KEY 时跳过 README 重写并继续发版；
+      `--no-github-release` 跳过整段；`--no-cursor-readme` 只跳过 Cursor；
        debug 默认不发版，除非 `--github-release`；
        gh 未登录时构建/git 仍完成，登录后用 `--publish-only` 补传）
 
@@ -316,11 +317,34 @@ def _run_cursor_agent_cli(prompt: str, env: dict[str, str]) -> bool:
     ]
     print(f"[INFO] 调用 Cursor Agent CLI（模型 {CURSOR_MODEL}）重写 README.md …")
     try:
-        r = _run_argv(argv, env, timeout=CURSOR_TIMEOUT_SECS)
+        r = subprocess.run(
+            argv,
+            cwd=str(SCRIPT_DIR),
+            env=env,
+            timeout=CURSOR_TIMEOUT_SECS,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
     except subprocess.TimeoutExpired as e:
         raise RuntimeError(f"Cursor Agent CLI 超时（{CURSOR_TIMEOUT_SECS}s）") from e
+    print("[CMD]", " ".join(argv))
+    out = ((r.stdout or "") + "\n" + (r.stderr or "")).strip()
+    if out:
+        # 只回显尾部，避免刷屏
+        tail = out if len(out) <= 2000 else out[-2000:]
+        sys.stdout.write(tail + ("\n" if not tail.endswith("\n") else ""))
+        sys.stdout.flush()
     if r.returncode != 0:
-        print(f"[WARN] Cursor Agent CLI 退出码 {r.returncode}，尝试其它方式")
+        low = out.lower()
+        if "authentication required" in low or "agent login" in low or "cursor_api_key" in low:
+            print(
+                "[WARN] Cursor Agent 未登录（可执行 agent login，"
+                "或设置 CURSOR_API_KEY；本次将跳过 README 重写）"
+            )
+        else:
+            print(f"[WARN] Cursor Agent CLI 退出码 {r.returncode}，尝试其它方式")
         return False
     return True
 
@@ -356,12 +380,43 @@ def _run_cursor_sdk(prompt: str) -> bool:
 
 def _cursor_missing_hint() -> str:
     return (
-        "未找到 Cursor Agent CLI，也没有可用的 CURSOR_API_KEY。"
-        "请安装 Cursor Agent（PATH 中有 agent），或到 "
-        "https://cursor.com/dashboard/integrations 创建 API key 并设置环境变量 "
-        "CURSOR_API_KEY；可选 pip install cursor-sdk。"
-        "若本次只想打包不重写 README：python build.py --no-cursor-readme"
+        "未找到可用的 Cursor Agent（未登录 / 无 CURSOR_API_KEY）。"
+        "需要自动重写 README 时：执行 agent login，或到 "
+        "https://cursor.com/dashboard/integrations 创建 API key 并设置 CURSOR_API_KEY"
+        "（可选 pip install cursor-sdk）。"
+        "也可显式跳过：python build.py --no-cursor-readme"
     )
+
+
+def _fallback_commit_msg(version: str, paths: dict[str, Path]) -> str:
+    """Cursor 不可用时，用 git log 拼一份发版 commit message。"""
+    log = ""
+    log_path = paths.get("log")
+    if log_path and log_path.exists():
+        log = log_path.read_text(encoding="utf-8").strip()
+    lines = [
+        ln.strip()
+        for ln in log.splitlines()
+        if ln.strip() and ln.strip() != "(无新提交)"
+    ]
+    summary = ""
+    if lines:
+        first = lines[0]
+        parts = first.split(" ", 1)
+        summary = parts[1] if len(parts) > 1 else first
+        summary = re.sub(r"\s+", " ", summary).strip()
+    subject = _normalize_release_subject(
+        f"{_commit_subject_prefix(version)}: {summary}"
+        if summary
+        else _commit_subject_prefix(version),
+        version,
+    )
+    body_lines: list[str] = []
+    if lines:
+        body_lines.append("变更摘要（Cursor README 未运行，由 git log 生成）：")
+        for ln in lines[:20]:
+            body_lines.append(f"- {ln}")
+    return _join_commit_message(subject, "\n".join(body_lines))
 
 
 def _assert_readme_ok(version: str, before_hash: str) -> None:
@@ -479,7 +534,10 @@ def _assert_no_secrets_staged(env: dict[str, str]) -> None:
 
 
 def _run_cursor_release_docs(version: str, env: dict[str, str]) -> Path:
-    """对比往期 diff，调用 Cursor 重写 README.md，返回 commit message 路径。"""
+    """对比往期 diff，调用 Cursor 重写 README.md，返回 commit message 路径。
+
+    Cursor 不可用时不中断发版：写回退 commit message 并返回。
+    """
     before = ""
     if README_PATH.exists():
         before = hashlib.sha256(README_PATH.read_bytes()).hexdigest()
@@ -497,12 +555,11 @@ def _run_cursor_release_docs(version: str, env: dict[str, str]) -> Path:
     if not ok:
         ok = _run_cursor_sdk(prompt)
     if not ok:
-        if cli:
-            raise RuntimeError(
-                "Cursor Agent CLI 未能完成 README 重写。"
-                "可设置 CURSOR_API_KEY 并 pip install cursor-sdk，或加 --no-cursor-readme 跳过。"
-            )
-        raise RuntimeError(_cursor_missing_hint())
+        print(f"[WARN] {_cursor_missing_hint()}")
+        print("[WARN] 已跳过 README 重写，继续 git 提交与 GitHub Release")
+        msg = _fallback_commit_msg(version, paths)
+        paths["commit_msg"].write_text(msg, encoding="utf-8")
+        return paths["commit_msg"]
     _assert_readme_ok(version, before)
     msg = _load_commit_message(paths["commit_msg"], version)
     paths["commit_msg"].write_text(msg, encoding="utf-8")

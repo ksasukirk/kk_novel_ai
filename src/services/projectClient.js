@@ -66,7 +66,11 @@ export async function listNovelsProjects() {
 export async function openProject(root) {
   const r = await invoke("project_open", { root });
   applyProject(r);
-  await migrateLegacyChapterSections(root);
+  const already =
+    r.project && r.project.legacy_sections_collapsed === true;
+  if (!already) {
+    await migrateLegacyChapterSections(root);
+  }
   return r;
 }
 
@@ -132,29 +136,48 @@ export async function migrateLegacyChapterSections(root) {
     const r = await invoke("project_get", { root: projectRoot });
     project = r.project;
   }
+  if (project && project.legacy_sections_collapsed === true) {
+    return { migrated: 0 };
+  }
   const chapters = (project && project.chapters) || [];
   let migrated = 0;
-  for (const ch of chapters) {
-    if (!ch || !ch.id) continue;
-    const cr = await invoke("chapter_read", {
-      root: projectRoot,
-      chapterId: ch.id,
-    });
-    const { doc: next, changed } = collapseChapterSectionsToWholeChapter(
-      branchDocFromChapterPayload(cr)
-    );
-    if (!changed) continue;
-    await invoke("chapter_write", {
-      root: projectRoot,
-      chapterId: ch.id,
-      content: contentFromActivePath(next),
-      blocks: branchDocForPersist(next),
-    });
-    migrated += 1;
-    if (appState.chapterId === ch.id) {
-      applyBranchDoc(next);
-      appState.dirty = false;
+  try {
+    for (const ch of chapters) {
+      if (!ch || !ch.id) continue;
+      const cr = await invoke("chapter_read", {
+        root: projectRoot,
+        chapterId: ch.id,
+      });
+      const { doc: next, changed } = collapseChapterSectionsToWholeChapter(
+        branchDocFromChapterPayload(cr)
+      );
+      if (!changed) continue;
+      await invoke("chapter_write", {
+        root: projectRoot,
+        chapterId: ch.id,
+        content: contentFromActivePath(next),
+        blocks: branchDocForPersist(next),
+      });
+      migrated += 1;
+      if (appState.chapterId === ch.id) {
+        applyBranchDoc(next);
+        appState.dirty = false;
+      }
     }
+    // 无论是否有改写，扫完即标记，避免每次打开全扫
+    const nextMeta = {
+      ...(appState.projectRoot === projectRoot && appState.project
+        ? appState.project
+        : project),
+      legacy_sections_collapsed: true,
+    };
+    await invoke("project_save_meta", { root: projectRoot, project: nextMeta });
+    if (appState.projectRoot === projectRoot) {
+      appState.project = nextMeta;
+    }
+  } catch (e) {
+    // 失败不写 flag，下次打开可重试
+    throw e;
   }
   if (migrated > 0) {
     appState.statusMessage = t("project.mergedSections", { n: migrated });
@@ -247,6 +270,58 @@ export async function peekChapterBranchDoc(chapterId) {
   });
   const { doc } = collapseChapterSectionsToWholeChapter(branchDocFromChapterPayload(r));
   return doc;
+}
+
+/** 只读某章：正文 + 分支文档 + 活动路径块（单次 chapter_read） */
+export async function peekChapterRead(chapterId) {
+  if (!appState.projectRoot || !chapterId) {
+    return { content: "", doc: null, blocks: [] };
+  }
+  const r = await invoke("chapter_read", {
+    root: appState.projectRoot,
+    chapterId,
+  });
+  const { doc } = collapseChapterSectionsToWholeChapter(branchDocFromChapterPayload(r));
+  return {
+    content: typeof r.content === "string" ? r.content : contentFromActivePath(doc),
+    doc,
+    blocks: activePathBlocks(doc),
+  };
+}
+
+/**
+ * 批量 peek 多章（一次 IPC）
+ * @param {string[]} chapterIds
+ * @returns {Promise<Array<{id:string,content:string,doc:any,blocks:any[],body_empty?:boolean}>>}
+ */
+export async function peekChaptersBatch(chapterIds) {
+  const ids = (chapterIds || []).filter(Boolean);
+  if (!appState.projectRoot || !ids.length) return [];
+  const r = await invoke("chapters_peek_batch", {
+    root: appState.projectRoot,
+    chapterIds: ids,
+  });
+  return ((r && r.items) || []).map((row) => {
+    const { doc } = collapseChapterSectionsToWholeChapter(branchDocFromChapterPayload(row));
+    return {
+      id: row.id,
+      content:
+        typeof row.content === "string" ? row.content : contentFromActivePath(doc),
+      doc,
+      blocks: activePathBlocks(doc),
+      body_empty: row.body_empty,
+      error: row.error,
+    };
+  });
+}
+
+/** 开发验收：读章 IO 计数 */
+export async function chapterIoDebugStats() {
+  return await invoke("chapter_io_debug_stats");
+}
+
+export async function chapterIoDebugReset() {
+  return await invoke("chapter_io_debug_reset");
 }
 
 export async function saveChapter() {

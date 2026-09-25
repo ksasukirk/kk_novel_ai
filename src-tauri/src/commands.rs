@@ -249,6 +249,22 @@ pub fn chapter_read(root: String, chapter_id: String) -> Result<Value, String> {
 }
 
 #[tauri::command]
+pub fn chapters_peek_batch(root: String, chapter_ids: Vec<String>) -> Result<Value, String> {
+    api::chapters_peek_batch(&root, &chapter_ids).map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn chapter_io_debug_stats() -> Value {
+    api::chapter_io_debug_stats()
+}
+
+#[tauri::command]
+pub fn chapter_io_debug_reset() -> Value {
+    api::chapter_io_debug_reset();
+    json!({ "ok": true })
+}
+
+#[tauri::command]
 pub fn chapter_write(
     root: String,
     chapter_id: String,

@@ -8,6 +8,8 @@ import { isTropeKind } from "../utils/tropeKinds.js";
 import { compareLocale } from "../i18n/index.js";
 
 let loading = null;
+/** @type {{ root: string, revision: number } | null} */
+let lastLoaded = null;
 
 function normalizeTitle(s) {
   return String(s || "")
@@ -46,6 +48,16 @@ export function coalesceTropes(scoped) {
 }
 
 export async function refreshTropeIndex() {
+  const root = appState.projectRoot || "";
+  const revision = Number(appState.tropeRevision) || 0;
+  if (
+    lastLoaded &&
+    lastLoaded.root === root &&
+    lastLoaded.revision === revision &&
+    Array.isArray(appState.tropeList)
+  ) {
+    return appState.tropeList;
+  }
   if (loading) return loading;
   loading = (async () => {
     try {
@@ -56,14 +68,17 @@ export async function refreshTropeIndex() {
           local: [],
           global: (r.items || []).map((entry) => ({ entry, root: ens.root })),
         });
+        lastLoaded = { root: "", revision };
         return appState.tropeList;
       }
       await project.ensureCharactersLink();
       const r = await project.listLoreScoped();
       appState.tropeList = coalesceTropes(r || {});
+      lastLoaded = { root, revision };
       return appState.tropeList;
     } catch (e) {
       appState.tropeList = [];
+      lastLoaded = null;
       throw e;
     } finally {
       loading = null;

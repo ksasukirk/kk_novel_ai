@@ -213,6 +213,7 @@ async function loadStoryLite() {
 watch(() => appState.projectRoot, () => {
   for (const k of Object.keys(chapterDraftSynced)) delete chapterDraftSynced[k];
   for (const k of Object.keys(volumeDraftSynced)) delete volumeDraftSynced[k];
+  outlineActivatedKey = "";
   void loadStoryLite();
 });
 watch(() => appState.storyRevision, () => {
@@ -221,9 +222,18 @@ watch(() => appState.storyRevision, () => {
 watch(() => appState.castRevision, () => {
   if (appState.projectRoot) void loadStoryLite();
 });
-onMounted(loadStoryLite);
+
+let outlineActivatedKey = "";
+
+onMounted(async () => {
+  await loadStoryLite();
+  outlineActivatedKey = `${appState.projectRoot || ""}|${Number(appState.storyRevision) || 0}|${Number(appState.castRevision) || 0}`;
+});
 onActivated(() => {
-  if (appState.projectRoot) void loadStoryLite();
+  const key = `${appState.projectRoot || ""}|${Number(appState.storyRevision) || 0}|${Number(appState.castRevision) || 0}`;
+  if (!appState.projectRoot || key === outlineActivatedKey) return;
+  outlineActivatedKey = key;
+  void loadStoryLite();
 });
 
 async function saveOne(id) {

@@ -287,11 +287,11 @@ async function onCreateConfirm() {
   creating.value = true;
   try {
     await project.createProjectInNovels(title.value.trim() || t("project.untitled"));
-    await refreshSettings();
-    await refreshStats();
     showCreate.value = false;
     appState.activeNav = "editor";
     if (appState.chapterId) await project.loadChapter(appState.chapterId);
+    void refreshSettings();
+    void refreshStats();
   } catch (e) {
     error.value = String(e.message || e);
   } finally {
@@ -306,11 +306,11 @@ async function onCreateInPickedDir() {
   try {
     const picked = await project.pickDirectory();
     await project.createProject(picked.path, title.value.trim() || t("project.untitled"));
-    await refreshSettings();
-    await refreshStats();
     showCreate.value = false;
     appState.activeNav = "editor";
     if (appState.chapterId) await project.loadChapter(appState.chapterId);
+    void refreshSettings();
+    void refreshStats();
   } catch (e) {
     error.value = String(e.message || e);
   } finally {
@@ -634,10 +634,10 @@ async function openByPath(path, opts = {}) {
       appState.statusMessage = t("project.switchedToKb");
       return;
     }
-    await refreshSettings();
-    await refreshStats();
     appState.activeNav = "editor";
     if (appState.chapterId) await project.loadChapter(appState.chapterId);
+    void refreshSettings();
+    void refreshStats();
   } catch (e) {
     error.value = String(e.message || e);
     if (goEditorNow) appState.activeNav = prevNav;
@@ -980,10 +980,10 @@ async function onImportBackupFile(ev) {
   try {
     const b64 = await project.fileToBase64(file);
     const r = await project.importProjectBackupBase64(b64, null);
-    await refreshSettings();
-    await refreshStats();
     appState.activeNav = "editor";
     if (appState.chapterId) await project.loadChapter(appState.chapterId);
+    void refreshSettings();
+    void refreshStats();
     appState.statusMessage = t("project.importedBackup", {
       title: (r.project && r.project.title) || t("nav.project"),
     });
