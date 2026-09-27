@@ -11,6 +11,7 @@ import { pushAiUndo, undoLastAi } from "../services/aiUndo.js";
 import { refreshCharacterNameIndex } from "../services/characterIndex.js";
 import { refreshTropeIndex } from "../services/tropeIndex.js";
 import AiPanel from "../components/AiPanel.vue";
+import CapsuleSwitch from "../components/CapsuleSwitch.vue";
 import ChapterBlockEditor from "../components/ChapterBlockEditor.vue";
 import ContinuousChapterRead from "../components/ContinuousChapterRead.vue";
 import EditorDraftPreview from "../components/EditorDraftPreview.vue";
@@ -52,9 +53,11 @@ import {
   aiPanelLayoutButtonLabel,
   cycleAiPanelLayout,
   readAiPanelLayout,
+  readEditorReadingPrefs,
   readEditorTocVisible,
   readEditorTropePickerVisible,
   saveAiPanelLayout,
+  saveEditorReadingPrefs,
   saveEditorTocVisible,
   saveEditorTropePickerVisible,
 } from "../utils/layoutPrefs.js";
@@ -73,6 +76,7 @@ import { invoke } from "../services/tauri.js";
 import { appConfirm } from "../services/confirmDialog.js";
 import { updateChapterMeta } from "../services/projectClient.js";
 import { runChapterAiSummary, isChapterSummaryBusy } from "../services/chapterSummary.js";
+import { tropesScanConfirmText } from "../utils/usageEstimate.js";
 import { aiPanelForm } from "../stores/aiPanelState.js";
 import { useToastError } from "../services/toast.js";
 
@@ -87,6 +91,27 @@ const chapterTranslateLocale = ref(
 );
 const translatingChapter = ref(false);
 const summarizingChapter = ref(false);
+const initialReadingPrefs = readEditorReadingPrefs(appState.projectRoot || "");
+const readingLocale = ref(initialReadingPrefs.readingLocale || "");
+const bilingualView = ref(!!initialReadingPrefs.bilingualView);
+
+function persistReadingPrefs() {
+  saveEditorReadingPrefs(appState.projectRoot || "", {
+    readingLocale: readingLocale.value || "",
+    bilingualView: !!bilingualView.value,
+  });
+}
+
+watch(
+  () => appState.projectRoot,
+  (root) => {
+    const p = readEditorReadingPrefs(root || "");
+    readingLocale.value = p.readingLocale || "";
+    bilingualView.value = !!p.bilingualView;
+  }
+);
+watch(readingLocale, persistReadingPrefs);
+watch(bilingualView, persistReadingPrefs);
 const tocVisible = ref(readEditorTocVisible());
 const tropesDrawerOpen = ref(false);
 const tropesVisible = ref(readEditorTropePickerVisible());
@@ -1382,26 +1407,35 @@ async function onTranslateChapter() {
 
 async function onSummarizeChapter() {
   error.value = "";
-  if (!appState.chapterId || summarizingChapter.value || isChapterSummaryBusy()) return;
-  const body = String(appState.chapterContent || "").trim();
-  if (body.length < 40) {
-    error.value = t("editor.summaryNeedBody");
-    return;
+  if (!appState.projectRoot || summarizingChapter.value || isChapterSummaryBusy()) return;
+  // 与作品页「重新总结」同一确认与链路（情节扫描 + 重建章纲）
+  let msg = t("project.tropeSummaryAgainConfirm");
+  try {
+    const n = Math.max(1, chapters.value.length || 1);
+    const one = String(appState.chapterContent || "").replace(/\s/g, "").length;
+    const chars = Math.max(one, one * n);
+    const priced = tropesScanConfirmText({
+      settings: appState.settings,
+      books: [{ chars }],
+      n: 1,
+      variant: "again",
+    });
+    if (priced) msg = priced;
+  } catch {
+    /* 约算失败仍用模糊句 */
   }
+  const ok = await appConfirm(msg, {
+    title: t("editor.summaryChapter"),
+    confirmText: t("common.start"),
+    cancelText: t("common.cancel"),
+  });
+  if (!ok) return;
   summarizingChapter.value = true;
   try {
-    await runChapterAiSummary({
-      chapterId: appState.chapterId,
-      overwriteConfirm: async () => {
-        const ch = chapters.value.find((c) => c.id === appState.chapterId);
-        if (!String((ch && ch.summary) || "").trim()) return true;
-        return appConfirm(t("editor.summaryOverwriteQ"), {
-          title: t("editor.summaryChapter"),
-          confirmText: t("common.start"),
-          cancelText: t("common.cancel"),
-        });
-      },
-    });
+    const r = await runChapterAiSummary({ root: appState.projectRoot });
+    if (r && !r.cancelled && Number(r.scanned || 0) === 0 && Number(r.rebuilt || 0) === 0) {
+      error.value = t("project.tropeSummaryEmpty");
+    }
   } catch (e) {
     error.value = String(e.message || e);
   } finally {
@@ -2138,6 +2172,22 @@ watch(
           class="muted tip"
         >{{ $t("editor.reading") }}</span>
         <span class="muted">{{ $t("editor.chars", { n: wordCount }) }}{{ appState.dirty ? $t("editor.unsaved") : "" }}</span>
+        <label class="typo-ctrl muted" :title="$t('editor.readingLocaleHint')">
+          {{ $t("editor.readingLocale") }}
+          <select
+            v-model="readingLocale"
+            class="typo-select"
+          >
+            <option value="">{{ $t("editor.readingLocaleSource") }}</option>
+            <option v-for="loc in UI_LOCALES" :key="loc.id" :value="loc.id">{{ loc.native }}</option>
+          </select>
+        </label>
+        <span class="typo-ctrl reading-bilingual-switch">
+          <CapsuleSwitch
+            v-model="bilingualView"
+            :label="$t('editor.bilingualView')"
+          />
+        </span>
         <label class="typo-ctrl muted" :title="$t('editor.translateChapterHint')">
           {{ $t("editor.translateTo") }}
           <select
@@ -2164,13 +2214,16 @@ watch(
             summarizingChapter ||
             translatingChapter ||
             appState.generating ||
-            !appState.chapterId
+            isChapterSummaryBusy() ||
+            !appState.projectRoot
           "
           :title="$t('editor.summaryChapterHint')"
           @click="onSummarizeChapter"
         >
           {{
-            summarizingChapter ? $t("editor.summarizingChapter") : $t("editor.summaryChapter")
+            summarizingChapter || isChapterSummaryBusy()
+              ? $t("editor.summarizingChapter")
+              : $t("editor.summaryChapter")
           }}
         </button>
         <label class="typo-ctrl muted">
@@ -2223,6 +2276,9 @@ watch(
               :ghost-text="ghostActive ? ghostText : ''"
               :ghost-block-index="ghostBlockIndex"
               :ghost-offset="ghostOffset"
+              :reading-locale="readingLocale"
+              :bilingual-view="bilingualView"
+              :translate-locale="chapterTranslateLocale"
               @caret="onCaret"
             />
             <ContinuousChapterRead
@@ -2230,6 +2286,8 @@ watch(
               :chapter-id="ch.id"
               :title="ch.title"
               :blocks="chapterBodyCache[ch.id] || []"
+              :reading-locale="readingLocale"
+              :bilingual-view="bilingualView"
               @activate="onActivateNeighborChapter"
             />
             <template v-if="ch.id === appState.chapterId && trailingJobs.length">
@@ -2871,6 +2929,24 @@ watch(
   gap: 6px;
   font-size: 11px;
   margin-left: 8px;
+}
+.reading-bilingual-switch :deep(.capsule-switch) {
+  font-size: 11px;
+  font-weight: 500;
+  gap: 6px;
+}
+.reading-bilingual-switch :deep(.capsule-switch-track) {
+  width: 36px;
+  height: 20px;
+}
+.reading-bilingual-switch :deep(.capsule-switch-track::after) {
+  width: 14px;
+  height: 14px;
+  top: 3px;
+  left: 3px;
+}
+.reading-bilingual-switch :deep(.capsule-switch-input:checked + .capsule-switch-track::after) {
+  transform: translateX(16px);
 }
 .typo-select {
   width: auto;

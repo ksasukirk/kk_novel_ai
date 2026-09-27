@@ -3,6 +3,7 @@
  * 代码路径: kk_novel_ai/src/utils/genBlock.js
  */
 import { t } from "../i18n/index.js";
+import { attachLocalesFields, normalizeLocalesMap } from "./blockLocales.js";
 
 let _keySeq = 0;
 
@@ -18,18 +19,23 @@ export function cryptoRandomId() {
   return `g-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-/** @param {string} [text] */
-export function createPlainBlock(text = "") {
-  return { key: nextKey(), type: "plain", text: String(text ?? "") };
+/**
+ * @param {string} [text]
+ * @param {Partial<{key:string,sourceLocale:string,locales:Record<string,string>}>} [extra]
+ */
+export function createPlainBlock(text = "", extra = {}) {
+  const block = { key: extra.key || nextKey(), type: "plain", text: String(text ?? "") };
+  attachLocalesFields(block, extra);
+  return block;
 }
 
 /**
- * @param {Partial<{id:string,ts:string,task:string,model:string,chars:number,tokens:number,cost:number,usageSource:string,instruction:string,sources:Array}>} meta
+ * @param {Partial<{id:string,ts:string,task:string,model:string,chars:number,tokens:number,cost:number,usageSource:string,instruction:string,sources:Array,digest:string,sourceLocale:string,locales:Record<string,string>}>} meta
  * @param {string} text
  */
 export function createGenBlock(meta = {}, text = "") {
   const body = String(text ?? "");
-  return {
+  const block = {
     key: nextKey(),
     type: "gen",
     id: meta.id || cryptoRandomId(),
@@ -47,6 +53,8 @@ export function createGenBlock(meta = {}, text = "") {
     digest: meta.digest ? String(meta.digest) : "",
     text: body,
   };
+  attachLocalesFields(block, meta);
+  return block;
 }
 
 export function isIllustrationType(type) {
@@ -109,7 +117,11 @@ export function inlineEntryToBlock(p) {
   if (isIllustrationType(p?.type)) {
     return createIllustrationBlock({ ...p, key: p.key });
   }
-  return { key: p?.key || nextKey(), type: "plain", text: String(p?.text ?? "") };
+  return createPlainBlock(p?.text ?? "", {
+    key: p?.key || nextKey(),
+    sourceLocale: p?.sourceLocale,
+    locales: p?.locales,
+  });
 }
 
 /** @param {unknown} raw */
@@ -150,6 +162,8 @@ export function normalizeBlocks(rawList) {
           instruction: b.instruction || "",
           sources: b.sources,
           digest: b.digest || "",
+          sourceLocale: b.sourceLocale,
+          locales: b.locales,
         },
         b.text || ""
       );
@@ -159,9 +173,11 @@ export function normalizeBlocks(rawList) {
     if (isIllustrationType(b.type)) {
       return createIllustrationBlock({ ...b, key: b.key });
     }
-    const plain = createPlainBlock(b.text || "");
-    if (b.key) plain.key = b.key;
-    return plain;
+    return createPlainBlock(b.text || "", {
+      key: b.key,
+      sourceLocale: b.sourceLocale,
+      locales: normalizeLocalesMap(b.locales),
+    });
   });
 }
 

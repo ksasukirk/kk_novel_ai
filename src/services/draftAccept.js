@@ -16,6 +16,10 @@ import {
   isIllustrationBlock,
 } from "../utils/genBlock.js";
 import {
+  ensureSourceLocale,
+  setBlockLocaleText,
+} from "../utils/blockLocales.js";
+import {
   addVariant,
   appendOnActivePath,
   branchContextText,
@@ -25,6 +29,7 @@ import {
   migrateBlocksToBranchDoc,
   previousSectionDigest,
   replaceVariantText,
+  setVariantLocaleText,
   switchVariant,
   variantFromGenBlock,
 } from "../utils/branchModel.js";
@@ -41,7 +46,7 @@ import {
   trailingVisibleJobs,
   visibleGenJobs,
 } from "../stores/genJobs.js";
-import { t, tLocale } from "../i18n/index.js";
+import { normalizeLocale, t, tLocale } from "../i18n/index.js";
 
 function writingT(key, values) {
   return tLocale(appState.settings?.writing_locale || "zh-CN", key, values);
@@ -1090,11 +1095,12 @@ export function switchBlockVariant(nodeId, variantId) {
 }
 
 /**
- * 把一块正文译成目标语并写回（长文后端自动切块）
+ * 把一块正文译成目标语，写入 locales（不覆盖源语言 text）
  * @param {string} blockKey
  * @param {string} locale zh-CN | en | ja
+ * @param {{ force?: boolean }} [opts] force=true 时忽略已有译文缓存
  */
-export async function translateBlock(blockKey, locale) {
+export async function translateBlock(blockKey, locale, opts = {}) {
   if (!blockKey || !appState.projectRoot || !appState.chapterId) {
     throw new Error(t("draft.needTranslate"));
   }
@@ -1104,17 +1110,32 @@ export async function translateBlock(blockKey, locale) {
   }
   const src = String(block.text || "").trim();
   if (!src) throw new Error(t("draft.translateEmpty"));
+  const target = normalizeLocale(locale);
+  const writingLocale = normalizeLocale(
+    appState.settings?.writing_locale || "zh-CN"
+  );
+  const sourceLocale = block.sourceLocale
+    ? normalizeLocale(block.sourceLocale)
+    : writingLocale;
+  if (target === sourceLocale) {
+    appState.statusMessage = t("editor.translateSameLocale");
+    return { skipped: true, reason: "same" };
+  }
+  if (!opts.force && String(block.locales?.[target] || "").trim()) {
+    appState.statusMessage = t("editor.translateCached");
+    return { skipped: true, reason: "cached" };
+  }
   if (appState.dirty) await saveChapter();
   appState.statusMessage = t("editor.translating");
   const r = await invoke("chapter_translate", {
     root: appState.projectRoot,
     chapterId: appState.chapterId,
-    locale: locale || "",
+    locale: target,
     selection: src,
   });
   if (r && r.skipped) {
     appState.statusMessage = t("editor.translateSkipped");
-    return { skipped: true };
+    return { skipped: true, reason: "backend" };
   }
   const body = String((r && r.text) || "").trim();
   if (!body) throw new Error(t("draft.translateEmpty"));
@@ -1122,15 +1143,13 @@ export async function translateBlock(blockKey, locale) {
   await commitEditorWrite(() => {
     const hit = findNodeByBlockKey(ensureBranchDoc(), blockKey);
     if (hit) {
-      const next = replaceVariantText(
+      const next = setVariantLocaleText(
         ensureBranchDoc(),
         hit.node.id,
         hit.variant.id,
-        {
-          ...hit.variant,
-          text: body,
-          chars: [...body].length,
-        }
+        target,
+        body,
+        writingLocale
       );
       applyDocAndProject(next);
       return blockKey;
@@ -1138,13 +1157,10 @@ export async function translateBlock(blockKey, locale) {
     const blocks = ensureBlockList();
     const idx = blocks.findIndex((b) => b.key === blockKey);
     if (idx < 0) return blockKey;
-    const prev = blocks[idx];
-    blocks[idx] = {
-      ...prev,
-      text: body,
-      chars: prev.type === "gen" ? [...body].length : prev.chars,
-      digest: prev.type === "gen" ? "" : prev.digest,
-    };
+    const prev = { ...blocks[idx] };
+    ensureSourceLocale(prev, writingLocale);
+    setBlockLocaleText(prev, target, body);
+    blocks[idx] = prev;
     appState.chapterBlocks = blocks;
     appState.chapterContent = contentFromBlocks(blocks);
     syncBranchDocFromEditor();
@@ -1154,7 +1170,7 @@ export async function translateBlock(blockKey, locale) {
 }
 
 /**
- * 依次翻译本章所有正文块（插图跳过）
+ * 依次为本块生成译文并写入 locales（插图跳过）
  */
 export async function translateOpenChapter(locale) {
   const keys = (appState.chapterBlocks || [])

@@ -14,6 +14,12 @@ import {
   illustrationToInlineEntry,
   inlineEntryToBlock,
 } from "./genBlock.js";
+import {
+  attachLocalesFields,
+  ensureSourceLocale,
+  normalizeLocalesMap,
+  setBlockLocaleText,
+} from "./blockLocales.js";
 import { t, tLocale } from "../i18n/index.js";
 
 const VARIANT_LOCALES = ["zh-CN", "en", "ja"];
@@ -85,11 +91,13 @@ export function migrateBlocksToBranchDoc(raw) {
       continue;
     }
     if (!b || b.type !== "gen") {
-      pendingPlains.push({
+      const plain = {
         key: b?.key || nextPlainKey(),
         type: "plain",
         text: String(b?.text ?? ""),
-      });
+      };
+      attachLocalesFields(plain, b);
+      pendingPlains.push(plain);
       continue;
     }
     flushPlainsToPrev();
@@ -161,11 +169,13 @@ function normalizeInlineEntry(p) {
   if (isIllustrationType(p?.type)) {
     return illustrationToInlineEntry({ ...p, key: p?.key || nextPlainKey() });
   }
-  return {
+  const entry = {
     key: String(p?.key || nextPlainKey()),
     type: "plain",
     text: String(p?.text ?? ""),
   };
+  attachLocalesFields(entry, p);
+  return entry;
 }
 
 function applyInlineFromBlock(p, b) {
@@ -181,6 +191,8 @@ function applyInlineFromBlock(p, b) {
   if (!p.type || p.type === "plain") {
     p.type = "plain";
     p.text = String(b.text ?? "");
+    if (b.sourceLocale) p.sourceLocale = b.sourceLocale;
+    p.locales = normalizeLocalesMap(b.locales);
   }
 }
 
@@ -188,11 +200,15 @@ function persistInlineEntry(p) {
   if (isIllustrationType(p?.type)) {
     return illustrationToInlineEntry(p);
   }
-  return {
+  const entry = {
     key: p.key,
     type: "plain",
     text: String(p.text ?? ""),
   };
+  if (p.sourceLocale) entry.sourceLocale = p.sourceLocale;
+  const locales = normalizeLocalesMap(p.locales);
+  if (Object.keys(locales).length) entry.locales = locales;
+  return entry;
 }
 
 function normalizeVariant(v, index = 0) {
@@ -200,7 +216,7 @@ function normalizeVariant(v, index = 0) {
   const text = String(v.text ?? "");
   const meta = v.meta && typeof v.meta === "object" ? v.meta : {};
   const rawLabel = v.label != null ? String(v.label).trim() : "";
-  return {
+  const out = {
     id: String(v.id || cryptoRandomId()),
     key: String(v.key || nextPlainKey()),
     label: rawLabel || variantLabelN(index + 1),
@@ -219,6 +235,8 @@ function normalizeVariant(v, index = 0) {
       sources: normalizeSources(meta.sources || v.sources),
     },
   };
+  attachLocalesFields(out, v);
+  return out;
 }
 
 /**
@@ -290,6 +308,8 @@ export function variantFromGenBlock(block, opts = {}) {
       instruction: block?.instruction || "",
       task: block?.task || "",
       digest: block?.digest || "",
+      sourceLocale: block?.sourceLocale,
+      locales: block?.locales,
       meta: {
         id: block?.id,
         ts: block?.ts,
@@ -320,6 +340,8 @@ function genBlockFromVariant(variant, nodeId) {
       instruction: variant.instruction,
       sources: m.sources,
       digest: variant.digest,
+      sourceLocale: variant.sourceLocale,
+      locales: variant.locales,
     },
     variant.text
   );
@@ -414,6 +436,8 @@ export function syncDocFromBlocks(doc, blocks) {
       v.digest = String(b.digest ?? "");
       v.instruction = String(b.instruction ?? v.instruction);
       v.task = String(b.task ?? v.task);
+      if (b.sourceLocale) v.sourceLocale = b.sourceLocale;
+      v.locales = normalizeLocalesMap(b.locales);
       if (!v.meta) v.meta = {};
       v.meta.chars = [...v.text].length;
       if (b.sources) v.meta.sources = normalizeSources(b.sources);
@@ -547,11 +571,43 @@ export function replaceVariantText(doc, nodeId, variantId, genLike) {
       ...genLike,
       key: prev.key,
       digest: genLike.digest != null ? genLike.digest : "",
+      sourceLocale:
+        genLike.sourceLocale != null ? genLike.sourceLocale : prev.sourceLocale,
+      locales: genLike.locales != null ? genLike.locales : prev.locales,
     },
     { id: prev.id, label: prev.label, key: prev.key }
   );
   node.variants[idx] = next;
   node.activeVariantId = next.id;
+  return d;
+}
+
+/**
+ * 只写入变体译文 locales，不改源语言 text
+ * @param {object} doc
+ * @param {string} nodeId
+ * @param {string} variantId
+ * @param {string} locale
+ * @param {string} text
+ * @param {string} [sourceLocaleFallback]
+ */
+export function setVariantLocaleText(
+  doc,
+  nodeId,
+  variantId,
+  locale,
+  text,
+  sourceLocaleFallback = "zh-CN"
+) {
+  const d = normalizeBranchDoc(doc);
+  const node = d.nodes.find((n) => n.id === nodeId);
+  if (!node) return d;
+  const idx = node.variants.findIndex((v) => v.id === variantId);
+  if (idx < 0) return d;
+  const v = { ...node.variants[idx] };
+  ensureSourceLocale(v, sourceLocaleFallback);
+  setBlockLocaleText(v, locale, text);
+  node.variants[idx] = v;
   return d;
 }
 
@@ -851,25 +907,31 @@ export function branchDocForPersist(doc) {
       fromVariantId: n.fromVariantId,
       activeVariantId: n.activeVariantId,
       trailingPlains: (n.trailingPlains || []).map((p) => persistInlineEntry(p)),
-      variants: n.variants.map((v) => ({
-        id: v.id,
-        key: v.key,
-        label: v.label,
-        text: v.text,
-        instruction: v.instruction,
-        task: v.task,
-        digest: v.digest,
-        meta: {
-          id: v.meta?.id || "",
-          ts: v.meta?.ts || "",
-          model: v.meta?.model || "",
-          chars: v.meta?.chars,
-          tokens: v.meta?.tokens,
-          cost: v.meta?.cost,
-          usageSource: v.meta?.usageSource || "",
-          sources: normalizeSources(v.meta?.sources),
-        },
-      })),
+      variants: n.variants.map((v) => {
+        const locales = normalizeLocalesMap(v.locales);
+        const entry = {
+          id: v.id,
+          key: v.key,
+          label: v.label,
+          text: v.text,
+          instruction: v.instruction,
+          task: v.task,
+          digest: v.digest,
+          meta: {
+            id: v.meta?.id || "",
+            ts: v.meta?.ts || "",
+            model: v.meta?.model || "",
+            chars: v.meta?.chars,
+            tokens: v.meta?.tokens,
+            cost: v.meta?.cost,
+            usageSource: v.meta?.usageSource || "",
+            sources: normalizeSources(v.meta?.sources),
+          },
+        };
+        if (v.sourceLocale) entry.sourceLocale = v.sourceLocale;
+        if (Object.keys(locales).length) entry.locales = locales;
+        return entry;
+      }),
     })),
   };
 }

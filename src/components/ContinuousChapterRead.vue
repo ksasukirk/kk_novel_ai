@@ -4,17 +4,61 @@
 -->
 <script setup>
 import { computed } from "vue";
-import { t } from "../i18n/index.js";
+import { t, normalizeLocale } from "../i18n/index.js";
+import { appState } from "../stores/appState.js";
+import {
+  getBlockLocaleText,
+  isReadingTranslation,
+} from "../utils/blockLocales.js";
+import { isIllustrationBlock } from "../utils/genBlock.js";
 
 const props = defineProps({
   chapterId: { type: String, required: true },
   title: { type: String, default: "" },
   blocks: { type: Array, default: () => [] },
+  readingLocale: { type: String, default: "" },
+  bilingualView: { type: Boolean, default: false },
 });
 
 const emit = defineEmits(["activate"]);
 
 const list = computed(() => (Array.isArray(props.blocks) ? props.blocks : []));
+
+const writingLocale = computed(() =>
+  normalizeLocale(appState.settings?.writing_locale || "zh-CN")
+);
+
+function blockSourceLocale(block) {
+  const s = String(block?.sourceLocale || "").trim();
+  return s ? normalizeLocale(s) : writingLocale.value;
+}
+
+function blockIsReadingTranslation(block) {
+  return isReadingTranslation(block, props.readingLocale, writingLocale.value);
+}
+
+function translationText(block) {
+  const loc = String(props.readingLocale || "").trim();
+  if (!loc) return "";
+  return getBlockLocaleText(
+    { ...block, sourceLocale: blockSourceLocale(block) },
+    loc
+  );
+}
+
+function primaryText(block) {
+  if (!props.bilingualView && blockIsReadingTranslation(block)) {
+    const tr = translationText(block);
+    return String(tr || "").trim() ? tr : "";
+  }
+  return block.text || "";
+}
+
+function showTranslationPane(block) {
+  if (isIllustrationBlock(block)) return false;
+  if (!props.bilingualView) return false;
+  return blockIsReadingTranslation(block);
+}
 
 function blockLabel(block, index) {
   if (!block || block.type !== "gen") return "";
@@ -50,7 +94,21 @@ function onActivate() {
       >
         <span class="block-sum-label">{{ blockLabel(block, index) }}</span>
       </div>
-      <div class="continuous-read-text">{{ block.text || "" }}</div>
+      <div class="continuous-read-text">
+        <template v-if="primaryText(block)">{{ primaryText(block) }}</template>
+        <span
+          v-else-if="!bilingualView && blockIsReadingTranslation(block)"
+          class="muted"
+        >{{ $t("editor.translationMissing") }}</span>
+      </div>
+      <div v-if="showTranslationPane(block)" class="continuous-translation">
+        <div class="continuous-translation-label muted">{{ $t("editor.translationLabel") }}</div>
+        <div
+          v-if="String(translationText(block) || '').trim()"
+          class="continuous-translation-body"
+        >{{ translationText(block) }}</div>
+        <p v-else class="muted continuous-translation-empty">{{ $t("editor.translationMissing") }}</p>
+      </div>
     </div>
     <p v-if="!list.length" class="continuous-empty muted">{{ $t("editor.noBody") }}</p>
   </div>
@@ -106,6 +164,30 @@ function onActivate() {
   font-family: var(--editor-font-family, inherit);
   font-size: var(--editor-font-size, inherit);
   color: var(--text);
+}
+.continuous-translation {
+  margin-top: 8px;
+  padding: 8px 10px;
+  border-radius: var(--radius-md, 8px);
+  background: color-mix(in srgb, var(--muted, #888) 10%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--border, #888) 55%, transparent);
+}
+.continuous-translation-label {
+  font-size: 11px;
+  margin-bottom: 4px;
+}
+.continuous-translation-body {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.75;
+  font-family: var(--editor-font-family, inherit);
+  font-size: var(--editor-font-size, inherit);
+  color: var(--text);
+}
+.continuous-translation-empty {
+  margin: 0;
+  font-size: 13px;
 }
 .continuous-empty {
   margin: 8px 0 0;

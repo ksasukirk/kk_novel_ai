@@ -188,3 +188,69 @@ export function saveTropeCardDensity(density) {
     /* ignore */
   }
 }
+
+/** 写作页阅读语种 / 对照（按工程 root 分存） */
+export const EDITOR_READING_PREFS_KEY = "kk_editor_reading_prefs";
+
+/**
+ * @typedef {{ readingLocale: string, bilingualView: boolean }} EditorReadingPrefs
+ */
+
+/**
+ * @param {string} [root]
+ * @returns {EditorReadingPrefs}
+ */
+export function readEditorReadingPrefs(root = "") {
+  const fallback = { readingLocale: "", bilingualView: false };
+  try {
+    const raw = localStorage.getItem(EDITOR_READING_PREFS_KEY);
+    if (!raw) return fallback;
+    const all = JSON.parse(raw);
+    if (!all || typeof all !== "object") return fallback;
+    const key = String(root || "").trim() || "_default";
+    const p = all[key];
+    if (!p || typeof p !== "object") return fallback;
+    return {
+      readingLocale: typeof p.readingLocale === "string" ? p.readingLocale : "",
+      bilingualView: !!p.bilingualView,
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+/**
+ * @param {string} root
+ * @param {Partial<EditorReadingPrefs>} prefs
+ */
+export function saveEditorReadingPrefs(root, prefs) {
+  try {
+    const key = String(root || "").trim() || "_default";
+    let all = {};
+    try {
+      const raw = localStorage.getItem(EDITOR_READING_PREFS_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object") all = parsed;
+      }
+    } catch {
+      all = {};
+    }
+    const prev = all[key] && typeof all[key] === "object" ? all[key] : {};
+    all[key] = {
+      readingLocale:
+        prefs.readingLocale != null
+          ? String(prefs.readingLocale)
+          : typeof prev.readingLocale === "string"
+            ? prev.readingLocale
+            : "",
+      bilingualView:
+        prefs.bilingualView != null
+          ? !!prefs.bilingualView
+          : !!prev.bilingualView,
+    };
+    localStorage.setItem(EDITOR_READING_PREFS_KEY, JSON.stringify(all));
+  } catch {
+    /* ignore */
+  }
+}

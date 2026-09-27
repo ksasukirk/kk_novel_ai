@@ -51,6 +51,10 @@ import CharacterHoverCard from "./CharacterHoverCard.vue";
 import EditorDraftPreview from "./EditorDraftPreview.vue";
 import { useToastError } from "../services/toast.js";
 import { t, tLocale, UI_LOCALES, normalizeLocale } from "../i18n/index.js";
+import {
+  getBlockLocaleText,
+  isReadingTranslation,
+} from "../utils/blockLocales.js";
 
 function writingT(key, values) {
   return tLocale(appState.settings?.writing_locale || "zh-CN", key, values);
@@ -61,9 +65,57 @@ const props = defineProps({
   ghostText: { type: String, default: "" },
   ghostBlockIndex: { type: Number, default: -1 },
   ghostOffset: { type: Number, default: 0 },
+  /** 阅读语种；空 = 源语言 */
+  readingLocale: { type: String, default: "" },
+  /** 上下对照：上源下译 */
+  bilingualView: { type: Boolean, default: false },
+  /** 顶栏「译成」语种，供块级翻译同步 */
+  translateLocale: { type: String, default: "" },
 });
 
 const emit = defineEmits(["caret"]);
+
+const writingLocale = computed(() =>
+  normalizeLocale(appState.settings?.writing_locale || "zh-CN")
+);
+
+const showReadingTip = computed(() => {
+  const loc = String(props.readingLocale || "").trim();
+  if (!loc) return false;
+  return normalizeLocale(loc) !== writingLocale.value;
+});
+
+function blockSourceLocale(block) {
+  const s = String(block?.sourceLocale || "").trim();
+  return s ? normalizeLocale(s) : writingLocale.value;
+}
+
+function blockIsReadingTranslation(block) {
+  return isReadingTranslation(block, props.readingLocale, writingLocale.value);
+}
+
+function translationText(block) {
+  const loc = String(props.readingLocale || "").trim();
+  if (!loc) return "";
+  return getBlockLocaleText(
+    { ...block, sourceLocale: blockSourceLocale(block) },
+    loc
+  );
+}
+
+/** 单语阅读译文时正文只读 */
+function bodyReadonly(block) {
+  if (props.readonly) return true;
+  if (props.bilingualView) return false;
+  return blockIsReadingTranslation(block);
+}
+
+function displayBodyText(block, index) {
+  if (!props.bilingualView && blockIsReadingTranslation(block)) {
+    return translationText(block);
+  }
+  return displayText(block, index);
+}
 
 const rootEl = ref(null);
 const areaRefs = ref([]);
@@ -77,7 +129,17 @@ const digestingKey = ref("");
 const illustratingKey = ref("");
 const translatingKey = ref("");
 const blockTranslateLocale = ref(
-  normalizeLocale(appState.settings && appState.settings.ui_locale)
+  normalizeLocale(
+    props.translateLocale ||
+      (appState.settings && appState.settings.ui_locale)
+  )
+);
+
+watch(
+  () => props.translateLocale,
+  (v) => {
+    if (v) blockTranslateLocale.value = normalizeLocale(v);
+  }
 );
 const illusUrls = reactive({});
 const illusStale = reactive({});
@@ -141,6 +203,10 @@ function displayText(block, index) {
 }
 
 function mirrorHtml(block, index) {
+  return highlightNamesHtml(displayBodyText(block, index), nameTerms.value);
+}
+
+function sourceMirrorHtml(block, index) {
   return highlightNamesHtml(displayText(block, index), nameTerms.value);
 }
 
@@ -557,17 +623,27 @@ async function onForkBranch(block) {
   }
 }
 
-async function onTranslateBlock(block) {
+async function onTranslateBlock(block, localeOverride = "", force = true) {
   blockError.value = "";
   if (!block?.key || blockBusy(block) || translatingKey.value) return;
+  const target =
+    String(localeOverride || "").trim() ||
+    blockTranslateLocale.value ||
+    props.readingLocale ||
+    props.translateLocale;
   translatingKey.value = block.key;
   try {
-    await translateBlock(block.key, blockTranslateLocale.value);
+    await translateBlock(block.key, target, { force: !!force });
   } catch (e) {
     blockError.value = String(e.message || e);
   } finally {
     translatingKey.value = "";
   }
+}
+
+async function onTranslateMissing(block) {
+  const loc = String(props.readingLocale || "").trim() || blockTranslateLocale.value;
+  await onTranslateBlock(block, loc, true);
 }
 
 async function confirmActionPopup() {
@@ -772,6 +848,13 @@ defineExpose({
 
 <template>
   <div ref="rootEl" class="block-editor">
+    <p v-if="showReadingTip" class="reading-locale-tip muted">
+      {{
+        bilingualView
+          ? $t("editor.bilingualViewHint")
+          : $t("editor.readingTranslationTip")
+      }}
+    </p>
     <div
       v-for="(block, index) in blocks"
       :key="block.key || index"
@@ -1038,6 +1121,7 @@ defineExpose({
       <div
         v-show="!isIllustrationBlock(block) && !hideBodyForAnchoredDraft(block)"
         class="block-stack"
+        :class="{ 'is-bilingual': bilingualView && blockIsReadingTranslation(block) }"
         @mouseover="onHitOver"
         @mousemove="onHitMove"
         @mouseout="onHitOut"
@@ -1046,15 +1130,21 @@ defineExpose({
           class="block-mirror"
           :class="{ ghosting: readonly && ghostBlockIndex === index && ghostText }"
           aria-hidden="true"
-          v-html="mirrorHtml(block, index)"
+          v-html="bilingualView ? sourceMirrorHtml(block, index) : mirrorHtml(block, index)"
         />
         <textarea
           :ref="(el) => setAreaRef(el, index)"
           class="block-area"
           :class="{ ghosting: readonly && ghostBlockIndex === index && ghostText }"
-          :value="displayText(block, index)"
-          :readonly="readonly"
-          :placeholder="index === 0 ? $t('editor.writePh') : ''"
+          :value="bilingualView ? displayText(block, index) : displayBodyText(block, index)"
+          :readonly="bodyReadonly(block)"
+          :placeholder="
+            !bilingualView && blockIsReadingTranslation(block)
+              ? $t('editor.translationMissing')
+              : index === 0
+                ? $t('editor.writePh')
+                : ''
+          "
           rows="2"
           spellcheck="false"
           @input="onInput(index, $event)"
@@ -1062,6 +1152,42 @@ defineExpose({
           @keyup="onCaret(index, $event)"
           @select="onCaret(index, $event)"
         />
+      </div>
+
+      <div
+        v-if="
+          bilingualView &&
+          !isIllustrationBlock(block) &&
+          !hideBodyForAnchoredDraft(block) &&
+          blockIsReadingTranslation(block)
+        "
+        class="block-translation"
+      >
+        <div class="block-translation-label muted">{{ $t("editor.translationLabel") }}</div>
+        <div
+          v-if="String(translationText(block) || '').trim()"
+          class="block-translation-body"
+        >{{ translationText(block) }}</div>
+        <div v-else class="block-translation-empty">
+          <span class="muted">{{ $t("editor.translationMissing") }}</span>
+          <button
+            type="button"
+            class="block-act"
+            :disabled="
+              readonly ||
+              !!translatingKey ||
+              blockBusy(block) ||
+              !String(block.text || '').trim()
+            "
+            @click.stop="onTranslateMissing(block)"
+          >
+            {{
+              translatingKey === block.key
+                ? $t("editor.translating")
+                : $t("editor.translateThisBlock")
+            }}
+          </button>
+        </div>
       </div>
 
       <EditorDraftPreview
@@ -1550,6 +1676,38 @@ defineExpose({
   margin: 0 0 8px;
   font-size: 12px;
   color: var(--error);
+}
+.reading-locale-tip {
+  margin: 0 0 10px;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.block-translation {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-md, 8px);
+  background: color-mix(in srgb, var(--muted, #888) 10%, transparent);
+  border: 1px dashed color-mix(in srgb, var(--border, #888) 55%, transparent);
+}
+.block-translation-label {
+  font-size: 11px;
+  margin-bottom: 6px;
+}
+.block-translation-body {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.75;
+  font-family: var(--editor-font-family, inherit);
+  font-size: var(--editor-font-size, inherit);
+  color: var(--text);
+}
+.block-translation-empty {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
 }
 </style>
 
