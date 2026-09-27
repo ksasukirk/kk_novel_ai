@@ -32,6 +32,11 @@ import { ensureStorageReady } from "./services/storageMigrate.js";
 import { isKbProject, restoreWritingSnapshot } from "./stores/appState.js";
 import { isMobileUx, isTauriMobile, watchMobileViewport } from "./utils/platform.js";
 import {
+  novelDropState,
+  startNovelDropImport,
+  stopNovelDropImport,
+} from "./services/novelDropImport.js";
+import {
   cycleSidebarMode,
   readSidebarMode,
   saveSidebarMode,
@@ -252,6 +257,13 @@ async function finishBootstrapAfterStorage() {
     /* 设置页可再试 */
   }
   scheduleStartupUpdateCheck();
+  try {
+    await startNovelDropImport((msg) => {
+      appState.statusMessage = msg;
+    });
+  } catch {
+    /* 无拖放 API 时忽略 */
+  }
 }
 
 onMounted(async () => {
@@ -293,6 +305,7 @@ watch(
 
 onUnmounted(() => {
   unwatchMobile();
+  stopNovelDropImport();
 });
 </script>
 
@@ -414,6 +427,23 @@ onUnmounted(() => {
             {{ $t("app.acceptExternal") }}
           </button>
         </div>
+      </div>
+    </div>
+
+    <div
+      v-if="novelDropState.hovering || novelDropState.busy"
+      class="novel-drop-mask"
+      :class="{ busy: novelDropState.busy }"
+      aria-live="polite"
+    >
+      <div class="novel-drop-card">
+        <p class="novel-drop-title">
+          {{
+            novelDropState.busy
+              ? $t("project.importingNovel")
+              : $t("project.importNovelDropHint")
+          }}
+        </p>
       </div>
     </div>
 
@@ -667,6 +697,37 @@ onUnmounted(() => {
 .main-scroll-lock > * {
   flex: 1;
   min-height: 0;
+}
+
+.novel-drop-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  background: color-mix(in srgb, var(--accent, #5b6cff) 18%, rgba(20, 16, 24, 0.35));
+}
+
+.novel-drop-mask.busy {
+  background: rgba(20, 16, 24, 0.4);
+}
+
+.novel-drop-card {
+  max-width: 420px;
+  padding: 20px 24px;
+  border-radius: var(--radius-lg);
+  border: 2px dashed color-mix(in srgb, var(--accent, #5b6cff) 70%, white);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.novel-drop-title {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.5;
+  text-align: center;
 }
 
 .conflict-mask {

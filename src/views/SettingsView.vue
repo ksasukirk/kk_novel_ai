@@ -91,6 +91,7 @@ onMounted(async () => {
       writing_auto_digest: true,
       writing_auto_cast: true,
       writing_auto_trope: true,
+      import_auto_trope_summary: true,
       writing_auto_story_sync: true,
       writing_strip_rhetoric: true,
       skip_delete_confirm: true,
@@ -143,6 +144,9 @@ onMounted(async () => {
     }
     if (form.value.writing_auto_trope == null) {
       form.value.writing_auto_trope = true;
+    }
+    if (form.value.import_auto_trope_summary == null) {
+      form.value.import_auto_trope_summary = true;
     }
     if (form.value.writing_auto_story_sync == null) {
       form.value.writing_auto_story_sync = true;
@@ -843,6 +847,12 @@ async function onRebuildRag() {
         <CapsuleSwitch
           v-model="form.writing_auto_trope"
           :label="$t('settings.autoTrope')"
+        />
+      </div>
+      <div class="field capsule-switch-row">
+        <CapsuleSwitch
+          v-model="form.import_auto_trope_summary"
+          :label="$t('settings.importAutoSummary')"
         />
       </div>
       <div class="field capsule-switch-row">

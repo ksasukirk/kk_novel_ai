@@ -2245,7 +2245,7 @@ dependencies = [
 
 [[package]]
 name = "kk_novel_ai"
-version = "0.2.55"
+version = "0.2.56"
 dependencies = [
  "base64 0.22.1",
  "chrono",

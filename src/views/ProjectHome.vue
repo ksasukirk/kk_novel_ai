@@ -16,6 +16,11 @@ import { isMobileUx } from "../utils/platform.js";
 import { useToastError } from "../services/toast.js";
 import { isCancelledMsg, msgMatchesKey, t, UI_LOCALES } from "../i18n/index.js";
 import { scanTropesFromRoot, scanTropesQueue, cancelTropeScan, isTropeScanBusy, tropeScanState } from "../services/tropeScan.js";
+import {
+  importAutoSummaryEnabled,
+  importNovelFile,
+  persistImportAutoSummary,
+} from "../services/novelImportFlow.js";
 import { tropesScanConfirmText } from "../utils/usageEstimate.js";
 import { ensureWorkCatalog, localSearchCatalog, novelsSearchAi } from "../services/novelSearch.js";
 import { normalizeRoot } from "../utils/novelSearchScore.js";
@@ -30,6 +35,7 @@ const showImportNovel = ref(false);
 const importNovelTitle = ref("");
 const importNovelTranslate = ref(false);
 const importNovelLocale = ref("zh-CN");
+const importNovelAutoSummary = ref(true);
 const importingNovel = ref(false);
 const creating = ref(false);
 const novelsDirHint = ref("");
@@ -248,9 +254,18 @@ async function openCreateDialog() {
 function openImportNovelDialog() {
   importNovelTitle.value = "";
   importNovelTranslate.value = false;
+  importNovelAutoSummary.value = importAutoSummaryEnabled();
   const loc = (appState.settings && appState.settings.ui_locale) || "zh-CN";
   importNovelLocale.value = loc === "en" || loc === "ja" ? loc : "zh-CN";
   showImportNovel.value = true;
+}
+
+async function onImportAutoSummaryChange() {
+  try {
+    await persistImportAutoSummary(importNovelAutoSummary.value);
+  } catch {
+    /* 勾选仍生效于本次导入 */
+  }
 }
 
 async function onImportNovelConfirm() {
@@ -260,20 +275,26 @@ async function onImportNovelConfirm() {
     const filePicked = await project.pickFile(t("project.importNovelPick"), ["txt", "md"]);
     const filePath = String((filePicked && filePicked.path) || "");
     if (!filePath) return;
-    const r = await project.importNovelTxt(filePath, importNovelTitle.value.trim(), {
+    try {
+      await persistImportAutoSummary(importNovelAutoSummary.value);
+    } catch {
+      /* ignore */
+    }
+    const r = await importNovelFile(filePath, {
+      title: importNovelTitle.value.trim(),
       translateTitles: importNovelTranslate.value,
       translateLocale: importNovelLocale.value,
+      autoSummary: importNovelAutoSummary.value,
+      openAfter: true,
     });
     await refreshSettings();
     showImportNovel.value = false;
     if (r && r.translate_attempted && r.translate_error) {
       error.value = t("project.importNovelTranslateWarn");
-    } else {
+    } else if (!importNovelAutoSummary.value) {
       appState.statusMessage = t("project.importNovelOk");
     }
-    if (r && r.root) {
-      await openByPath(r.root, { goEditorNow: true });
-    }
+    await refreshSummaryStatus();
   } catch (e) {
     if (isCancelledMsg(e && e.message ? e.message : e)) return;
     error.value = String(e.message || e);
@@ -1380,6 +1401,15 @@ function heatCellTitle(d) {
             <option v-for="loc in UI_LOCALES" :key="'imp-' + loc.id" :value="loc.id">{{ loc.native }}</option>
           </select>
         </div>
+        <label class="check-row">
+          <input
+            v-model="importNovelAutoSummary"
+            type="checkbox"
+            @change="onImportAutoSummaryChange"
+          />
+          {{ $t("project.importNovelAutoSummary") }}
+        </label>
+        <p class="muted">{{ $t("project.importNovelDropHint") }}</p>
         <div class="dialog-actions">
           <button type="button" class="app-btn" @click="showImportNovel = false">{{ $t("common.cancel") }}</button>
           <button

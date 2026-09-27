@@ -129,6 +129,9 @@ pub struct AppSettings {
     /// 生成写入后自动抽取情节/喜好到全局库
     #[serde(default = "default_true")]
     pub writing_auto_trope: bool,
+    /// 导入小说为写作作品后，是否自动跑全书 AI 情节总结（默认开）
+    #[serde(default = "default_true")]
+    pub import_auto_trope_summary: bool,
     /// 生成写入后自动增量同步总谱（故事线/时间线/关系/Canon）
     #[serde(default = "default_true")]
     pub writing_auto_story_sync: bool,
@@ -222,6 +225,7 @@ impl Default for AppSettings {
             writing_outline_run_sync_digest: true,
             writing_auto_cast: true,
             writing_auto_trope: true,
+            import_auto_trope_summary: true,
             writing_auto_story_sync: true,
             writing_strip_rhetoric: true,
             skip_delete_confirm: true,
