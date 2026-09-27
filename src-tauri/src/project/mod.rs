@@ -1102,16 +1102,22 @@ pub fn create_chapter(root: &Path, title: &str, summary: &str) -> AppResult<Chap
         beats: vec![],
         trope_ids: vec![],
     };
-    fs::write(
-        chapters_dir(root).join(&file),
-        format!("# {}\n\n", title),
-    )?;
+    let seed = format!("# {}\n\n", title);
+    // 迁库后作品常只有 work.sqlite、无 chapters/ 目录；勿再写磁盘 md
+    let use_db = use_work_db(root) || crate::storage::is_storage_migrated();
+    if !use_db {
+        fs::create_dir_all(chapters_dir(root))?;
+        fs::write(chapters_dir(root).join(&file), &seed)?;
+    }
     if let Some(vol) = opened.project.volumes.first_mut() {
         vol.chapter_ids.push(meta.id.clone());
     }
     opened.project.chapters.push(meta.clone());
     mark_trope_summary_dirty(&mut opened.project);
     save_project_meta(root, &opened.project)?;
+    if use_db {
+        crate::storage::work_store::write_chapter_content(root, &meta.id, &seed)?;
+    }
     Ok(meta)
 }
 
