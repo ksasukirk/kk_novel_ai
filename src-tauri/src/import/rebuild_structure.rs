@@ -310,6 +310,7 @@ fn chrono_like_now() -> String {
     format!("{secs}")
 }
 
+#[allow(clippy::too_many_arguments)]
 fn progress_json(
     root: &Path,
     current: usize,
@@ -322,6 +323,9 @@ fn progress_json(
     calls: u64,
     cost: f64,
     model: &str,
+    chapter_id: &str,
+    title_changed: bool,
+    summary: &str,
 ) -> Value {
     let pct = if total == 0 {
         100u32
@@ -334,6 +338,9 @@ fn progress_json(
         "current": current,
         "total": total,
         "title": title,
+        "chapter_id": chapter_id,
+        "title_changed": title_changed,
+        "summary": summary,
         "rebuilt": rebuilt,
         "skipped": skipped,
         "failed": failed,
@@ -431,6 +438,9 @@ pub async fn rebuild_structure_from_prose(
         acc_calls,
         acc_cost,
         &last_model,
+        "",
+        false,
+        "",
     ));
 
     for (i, ch) in slice.iter().enumerate() {
@@ -453,6 +463,9 @@ pub async fn rebuild_structure_from_prose(
             acc_calls,
             acc_cost,
             &last_model,
+            &ch.id,
+            false,
+            "",
         ));
 
         let body = match project::read_chapter(root, &ch.id) {
@@ -675,7 +688,7 @@ pub async fn rebuild_structure_from_prose(
             root,
             i + 1,
             n,
-            &title,
+            &new_title,
             report.rebuilt,
             report.skipped,
             report.failed.len(),
@@ -683,6 +696,9 @@ pub async fn rebuild_structure_from_prose(
             acc_calls,
             acc_cost,
             &last_model,
+            &ch.id,
+            need_title && new_title != title,
+            &summary,
         ));
     }
 

@@ -72,6 +72,7 @@ import { outlineQueueState } from "../services/outlineQueue.js";
 import { invoke } from "../services/tauri.js";
 import { appConfirm } from "../services/confirmDialog.js";
 import { updateChapterMeta } from "../services/projectClient.js";
+import { runChapterAiSummary, isChapterSummaryBusy } from "../services/chapterSummary.js";
 import { aiPanelForm } from "../stores/aiPanelState.js";
 import { useToastError } from "../services/toast.js";
 
@@ -85,6 +86,7 @@ const chapterTranslateLocale = ref(
   normalizeLocale(appState.settings && appState.settings.ui_locale)
 );
 const translatingChapter = ref(false);
+const summarizingChapter = ref(false);
 const tocVisible = ref(readEditorTocVisible());
 const tropesDrawerOpen = ref(false);
 const tropesVisible = ref(readEditorTropePickerVisible());
@@ -1378,6 +1380,35 @@ async function onTranslateChapter() {
   }
 }
 
+async function onSummarizeChapter() {
+  error.value = "";
+  if (!appState.chapterId || summarizingChapter.value || isChapterSummaryBusy()) return;
+  const body = String(appState.chapterContent || "").trim();
+  if (body.length < 40) {
+    error.value = t("editor.summaryNeedBody");
+    return;
+  }
+  summarizingChapter.value = true;
+  try {
+    await runChapterAiSummary({
+      chapterId: appState.chapterId,
+      overwriteConfirm: async () => {
+        const ch = chapters.value.find((c) => c.id === appState.chapterId);
+        if (!String((ch && ch.summary) || "").trim()) return true;
+        return appConfirm(t("editor.summaryOverwriteQ"), {
+          title: t("editor.summaryChapter"),
+          confirmText: t("common.start"),
+          cancelText: t("common.cancel"),
+        });
+      },
+    });
+  } catch (e) {
+    error.value = String(e.message || e);
+  } finally {
+    summarizingChapter.value = false;
+  }
+}
+
 async function onSave() {
   try {
     await project.saveChapter();
@@ -2125,6 +2156,22 @@ watch(
           @click="onTranslateChapter"
         >
           {{ translatingChapter ? $t("editor.translating") : $t("editor.translateChapter") }}
+        </button>
+        <button
+          type="button"
+          class="app-btn"
+          :disabled="
+            summarizingChapter ||
+            translatingChapter ||
+            appState.generating ||
+            !appState.chapterId
+          "
+          :title="$t('editor.summaryChapterHint')"
+          @click="onSummarizeChapter"
+        >
+          {{
+            summarizingChapter ? $t("editor.summarizingChapter") : $t("editor.summaryChapter")
+          }}
         </button>
         <label class="typo-ctrl muted">
           {{ $t("editor.font") }}

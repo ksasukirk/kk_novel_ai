@@ -667,13 +667,16 @@ async function onCopyInstruction(block) {
 
 async function onRedigestBlock(block) {
   blockError.value = "";
-  if (!block?.key || !block.text || appState.generating) return;
+  if (!block?.key || !String(block.text || "").trim()) return;
+  if (isIllustrationBlock(block)) return;
+  if (digestingKey.value || appState.generating || blockBusy(block)) return;
   digestingKey.value = block.key;
   try {
     await runBlockDigest({
       blockKey: block.key,
       text: block.text,
       instruction: block.instruction || "",
+      force: true,
     });
   } catch (e) {
     blockError.value = String(e.message || e);
@@ -881,6 +884,24 @@ defineExpose({
             class="block-act"
             :disabled="
               readonly ||
+              digestingKey === block.key ||
+              blockBusy(block) ||
+              !String(block.text || '').trim()
+            "
+            :title="$t('editor.summaryBlockHint')"
+            @click.stop="onRedigestBlock(block)"
+          >
+            {{
+              digestingKey === block.key
+                ? $t("editor.digesting")
+                : $t("editor.summaryBlock")
+            }}
+          </button>
+          <button
+            type="button"
+            class="block-act"
+            :disabled="
+              readonly ||
               !genSlotsFree(1) ||
               polishingKey === block.key ||
               rewritingKey === block.key
@@ -945,6 +966,25 @@ defineExpose({
           v-if="!isIllustrationBlock(block)"
           class="block-sticky-actions block-translate-row"
         >
+          <button
+            v-if="block.type !== 'gen'"
+            type="button"
+            class="block-act"
+            :disabled="
+              readonly ||
+              digestingKey === block.key ||
+              blockBusy(block) ||
+              !String(block.text || '').trim()
+            "
+            :title="$t('editor.summaryBlockHint')"
+            @click.stop="onRedigestBlock(block)"
+          >
+            {{
+              digestingKey === block.key
+                ? $t("editor.digesting")
+                : $t("editor.summaryBlock")
+            }}
+          </button>
           <select
             v-model="blockTranslateLocale"
             class="block-translate-locale"
@@ -1075,7 +1115,11 @@ defineExpose({
             :disabled="blockBusy(block) || digestingKey === block.key"
             @click="onRedigestBlock(block)"
           >
-            {{ digestingKey === block.key ? $t("editor.digesting") : $t("editor.redigest") }}
+            {{
+              digestingKey === block.key
+                ? $t("editor.digesting")
+                : $t("editor.summaryBlock")
+            }}
           </button>
           <button
             type="button"

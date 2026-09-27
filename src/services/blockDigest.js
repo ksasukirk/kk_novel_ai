@@ -45,9 +45,11 @@ export async function runBlockDigest(opts) {
     if (hit && (hit.type === "illustration" || hit.type === "illus")) return null;
   }
   if (!appState.projectRoot || !appState.chapterId) return null;
-  if (!autoDigestEnabled()) return null;
+  const forceManual = !!(opts && opts.force);
+  const syncWait = !!(opts && opts._syncWait);
+  if (!autoDigestEnabled() && !forceManual && !syncWait) return null;
   if (inFlightKeys.has(blockKey)) return null;
-  if (appState.generating && !(opts && opts._syncWait)) return null;
+  if (appState.generating && !syncWait) return null;
 
   inFlightKeys.add(blockKey);
   const prevStatus = appState.statusMessage;

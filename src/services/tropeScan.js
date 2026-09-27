@@ -121,6 +121,26 @@ function unwrapProgressPayload(eventOrPayload) {
   return eventOrPayload;
 }
 
+/** 把重建得到的章名/章纲立刻写进当前打开工程，目录随之变 */
+function patchOpenProjectChapter(chapterId, patch) {
+  const id = String(chapterId || "").trim();
+  if (!id || !patch || !appState.project || !Array.isArray(appState.project.chapters)) return;
+  const root = String(tropeScanState.root || "").trim();
+  if (root && appState.projectRoot && appState.projectRoot !== root) return;
+  const list = appState.project.chapters;
+  const idx = list.findIndex((c) => c && c.id === id);
+  if (idx < 0) return;
+  const prev = list[idx];
+  const next = { ...prev };
+  if (patch.title != null) next.title = String(patch.title);
+  if (patch.summary != null) next.summary = String(patch.summary);
+  if (patch.title_src != null) next.title_src = String(patch.title_src);
+  if (next.title === prev.title && next.summary === prev.summary) return;
+  const chapters = list.slice();
+  chapters[idx] = next;
+  appState.project = { ...appState.project, chapters };
+}
+
 function syncStatusFromScan() {
   if (tropeScanState.phase === "structure") {
     appState.statusMessage = t("trope.structureProgress", {
@@ -197,6 +217,17 @@ function applyProgress(eventOrPayload) {
     if (payload.calls != null) tropeScanState.calls = Number(payload.calls) || 0;
     if (payload.cost_cny != null) tropeScanState.costCny = Number(payload.cost_cny) || 0;
     if (payload.model_used != null) tropeScanState.model = String(payload.model_used || "");
+  }
+
+  // 仅在本章重建落盘后的进度里改目录（起始进度 summary 为空，避免清空）
+  const chapterId = payload.chapter_id != null ? String(payload.chapter_id) : "";
+  const titleChanged = !!payload.title_changed;
+  const summaryText = payload.summary != null ? String(payload.summary) : "";
+  if (chapterId && (titleChanged || summaryText.trim())) {
+    const patch = {};
+    if (titleChanged && payload.title != null) patch.title = String(payload.title);
+    if (summaryText.trim()) patch.summary = summaryText;
+    patchOpenProjectChapter(chapterId, patch);
   }
 
   // start 事件不刷状态文案，避免盖掉「准备扫描 / 重建中」
