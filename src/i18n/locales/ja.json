@@ -32,6 +32,29 @@
     "log": "ログ",
     "settings": "設定"
   },
+  "migration": {
+    "title": "データ格納をアップグレード中",
+    "desc": "先にバックアップしてから SQLite へ移行します。終了しないでください。",
+    "working": "処理中…",
+    "backupPath": "バックアップ場所",
+    "retry": "再試行",
+    "stage": {
+      "start": "開始準備",
+      "backup": "バックアップ中",
+      "backup_done": "バックアップ完了",
+      "app": "アプリ設定を移行",
+      "characters": "キャラ庫を移行",
+      "kb": "共通ナレッジを移行",
+      "library": "筋ライブラリを移行",
+      "works": "作品を移行",
+      "activity": "ログとチャットを移行",
+      "verify": "検証中",
+      "done": "完了",
+      "already_done": "済み",
+      "empty_install": "空の DB を初期化",
+      "empty_install_done": "空の DB 準備完了"
+    }
+  },
   "common": {
     "save": "保存",
     "cancel": "キャンセル",

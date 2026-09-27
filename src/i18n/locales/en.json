@@ -32,6 +32,29 @@
     "log": "Log",
     "settings": "Settings"
   },
+  "migration": {
+    "title": "Upgrading data storage",
+    "desc": "Your data will be backed up first, then migrated to SQLite. Do not quit.",
+    "working": "Working…",
+    "backupPath": "Backup path",
+    "retry": "Retry migration",
+    "stage": {
+      "start": "Starting",
+      "backup": "Backing up",
+      "backup_done": "Backup done",
+      "app": "Migrating app settings",
+      "characters": "Migrating character roster",
+      "kb": "Migrating universal KB",
+      "library": "Migrating trope library",
+      "works": "Migrating works",
+      "activity": "Migrating logs and chat",
+      "verify": "Verifying",
+      "done": "Done",
+      "already_done": "Already done",
+      "empty_install": "Initializing empty DBs",
+      "empty_install_done": "Empty DBs ready"
+    }
+  },
   "common": {
     "save": "Save",
     "cancel": "Cancel",

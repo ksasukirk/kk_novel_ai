@@ -32,6 +32,29 @@
     "log": "日志",
     "settings": "设置"
   },
+  "migration": {
+    "title": "正在升级数据存储",
+    "desc": "将先备份你的数据，再迁移到 SQLite。请勿关闭软件。",
+    "working": "处理中…",
+    "backupPath": "备份位置",
+    "retry": "重试迁移",
+    "stage": {
+      "start": "准备开始",
+      "backup": "正在备份",
+      "backup_done": "备份完成",
+      "app": "迁移应用设置",
+      "characters": "迁移角色仓",
+      "kb": "迁移通用知识库",
+      "library": "迁移情节库",
+      "works": "迁移作品",
+      "activity": "迁移日志与对话",
+      "verify": "校验数据",
+      "done": "完成",
+      "already_done": "已完成",
+      "empty_install": "初始化空库",
+      "empty_install_done": "空库就绪"
+    }
+  },
   "common": {
     "save": "保存",
     "cancel": "取消",

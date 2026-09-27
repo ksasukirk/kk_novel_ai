@@ -614,6 +614,24 @@ impl AppSettings {
 }
 
 pub fn load_settings() -> AppResult<AppSettings> {
+    if crate::storage::is_storage_migrated() {
+        if let Ok(Some(mut settings)) = crate::storage::app_store::load_settings_json() {
+            if settings.recent_projects.is_empty() {
+                if let Some(p) = settings.last_project_path.clone() {
+                    settings.recent_projects.push(RecentProject {
+                        path: p,
+                        title: "最近作品".into(),
+                        opened_at: String::new(),
+                    });
+                }
+            }
+            settings.sync_max_tokens_to_target();
+            settings.sanitize_locales();
+            settings.base_url = AppSettings::normalize_base_url(&settings.base_url);
+            settings.sync_deepseek_price_fields();
+            return Ok(settings);
+        }
+    }
     let path = settings_path()?;
     if !path.exists() {
         let mut defaults = AppSettings::default();
@@ -672,15 +690,18 @@ pub fn load_settings() -> AppResult<AppSettings> {
 
 pub fn save_settings(settings: &AppSettings) -> AppResult<()> {
     validate_for_platform(settings)?;
-    let path = settings_path()?;
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
-    }
     let mut synced = settings.clone();
     synced.sanitize_locales();
     synced.base_url = AppSettings::normalize_base_url(&synced.base_url);
     synced.sync_deepseek_price_fields();
     synced.sync_max_tokens_to_target();
+    if crate::storage::is_storage_migrated() {
+        return crate::storage::app_store::save_settings_json(&synced);
+    }
+    let path = settings_path()?;
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)?;
+    }
     let text = serde_json::to_string_pretty(&synced)?;
     fs::write(path, text)?;
     Ok(())

@@ -16,12 +16,17 @@ fn db_path(root: &Path) -> std::path::PathBuf {
 }
 
 fn open_db(root: &Path) -> AppResult<Connection> {
+    if crate::storage::migration_in_progress() {
+        return Err(AppError::msg("存储迁移进行中，暂缓打开 embeddings"));
+    }
     let path = db_path(root);
     let conn = Connection::open(&path).map_err(|e| {
         AppError::t_fmt("errors.openEmbeddingsSqliteFailed", &[("e", &e.to_string())])
     })?;
     conn.execute_batch(
-        "CREATE TABLE IF NOT EXISTS embeddings (
+        "PRAGMA journal_mode=WAL;
+         PRAGMA busy_timeout=5000;
+         CREATE TABLE IF NOT EXISTS embeddings (
             id TEXT PRIMARY KEY,
             kind TEXT NOT NULL,
             text TEXT NOT NULL,

@@ -79,11 +79,14 @@ fn cap_messages(messages: &[ChatMessage], per_msg_cap: usize, total_cap: usize) 
 }
 
 pub fn append_log(entry: &GenLogEntry) -> AppResult<()> {
-    let path = gen_log_path()?;
-    let mut file = OpenOptions::new().create(true).append(true).open(path)?;
-    writeln!(file, "{}", serde_json::to_string(entry)?)?;
+    if crate::storage::is_storage_migrated() {
+        crate::storage::activity_store::append_gen_log(entry)?;
+    } else {
+        let path = gen_log_path()?;
+        let mut file = OpenOptions::new().create(true).append(true).open(path)?;
+        writeln!(file, "{}", serde_json::to_string(entry)?)?;
+    }
     let _ = crate::usage::record_entry(entry);
-    // 同步写入作品目录（chapters/.genlog + gen_activity.jsonl）；旧项目无目录则跳过
     let _ = crate::project_genlog::append_entry(entry);
     Ok(())
 }
@@ -98,6 +101,11 @@ pub fn read_recent(limit: usize) -> AppResult<Vec<GenLogEntry>> {
 
 /// 读取全部生成履历（按文件顺序，通常时间升序追加）
 pub fn read_all() -> AppResult<Vec<GenLogEntry>> {
+    if crate::storage::is_storage_migrated() {
+        let mut items = crate::storage::activity_store::list_gen_log(100_000)?;
+        items.reverse();
+        return Ok(items);
+    }
     let path = gen_log_path()?;
     if !path.exists() {
         return Ok(vec![]);
@@ -112,6 +120,9 @@ pub fn read_all() -> AppResult<Vec<GenLogEntry>> {
 
 /// 整文件重写全局 gen_log.jsonl（补齐花费等迁移用）
 pub fn rewrite_all(entries: &[GenLogEntry]) -> AppResult<()> {
+    if crate::storage::is_storage_migrated() {
+        return crate::storage::activity_store::replace_gen_log(entries);
+    }
     let path = gen_log_path()?;
     let mut out = String::with_capacity(entries.len().saturating_mul(256));
     for e in entries {

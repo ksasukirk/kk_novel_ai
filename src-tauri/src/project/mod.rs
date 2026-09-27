@@ -391,6 +391,12 @@ pub struct ChapterBeatProgress {
 }
 
 pub fn load_beat_progress(root: &Path, chapter_id: &str) -> AppResult<ChapterBeatProgress> {
+    if use_work_db(root) {
+        if let Some(v) = crate::storage::work_store::load_beat_progress(root, chapter_id) {
+            return Ok(serde_json::from_value(v).unwrap_or_default());
+        }
+        return Ok(ChapterBeatProgress::default());
+    }
     let path = beat_progress_path(root, chapter_id);
     if !path.exists() {
         return Ok(ChapterBeatProgress::default());
@@ -404,9 +410,13 @@ pub fn save_beat_progress(
     chapter_id: &str,
     progress: &ChapterBeatProgress,
 ) -> AppResult<()> {
-    fs::create_dir_all(beat_progress_dir(root))?;
     let mut p = progress.clone();
     p.updated_at = now();
+    if use_work_db(root) || crate::storage::is_storage_migrated() {
+        let v = serde_json::to_value(&p)?;
+        return crate::storage::work_store::save_beat_progress(root, chapter_id, &v);
+    }
+    fs::create_dir_all(beat_progress_dir(root))?;
     fs::write(
         beat_progress_path(root, chapter_id),
         serde_json::to_string_pretty(&p)?,
@@ -415,6 +425,10 @@ pub fn save_beat_progress(
 }
 
 pub fn reset_beat_progress(root: &Path, chapter_id: &str) -> AppResult<()> {
+    if use_work_db(root) || crate::storage::is_storage_migrated() {
+        let v = serde_json::to_value(ChapterBeatProgress::default())?;
+        return crate::storage::work_store::save_beat_progress(root, chapter_id, &v);
+    }
     let path = beat_progress_path(root, chapter_id);
     if path.exists() {
         fs::remove_file(path)?;
@@ -437,16 +451,13 @@ fn lore_dir(root: &Path) -> PathBuf {
 }
 
 pub fn create_project(root: &Path, title: &str) -> AppResult<OpenedProject> {
-    if project_json(root).exists() {
+    if crate::storage::is_project_root(root) {
         return Err(AppError::t("errors.dirAlreadyHasProject"));
     }
-    fs::create_dir_all(chapters_dir(root))?;
-    fs::create_dir_all(lore_dir(root).join("characters"))?;
-    fs::create_dir_all(lore_dir(root).join("world"))?;
-    fs::create_dir_all(lore_dir(root).join("tropes"))?;
-    fs::create_dir_all(lore_dir(root).join("kinks"))?;
+    fs::create_dir_all(root)?;
     let chapter_id = Uuid::new_v4().to_string();
     let file = "0001-第一章.md".to_string();
+    let seed = format!("# 第一章\n\n");
     let project = NovelProject {
         id: Uuid::new_v4().to_string(),
         title: title.to_string(),
@@ -465,7 +476,7 @@ pub fn create_project(root: &Path, title: &str) -> AppResult<OpenedProject> {
             arc_summary: String::new(),
         }],
         chapters: vec![ChapterMeta {
-            id: chapter_id,
+            id: chapter_id.clone(),
             file: file.clone(),
             title: "第一章".into(),
             title_src: String::new(),
@@ -488,16 +499,28 @@ pub fn create_project(root: &Path, title: &str) -> AppResult<OpenedProject> {
         trope_summary_dirty: false,
         legacy_sections_collapsed: true,
     };
-    save_project_meta(root, &project)?;
     let _ = crate::kb::ensure_character_roster();
-    fs::write(
-        chapters_dir(root).join(&file),
-        format!("# {}\n\n", project.chapters[0].title),
-    )?;
-    fs::write(
-        memory_json(root),
-        serde_json::to_string_pretty(&MemoryStore::default())?,
-    )?;
+    if crate::storage::is_storage_migrated() {
+        crate::storage::work_store::save_full_project(
+            root,
+            &project,
+            &[(chapter_id, seed)],
+        )?;
+        let _ = crate::storage::work_store::save_memory(root, &MemoryStore::default());
+    } else {
+        fs::create_dir_all(chapters_dir(root))?;
+        fs::create_dir_all(lore_dir(root).join("characters"))?;
+        fs::create_dir_all(lore_dir(root).join("world"))?;
+        fs::create_dir_all(lore_dir(root).join("tropes"))?;
+        fs::create_dir_all(lore_dir(root).join("kinks"))?;
+        save_project_meta(root, &project)?;
+        fs::write(chapters_dir(root).join(&file), seed)?;
+        fs::write(
+            memory_json(root),
+            serde_json::to_string_pretty(&MemoryStore::default())?,
+        )?;
+    }
+    put_project_cache(root, &project);
     Ok(OpenedProject {
         root: root.to_path_buf(),
         project,
@@ -510,15 +533,9 @@ pub fn create_knowledge_base(
     title: &str,
     source_file: Option<&str>,
 ) -> AppResult<OpenedProject> {
-    if project_json(root).exists() {
+    if crate::storage::is_project_root(root) {
         return Err(AppError::t("errors.dirAlreadyHasProjectOrKb"));
     }
-    fs::create_dir_all(chapters_dir(root))?;
-    fs::create_dir_all(lore_dir(root).join("characters"))?;
-    fs::create_dir_all(lore_dir(root).join("world"))?;
-    fs::create_dir_all(lore_dir(root).join("tropes"))?;
-    fs::create_dir_all(lore_dir(root).join("kinks"))?;
-    fs::create_dir_all(root.join("story"))?;
     let project = NovelProject {
         id: Uuid::new_v4().to_string(),
         title: title.to_string(),
@@ -545,11 +562,24 @@ pub fn create_knowledge_base(
         trope_summary_dirty: false,
         legacy_sections_collapsed: true,
     };
-    save_project_meta(root, &project)?;
-    fs::write(
-        memory_json(root),
-        serde_json::to_string_pretty(&MemoryStore::default())?,
-    )?;
+    if crate::storage::is_storage_migrated() {
+        fs::create_dir_all(root)?;
+        crate::storage::work_store::save_full_project(root, &project, &[])?;
+        let _ = crate::storage::work_store::save_memory(root, &MemoryStore::default());
+    } else {
+        fs::create_dir_all(chapters_dir(root))?;
+        fs::create_dir_all(lore_dir(root).join("characters"))?;
+        fs::create_dir_all(lore_dir(root).join("world"))?;
+        fs::create_dir_all(lore_dir(root).join("tropes"))?;
+        fs::create_dir_all(lore_dir(root).join("kinks"))?;
+        fs::create_dir_all(root.join("story"))?;
+        save_project_meta(root, &project)?;
+        fs::write(
+            memory_json(root),
+            serde_json::to_string_pretty(&MemoryStore::default())?,
+        )?;
+    }
+    put_project_cache(root, &project);
     Ok(OpenedProject {
         root: root.to_path_buf(),
         project,
@@ -654,16 +684,31 @@ fn recover_empty_project(root: &Path) -> NovelProject {
     }
 }
 
-pub fn open_project(root: &Path) -> AppResult<OpenedProject> {
-    if let Some(project) = get_cached_project(root) {
-        // 热路径：仅确保目录存在，跳过重复 parse
-        let _ = fs::create_dir_all(chapters_dir(root));
-        let _ = fs::create_dir_all(lore_dir(root));
-        return Ok(OpenedProject {
-            root: root.to_path_buf(),
-            project,
-        });
-    }
+fn roots_equal(a: &Path, b: &Path) -> bool {
+    a == b
+        || a.canonicalize().ok().zip(b.canonicalize().ok()).map(|(x, y)| x == y).unwrap_or(false)
+}
+
+fn use_characters_db(root: &Path) -> bool {
+    crate::storage::is_storage_migrated()
+        && crate::paths::character_roster_dir()
+            .map(|p| roots_equal(root, &p))
+            .unwrap_or(false)
+}
+
+fn use_kb_db(root: &Path) -> bool {
+    crate::storage::is_storage_migrated()
+        && crate::paths::universal_kb_dir()
+            .map(|p| roots_equal(root, &p))
+            .unwrap_or(false)
+}
+
+fn use_work_db(root: &Path) -> bool {
+    crate::storage::work_db_exists(root)
+}
+
+/// 始终从磁盘 project.json 读取（迁移引擎用）
+pub fn open_project_fs(root: &Path) -> AppResult<OpenedProject> {
     let path = project_json(root);
     if !path.exists() {
         return Err(AppError::t_fmt(
@@ -674,11 +719,52 @@ pub fn open_project(root: &Path) -> AppResult<OpenedProject> {
     let text = fs::read_to_string(&path)?;
     let project: NovelProject = if crate::error::json_is_blank(&text) {
         let recovered = recover_empty_project(root);
-        save_project_meta(root, &recovered)?;
+        let _ = fs::write(project_json(root), serde_json::to_string_pretty(&recovered)?);
         recovered
     } else {
         crate::error::parse_json_at(&text, &path)?
     };
+    Ok(OpenedProject {
+        root: root.to_path_buf(),
+        project,
+    })
+}
+
+pub fn open_project(root: &Path) -> AppResult<OpenedProject> {
+    if let Some(project) = get_cached_project(root) {
+        let _ = fs::create_dir_all(root);
+        return Ok(OpenedProject {
+            root: root.to_path_buf(),
+            project,
+        });
+    }
+    if use_characters_db(root) {
+        if let Some(project) = crate::storage::characters_store::load_meta()? {
+            put_project_cache(root, &project);
+            return Ok(OpenedProject {
+                root: root.to_path_buf(),
+                project,
+            });
+        }
+    }
+    if use_kb_db(root) {
+        if let Some(project) = crate::storage::kb_store::load_meta()? {
+            put_project_cache(root, &project);
+            return Ok(OpenedProject {
+                root: root.to_path_buf(),
+                project,
+            });
+        }
+    }
+    if use_work_db(root) {
+        let project = crate::storage::work_store::load_project(root)?;
+        put_project_cache(root, &project);
+        return Ok(OpenedProject {
+            root: root.to_path_buf(),
+            project,
+        });
+    }
+    let opened = open_project_fs(root)?;
     if !memory_json(root).exists() {
         fs::write(
             memory_json(root),
@@ -687,11 +773,8 @@ pub fn open_project(root: &Path) -> AppResult<OpenedProject> {
     }
     fs::create_dir_all(chapters_dir(root))?;
     fs::create_dir_all(lore_dir(root))?;
-    put_project_cache(root, &project);
-    Ok(OpenedProject {
-        root: root.to_path_buf(),
-        project,
-    })
+    put_project_cache(root, &opened.project);
+    Ok(opened)
 }
 
 fn should_skip_scan_dir(name: &str) -> bool {
@@ -738,7 +821,7 @@ pub fn discover_project_roots(parent: &Path, max_depth: usize) -> AppResult<Vec<
             continue;
         }
 
-        if project_json(&dir).is_file() {
+        if crate::storage::is_project_root(&dir) {
             found.push(dir.clone());
             // 作品根内部不再往下扫，避免 chapters 等误命中
             continue;
@@ -776,12 +859,23 @@ pub fn discover_project_roots(parent: &Path, max_depth: usize) -> AppResult<Vec<
 pub fn save_project_meta(root: &Path, project: &NovelProject) -> AppResult<()> {
     let mut p = project.clone();
     p.updated_at = now();
-    fs::write(project_json(root), serde_json::to_string_pretty(&p)?)?;
+    if use_characters_db(root) {
+        crate::storage::characters_store::save_meta(&p)?;
+    } else if use_kb_db(root) {
+        crate::storage::kb_store::save_meta(&p)?;
+    } else if use_work_db(root) || crate::storage::is_storage_migrated() {
+        crate::storage::work_store::save_project_meta_only(root, &p)?;
+    } else {
+        fs::write(project_json(root), serde_json::to_string_pretty(&p)?)?;
+    }
     put_project_cache(root, &p);
     Ok(())
 }
 
 pub fn read_chapter(root: &Path, chapter_id: &str) -> AppResult<(ChapterMeta, String)> {
+    if use_work_db(root) {
+        return crate::storage::work_store::read_chapter_content(root, chapter_id);
+    }
     let opened = open_project(root)?;
     let meta = opened
         .project
@@ -808,15 +902,30 @@ pub fn write_chapter(root: &Path, chapter_id: &str, content: &str) -> AppResult<
         .find(|c| c.id == chapter_id)
         .cloned()
         .ok_or_else(|| AppError::t("errors.chapterMissing"))?;
-    let path = chapters_dir(root).join(&meta.file);
-    let old = if path.exists() {
-        fs::read_to_string(&path).unwrap_or_default()
+    let old = if use_work_db(root) {
+        crate::storage::work_store::read_chapter_content(root, chapter_id)
+            .map(|(_, c)| c)
+            .unwrap_or_default()
     } else {
-        String::new()
+        let path = chapters_dir(root).join(&meta.file);
+        if path.exists() {
+            fs::read_to_string(&path).unwrap_or_default()
+        } else {
+            String::new()
+        }
     };
     let old_chars = count_non_ws(&old);
     let new_chars = count_non_ws(content);
-    fs::write(&path, content)?;
+    if use_work_db(root) || crate::storage::is_storage_migrated() {
+        if !use_work_db(root) {
+            // 迁完后新建作品：先落库 meta
+            crate::storage::work_store::save_full_project(root, &opened.project, &[])?;
+        }
+        crate::storage::work_store::write_chapter_content(root, chapter_id, content)?;
+    } else {
+        let path = chapters_dir(root).join(&meta.file);
+        fs::write(&path, content)?;
+    }
     opened.project.updated_at = now();
     if old != content {
         mark_trope_summary_dirty(&mut opened.project);
@@ -825,7 +934,6 @@ pub fn write_chapter(root: &Path, chapter_id: &str, content: &str) -> AppResult<
     if new_chars > old_chars {
         let _ = add_daily_chars(root, (new_chars - old_chars) as u64);
     }
-    // 正文有变更则写入作品内履历（生成双写之外的保存/修改记录）
     let _ = crate::project_genlog::record_chapter_save(root, chapter_id, &old, content, "chapter_write");
     Ok(())
 }
@@ -840,6 +948,9 @@ fn genblocks_path(root: &Path, chapter_id: &str) -> PathBuf {
 
 /// 读章节 UI 分块 sidecar（可能不存在）
 pub fn read_genblocks(root: &Path, chapter_id: &str) -> Option<serde_json::Value> {
+    if use_work_db(root) {
+        return crate::storage::work_store::load_genblocks(root, chapter_id);
+    }
     let path = genblocks_path(root, chapter_id);
     if !path.exists() {
         return None;
@@ -850,6 +961,9 @@ pub fn read_genblocks(root: &Path, chapter_id: &str) -> Option<serde_json::Value
 
 /// 写章节 UI 分块 sidecar
 pub fn write_genblocks(root: &Path, chapter_id: &str, blocks: &serde_json::Value) -> AppResult<()> {
+    if use_work_db(root) || crate::storage::is_storage_migrated() {
+        return crate::storage::work_store::save_genblocks(root, chapter_id, blocks);
+    }
     let dir = genblocks_dir(root);
     fs::create_dir_all(&dir)?;
     let path = genblocks_path(root, chapter_id);
@@ -884,6 +998,14 @@ fn stats_json(root: &Path) -> PathBuf {
 }
 
 pub fn load_stats(root: &Path) -> AppResult<ProjectStats> {
+    if use_work_db(root) {
+        if let Ok(Some(v)) = crate::storage::work_store::load_stats_json(root) {
+            return Ok(serde_json::from_value(v).unwrap_or_else(|_| ProjectStats {
+                goal_chars: default_goal(),
+                ..Default::default()
+            }));
+        }
+    }
     let path = stats_json(root);
     if !path.exists() {
         return Ok(ProjectStats {
@@ -905,6 +1027,10 @@ pub fn load_stats(root: &Path) -> AppResult<ProjectStats> {
 }
 
 pub fn save_stats(root: &Path, stats: &ProjectStats) -> AppResult<()> {
+    if use_work_db(root) || crate::storage::is_storage_migrated() {
+        let v = serde_json::to_value(stats)?;
+        return crate::storage::work_store::save_stats_json(root, &v);
+    }
     fs::write(stats_json(root), serde_json::to_string_pretty(stats)?)?;
     Ok(())
 }
@@ -1060,6 +1186,9 @@ pub fn update_chapter_meta(
 }
 
 pub fn load_memory(root: &Path) -> AppResult<MemoryStore> {
+    if use_work_db(root) {
+        return crate::storage::work_store::load_memory(root);
+    }
     let path = memory_json(root);
     if !path.exists() {
         return Ok(MemoryStore::default());
@@ -1072,6 +1201,9 @@ pub fn load_memory(root: &Path) -> AppResult<MemoryStore> {
 }
 
 pub fn save_memory(root: &Path, memory: &MemoryStore) -> AppResult<()> {
+    if use_work_db(root) || crate::storage::is_storage_migrated() {
+        return crate::storage::work_store::save_memory(root, memory);
+    }
     fs::write(memory_json(root), serde_json::to_string_pretty(memory)?)?;
     Ok(())
 }
@@ -1630,8 +1762,9 @@ fn uuid_like() -> String {
     )
 }
 
-pub fn list_lore(root: &Path) -> AppResult<Vec<LoreEntry>> {
-    migrate_trope_kind_lists(root)?;
+/// 始终从磁盘 lore/ 读取（迁移用）
+pub fn list_lore_fs(root: &Path) -> AppResult<Vec<LoreEntry>> {
+    let _ = migrate_trope_kind_lists(root);
     let mut entries = Vec::new();
     let base = lore_dir(root);
     if !base.exists() {
@@ -1640,6 +1773,24 @@ pub fn list_lore(root: &Path) -> AppResult<Vec<LoreEntry>> {
     collect_lore_json(&base, &mut entries)?;
     dedupe_lore_by_id(&mut entries);
     Ok(entries)
+}
+
+pub fn list_lore(root: &Path) -> AppResult<Vec<LoreEntry>> {
+    if use_characters_db(root) {
+        return crate::storage::characters_store::list_lore();
+    }
+    if use_kb_db(root) {
+        return crate::storage::kb_store::list_lore();
+    }
+    if use_work_db(root) {
+        return crate::storage::work_store::list_lore(root);
+    }
+    list_lore_fs(root)
+}
+
+/// 迁移用：读 tropes.json / kinks.json
+pub fn read_lore_kind_list_fs(root: &Path, kind: &str) -> AppResult<Vec<LoreEntry>> {
+    read_lore_kind_list(root, kind)
 }
 
 pub fn is_trope_kind(kind: &str) -> bool {
@@ -1861,11 +2012,29 @@ pub fn upsert_lore(root: &Path, mut entry: LoreEntry) -> AppResult<LoreEntry> {
         entry.attrs.remove("unique");
     }
     entry.updated_at = now();
-    if is_trope_kind(&entry.kind) {
-        return upsert_trope_list_entry(root, entry);
-    }
     if entry.id.is_empty() {
         entry.id = Uuid::new_v4().to_string();
+    }
+    if use_characters_db(root) {
+        crate::storage::characters_store::upsert_lore(&entry)?;
+        return Ok(entry);
+    }
+    if use_kb_db(root) {
+        crate::storage::kb_store::upsert_lore(&entry)?;
+        return Ok(entry);
+    }
+    if use_work_db(root) || crate::storage::is_storage_migrated() {
+        if is_trope_kind(&entry.kind) && roots_equal(root, &crate::paths::trope_library_dir()?) {
+            crate::storage::library_store::upsert_entry(&entry)?;
+            return Ok(entry);
+        }
+        if use_work_db(root) || crate::storage::is_storage_migrated() {
+            crate::storage::work_store::upsert_lore(root, &entry)?;
+            return Ok(entry);
+        }
+    }
+    if is_trope_kind(&entry.kind) {
+        return upsert_trope_list_entry(root, entry);
     }
     let kind_dir = match entry.kind.as_str() {
         "character" => "characters",
@@ -1877,7 +2046,6 @@ pub fn upsert_lore(root: &Path, mut entry: LoreEntry) -> AppResult<LoreEntry> {
     fs::create_dir_all(&dir)?;
     let filename = format!("{}.json", sanitize_filename(&entry.title));
     fs::write(dir.join(filename), serde_json::to_string_pretty(&entry)?)?;
-    // 清理同 id 旧文件（标题变更时）
     prune_duplicate_lore(root, &entry.id, &entry.title)?;
     Ok(entry)
 }
@@ -1915,6 +2083,24 @@ fn collect_lore_paths(dir: &Path, out: &mut Vec<PathBuf>) -> AppResult<()> {
 }
 
 pub fn delete_lore(root: &Path, lore_id: &str) -> AppResult<()> {
+    if use_characters_db(root) {
+        return crate::storage::characters_store::delete_lore(lore_id);
+    }
+    if use_kb_db(root) {
+        return crate::storage::kb_store::delete_lore(lore_id);
+    }
+    if use_work_db(root) {
+        return crate::storage::work_store::delete_lore(root, lore_id);
+    }
+    if crate::storage::is_storage_migrated() {
+        if let Ok(lib) = crate::paths::trope_library_dir() {
+            if roots_equal(root, &lib) {
+                let _ = crate::storage::library_store::delete_entry("trope", lore_id);
+                let _ = crate::storage::library_store::delete_entry("kink", lore_id);
+                return Ok(());
+            }
+        }
+    }
     migrate_trope_kind_lists(root)?;
     let mut found = false;
     for kind in ["trope", "kink"] {

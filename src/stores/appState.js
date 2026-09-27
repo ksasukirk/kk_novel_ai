@@ -117,6 +117,19 @@ export const appState = reactive({
    * { root, project, chapterId, chapterContent, chapterBlocks } | null
    */
   writingSnapshot: null,
+  /** 启动存储迁移闸门状态 */
+  storageMigrate: {
+    needed: false,
+    done: false,
+    active: false,
+    percent: 0,
+    stage: "",
+    label: "",
+    current: 0,
+    total: 0,
+    error: "",
+    backupPath: "",
+  },
 });
 
 /** 角色/设定落盘后通知大纲侧栏、导图、姓名索引消费者 */

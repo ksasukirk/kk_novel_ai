@@ -27,6 +27,8 @@ import GenLogView from "./views/GenLogView.vue";
 import UsageAnalyticsView from "./views/UsageAnalyticsView.vue";
 import StoryView from "./views/StoryView.vue";
 import ChatView from "./views/ChatView.vue";
+import MigrationGate from "./views/MigrationGate.vue";
+import { ensureStorageReady } from "./services/storageMigrate.js";
 import { isKbProject, restoreWritingSnapshot } from "./stores/appState.js";
 import { isMobileUx, isTauriMobile, watchMobileViewport } from "./utils/platform.js";
 import {
@@ -241,6 +243,17 @@ watch(
   }
 );
 
+async function finishBootstrapAfterStorage() {
+  try {
+    await loadSettings();
+    applyUiLocale(appState.settings && appState.settings.ui_locale);
+    await refreshHealth();
+  } catch {
+    /* 设置页可再试 */
+  }
+  scheduleStartupUpdateCheck();
+}
+
 onMounted(async () => {
   try {
     const saved = localStorage.getItem(THEME_KEY);
@@ -262,14 +275,21 @@ onMounted(async () => {
     /* 非 Tauri 预览时可忽略 */
   }
   try {
-    await loadSettings();
-    applyUiLocale(appState.settings && appState.settings.ui_locale);
-    await refreshHealth();
+    await ensureStorageReady();
+    await finishBootstrapAfterStorage();
   } catch {
-    /* 设置页可再试 */
+    /* MigrationGate 展示错误；重试成功后由 watch 继续 */
   }
-  scheduleStartupUpdateCheck();
 });
+
+watch(
+  () => appState.storageMigrate.done,
+  async (done) => {
+    if (done && !appState.settings) {
+      await finishBootstrapAfterStorage();
+    }
+  }
+);
 
 onUnmounted(() => {
   unwatchMobile();
@@ -277,7 +297,17 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="app-shell" :class="{ 'is-mobile': mobileUx }">
+  <MigrationGate
+    v-if="
+      appState.storageMigrate.needed &&
+      (!appState.storageMigrate.done || appState.storageMigrate.error)
+    "
+  />
+  <div
+    v-else
+    class="app-shell"
+    :class="{ 'is-mobile': mobileUx }"
+  >
     <header class="titlebar" :class="{ 'titlebar-mobile': mobileUx || tauriMobile }">
       <div class="titlebar-left" @mousedown="startWindowDrag">
         <div class="titlebar-logo" aria-hidden="true">K</div>

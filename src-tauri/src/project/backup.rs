@@ -47,22 +47,66 @@ fn collect_files(root: &Path) -> AppResult<Vec<PathBuf>> {
     Ok(out)
 }
 
-/// 将作品目录打包为 ZIP，写入导出缓存，返回路径与文件名
-pub fn export_project_zip(root: &Path) -> AppResult<serde_json::Value> {
-    let opened = open_project(root)?;
-    let title = sanitize_folder_name(&opened.project.title);
-    let stamp = chrono::Utc::now().format("%Y%m%d-%H%M%S");
-    let filename = format!("{title}_{stamp}.zip");
-    let out_path = export_cache_dir()?.join(&filename);
+/// 将 work.sqlite 物化为临时目录（兼容旧 ZIP 布局）
+fn materialize_work_tree(root: &Path, dest: &Path) -> AppResult<()> {
+    let project = crate::storage::work_store::load_project(root)?;
+    fs::create_dir_all(dest.join("chapters"))?;
+    fs::create_dir_all(dest.join("lore"))?;
+    fs::create_dir_all(dest.join("story"))?;
+    fs::write(
+        dest.join("project.json"),
+        serde_json::to_string_pretty(&project)?,
+    )?;
+    for ch in &project.chapters {
+        let (_, content) = crate::storage::work_store::read_chapter_content(root, &ch.id)?;
+        fs::write(dest.join("chapters").join(&ch.file), content)?;
+    }
+    let lore = crate::storage::work_store::list_lore(root)?;
+    for e in lore {
+        let kind_dir = match e.kind.as_str() {
+            "character" => "characters",
+            "trope" => "tropes",
+            "kink" => "kinks",
+            _ => "world",
+        };
+        let dir = dest.join("lore").join(kind_dir);
+        fs::create_dir_all(&dir)?;
+        let name = format!("{}.json", e.id);
+        fs::write(dir.join(name), serde_json::to_string_pretty(&e)?)?;
+    }
+    if let Ok(mem) = crate::storage::work_store::load_memory(root) {
+        fs::write(dest.join("memory.json"), serde_json::to_string_pretty(&mem)?)?;
+    }
+    if let Ok(Some(stats)) = crate::storage::work_store::load_stats_json(root) {
+        fs::write(dest.join("stats.json"), serde_json::to_string_pretty(&stats)?)?;
+    }
+    for name in ["plot", "timeline", "relations", "canon", "storyboard"] {
+        if let Ok(Some(v)) = crate::storage::work_store::load_story_doc(root, name) {
+            fs::write(
+                dest.join("story").join(format!("{name}.json")),
+                serde_json::to_string_pretty(&v)?,
+            )?;
+        }
+    }
+    // 附带 embeddings.sqlite（若有）
+    let emb = root.join("embeddings.sqlite");
+    if emb.is_file() {
+        let _ = fs::copy(&emb, dest.join("embeddings.sqlite"));
+    }
+    // 导出时附带 work.sqlite 本身，便于新版直接导入
+    let _ = fs::copy(root.join("work.sqlite"), dest.join("work.sqlite"));
+    Ok(())
+}
 
-    let file = File::create(&out_path).map_err(|e| AppError::t_fmt("errors.createBackupFailed", &[("e", &e.to_string())]))?;
+fn zip_directory(src_root: &Path, out_path: &Path) -> AppResult<()> {
+    let file = File::create(out_path)
+        .map_err(|e| AppError::t_fmt("errors.createBackupFailed", &[("e", &e.to_string())]))?;
     let mut zip = ZipWriter::new(file);
     let opts = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
-
-    let files = collect_files(root)?;
+    let files = collect_files(src_root)?;
     for path in files {
         let rel = path
-            .strip_prefix(root)
+            .strip_prefix(src_root)
             .map_err(|_| AppError::t("errors.backupPathInvalid"))?;
         let name = rel.to_string_lossy().replace('\\', "/");
         if name.is_empty() || name.contains("..") {
@@ -84,6 +128,26 @@ pub fn export_project_zip(root: &Path) -> AppResult<serde_json::Value> {
     }
     zip.finish()
         .map_err(|e| AppError::t_fmt("errors.finishBackupFailed", &[("e", &e.to_string())]))?;
+    Ok(())
+}
+
+/// 将作品目录打包为 ZIP，写入导出缓存，返回路径与文件名
+pub fn export_project_zip(root: &Path) -> AppResult<serde_json::Value> {
+    let opened = open_project(root)?;
+    let title = sanitize_folder_name(&opened.project.title);
+    let stamp = chrono::Utc::now().format("%Y%m%d-%H%M%S");
+    let filename = format!("{title}_{stamp}.zip");
+    let out_path = export_cache_dir()?.join(&filename);
+
+    if crate::storage::work_db_exists(root) {
+        let tmp = export_cache_dir()?.join(format!("_mat_{stamp}"));
+        let _ = fs::remove_dir_all(&tmp);
+        materialize_work_tree(root, &tmp)?;
+        zip_directory(&tmp, &out_path)?;
+        let _ = fs::remove_dir_all(&tmp);
+    } else {
+        zip_directory(root, &out_path)?;
+    }
 
     let meta = fs::metadata(&out_path).map_err(|e| AppError::msg(e.to_string()))?;
     Ok(json!({
@@ -237,7 +301,7 @@ pub fn import_project_zip_bytes(bytes: &[u8], preferred_title: Option<&str>) -> 
         .unwrap_or_else(|| "导入作品".into());
 
     let dest = allocate_novel_folder(&title)?;
-    if dest.exists() && project_json(&dest).exists() {
+    if dest.exists() && crate::storage::is_project_root(&dest) {
         return Err(AppError::t("errors.targetDirAlreadyHasProject"));
     }
     fs::create_dir_all(&dest)?;
@@ -261,9 +325,32 @@ pub fn import_project_zip_bytes(bytes: &[u8], preferred_title: Option<&str>) -> 
         fs::write(&out, buf).map_err(|e| AppError::t_fmt("errors.writeFailed", &[("e", &e.to_string())]))?;
     }
 
-    if !project_json(&dest).is_file() {
+    let has_work = dest.join("work.sqlite").is_file();
+    let has_pj = project_json(&dest).is_file();
+    if !has_work && !has_pj {
         let _ = fs::remove_dir_all(&dest);
         return Err(AppError::t("errors.importMissingProjectJson"));
+    }
+
+    // 已迁库环境：若只有旧文件树则吸入 work.sqlite
+    if crate::storage::is_storage_migrated() && !has_work && has_pj {
+        if let Ok(opened_fs) = crate::project::open_project_fs(&dest) {
+            let mut bodies = Vec::new();
+            for ch in &opened_fs.project.chapters {
+                let path = dest.join("chapters").join(&ch.file);
+                let content = fs::read_to_string(&path).unwrap_or_default();
+                bodies.push((ch.id.clone(), content));
+            }
+            let _ = crate::storage::work_store::save_full_project(
+                &dest,
+                &opened_fs.project,
+                &bodies,
+            );
+            if let Ok(lore) = crate::project::list_lore_fs(&dest) {
+                let _ = crate::storage::work_store::replace_lore(&dest, &lore);
+            }
+            let _ = crate::storage::legacy_archive::archive_work_root(&dest);
+        }
     }
 
     let opened = open_project(&dest)?;

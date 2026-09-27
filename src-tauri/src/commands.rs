@@ -443,6 +443,16 @@ pub fn trope_library_list() -> Result<Value, String> {
 }
 
 #[tauri::command]
+pub fn storage_migration_status() -> Result<Value, String> {
+    api::storage_migration_status().map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn storage_migration_run(app: AppHandle) -> Result<Value, String> {
+    api::storage_migration_run(app).map_err(Into::into)
+}
+
+#[tauri::command]
 pub fn trope_summary_status(roots: Vec<String>) -> Result<Value, String> {
     api::trope_summary_status(roots).map_err(Into::into)
 }

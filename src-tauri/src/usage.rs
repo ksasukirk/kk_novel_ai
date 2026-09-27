@@ -73,6 +73,11 @@ pub fn calc_cost_cny(usage: &TokenUsage, settings: &AppSettings, model_used: &st
 }
 
 pub fn load_ledger() -> AppResult<UsageLedger> {
+    if crate::storage::is_storage_migrated() {
+        if let Ok(Some(l)) = crate::storage::app_store::load_usage_ledger() {
+            return Ok(l);
+        }
+    }
     let path = usage_ledger_path()?;
     if !path.exists() {
         return Ok(UsageLedger::default());
@@ -82,6 +87,9 @@ pub fn load_ledger() -> AppResult<UsageLedger> {
 }
 
 pub fn save_ledger(ledger: &UsageLedger) -> AppResult<()> {
+    if crate::storage::is_storage_migrated() {
+        return crate::storage::app_store::save_usage_ledger(ledger);
+    }
     let path = usage_ledger_path()?;
     let text = serde_json::to_string_pretty(ledger)?;
     fs::write(path, text)?;

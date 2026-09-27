@@ -36,7 +36,7 @@ fn project_activity_path(root: &Path) -> PathBuf {
 }
 
 fn is_novel_project(root: &Path) -> bool {
-    root.join("project.json").exists()
+    crate::storage::is_project_root(root)
 }
 
 fn append_line(path: &Path, line: &str) -> AppResult<()> {
@@ -58,6 +58,10 @@ pub fn append_entry(entry: &GenLogEntry) -> AppResult<()> {
     let root = Path::new(root_s);
     if !is_novel_project(root) {
         return Ok(());
+    }
+    if crate::storage::work_db_exists(root) {
+        let v = serde_json::to_value(entry)?;
+        return crate::storage::work_store::append_gen_activity(root, &v);
     }
     let chapter_id = entry.chapter_id.trim();
     let chapter_key = if chapter_id.is_empty() {
@@ -88,6 +92,16 @@ fn read_jsonl(path: &Path) -> Vec<GenLogEntry> {
 pub fn list_entries(root: &Path, limit: usize) -> AppResult<Vec<GenLogEntry>> {
     if !is_novel_project(root) {
         return Ok(vec![]);
+    }
+    if crate::storage::work_db_exists(root) {
+        let vals = crate::storage::work_store::list_gen_activity(root, limit)?;
+        let mut items = Vec::new();
+        for v in vals {
+            if let Ok(e) = serde_json::from_value(v) {
+                items.push(e);
+            }
+        }
+        return Ok(items);
     }
     let index = project_activity_path(root);
     let mut items = if index.exists() {

@@ -173,6 +173,7 @@ fn file_sig(path: &Path) -> String {
 
 pub fn fingerprint_root(root: &Path) -> String {
     [
+        file_sig(&root.join("work.sqlite")),
         file_sig(&root.join("project.json")),
         file_sig(&root.join("memory.json")),
         file_sig(&root.join("lore").join("tropes.json")),
@@ -182,6 +183,13 @@ pub fn fingerprint_root(root: &Path) -> String {
 }
 
 fn load_cache() -> CatalogFile {
+    if crate::storage::is_storage_migrated() {
+        if let Ok(Some(v)) = crate::storage::app_store::load_work_catalog_blob("catalog") {
+            if let Ok(f) = serde_json::from_value(v) {
+                return f;
+            }
+        }
+    }
     let path = match catalog_cache_path() {
         Ok(p) => p,
         Err(_) => return empty_cache(),
@@ -201,6 +209,10 @@ fn empty_cache() -> CatalogFile {
 }
 
 fn save_cache(file: &CatalogFile) -> AppResult<()> {
+    if crate::storage::is_storage_migrated() {
+        let v = serde_json::to_value(file)?;
+        return crate::storage::app_store::save_work_catalog_blob("catalog", &v);
+    }
     let path = catalog_cache_path()?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;

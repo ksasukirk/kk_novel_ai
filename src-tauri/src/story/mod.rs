@@ -18,7 +18,31 @@ fn ensure_story_dir(root: &Path) -> AppResult<()> {
     Ok(())
 }
 
+fn story_root_and_name(path: &Path) -> Option<(PathBuf, String)> {
+    let name = path.file_stem()?.to_str()?.to_string();
+    let root = path.parent()?.parent()?.to_path_buf();
+    Some((root, name))
+}
+
 fn read_json_or_default<T: Default + for<'de> Deserialize<'de>>(path: &Path) -> AppResult<T> {
+    if let Some((root, name)) = story_root_and_name(path) {
+        if crate::storage::work_db_exists(&root) {
+            if let Ok(Some(v)) = crate::storage::work_store::load_story_doc(&root, &name) {
+                return Ok(serde_json::from_value(v).unwrap_or_default());
+            }
+            return Ok(T::default());
+        }
+        if crate::storage::is_storage_migrated() {
+            if let Ok(uni) = crate::paths::universal_kb_dir() {
+                if root == uni || root.canonicalize().ok() == uni.canonicalize().ok() {
+                    if let Ok(Some(v)) = crate::storage::kb_store::load_story_doc(&name) {
+                        return Ok(serde_json::from_value(v).unwrap_or_default());
+                    }
+                    return Ok(T::default());
+                }
+            }
+        }
+    }
     if !path.exists() {
         return Ok(T::default());
     }
@@ -30,6 +54,17 @@ fn read_json_or_default<T: Default + for<'de> Deserialize<'de>>(path: &Path) -> 
 }
 
 fn write_json<T: Serialize>(path: &Path, value: &T) -> AppResult<()> {
+    if let Some((root, name)) = story_root_and_name(path) {
+        let v = serde_json::to_value(value)?;
+        if crate::storage::work_db_exists(&root) || crate::storage::is_storage_migrated() {
+            if let Ok(uni) = crate::paths::universal_kb_dir() {
+                if root == uni || root.canonicalize().ok() == uni.canonicalize().ok() {
+                    return crate::storage::kb_store::save_story_doc(&name, &v);
+                }
+            }
+            return crate::storage::work_store::save_story_doc(&root, &name, &v);
+        }
+    }
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }

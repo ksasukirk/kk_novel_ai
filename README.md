@@ -274,6 +274,12 @@ Prompt 模板目录：[`src-tauri/prompts/`](src-tauri/prompts/)（根目录为�
 
 ## 8. 作品目录与应用数据
 
+**存储升级（v0.2.50+）**：运行时真相源为分域多 SQLite（WAL）。启动时若检测到旧 JSON/md，会先备份到 `{app_data}/migrations/backup_*`，再带进度条迁移；完成后旧文件移入各根下 `.legacy/`。空安装直接建空库。详见 [`docs/sqlite-storage.md`](docs/sqlite-storage.md)。
+
+典型库文件：`app.sqlite` / `characters.sqlite` / `kb.sqlite` / `activity.sqlite`（应用数据目录）；`novels/_library/library.sqlite`；每作品 `work.sqlite`（章节正文在库内）；`embeddings.sqlite` 仍按作品独立。导出 ZIP 会从库物化为旧目录布局以保持兼容。
+
+以下为**迁移前 / 导出物化**时的经典目录说明（归档后运行时以 SQLite 为准）：
+
 作品根目录（实现：[`project/mod.rs`](src-tauri/src/project/mod.rs)、[`story/mod.rs`](src-tauri/src/story/mod.rs)、[`image.rs`](src-tauri/src/image.rs)、[`chat.rs`](src-tauri/src/chat.rs)）：
 
 ```text

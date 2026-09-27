@@ -54,24 +54,52 @@ fn session_path(mode: &str, project_root: Option<&str>) -> AppResult<PathBuf> {
 }
 
 pub fn chat_session_get(mode: &str, project_root: Option<&str>) -> AppResult<Value> {
-    let path = session_path(mode, project_root)?;
-    let mut session = if path.exists() {
-        let text = fs::read_to_string(&path)?;
-        if crate::error::json_is_blank(&text) {
+    let mut session = if crate::storage::is_storage_migrated() {
+        match mode {
+            "novel" => {
+                let root = project_root
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .ok_or_else(|| AppError::t("errors.needProject"))?;
+                crate::storage::work_store::load_novel_chat(Path::new(root))?
+                    .unwrap_or_else(|| ChatSession {
+                        mode: mode.into(),
+                        ..Default::default()
+                    })
+            }
+            "free" => crate::storage::activity_store::load_chat_free()?.unwrap_or_else(|| {
+                ChatSession {
+                    mode: mode.into(),
+                    ..Default::default()
+                }
+            }),
+            _ => {
+                return Err(AppError::t_fmt(
+                    "errors.unknownChatMode",
+                    &[("mode", mode)],
+                ))
+            }
+        }
+    } else {
+        let path = session_path(mode, project_root)?;
+        if path.exists() {
+            let text = fs::read_to_string(&path)?;
+            if crate::error::json_is_blank(&text) {
+                ChatSession {
+                    mode: mode.into(),
+                    ..Default::default()
+                }
+            } else {
+                serde_json::from_str(&text).unwrap_or_else(|_| ChatSession {
+                    mode: mode.into(),
+                    ..Default::default()
+                })
+            }
+        } else {
             ChatSession {
                 mode: mode.into(),
                 ..Default::default()
             }
-        } else {
-            serde_json::from_str(&text).unwrap_or_else(|_| ChatSession {
-                mode: mode.into(),
-                ..Default::default()
-            })
-        }
-    } else {
-        ChatSession {
-            mode: mode.into(),
-            ..Default::default()
         }
     };
     if session.mode.is_empty() {
@@ -85,7 +113,6 @@ pub fn chat_session_save(
     project_root: Option<&str>,
     session: ChatSession,
 ) -> AppResult<Value> {
-    let path = session_path(mode, project_root)?;
     let mut s = session;
     s.mode = mode.into();
     s.updated_at = chrono::Utc::now().to_rfc3339();
@@ -93,6 +120,28 @@ pub fn chat_session_save(
         let role = m.role.trim();
         role == "user" || role == "assistant"
     });
-    fs::write(&path, serde_json::to_string_pretty(&s)?)?;
+    if crate::storage::is_storage_migrated() {
+        match mode {
+            "novel" => {
+                let root = project_root
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .ok_or_else(|| AppError::t("errors.needProject"))?;
+                crate::storage::work_store::save_novel_chat(Path::new(root), &s)?;
+            }
+            "free" => {
+                crate::storage::activity_store::save_chat_free(&s)?;
+            }
+            _ => {
+                return Err(AppError::t_fmt(
+                    "errors.unknownChatMode",
+                    &[("mode", mode)],
+                ))
+            }
+        }
+    } else {
+        let path = session_path(mode, project_root)?;
+        fs::write(&path, serde_json::to_string_pretty(&s)?)?;
+    }
     Ok(json!({ "ok": true, "session": s }))
 }

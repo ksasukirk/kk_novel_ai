@@ -347,11 +347,17 @@ pub fn project_open(root: &str) -> AppResult<Value> {
     }
     let _ = settings::save_settings(&s);
     let emb_path = Path::new(root).join("embeddings.sqlite");
-    if !emb_path.exists() && s.resolve_embedding_model().is_some() {
+    if !emb_path.exists()
+        && s.resolve_embedding_model().is_some()
+        && !crate::storage::migration_in_progress()
+    {
         let root_owned = root.to_string();
         // 延迟重建，避免与打开后章节 peek 抢盘
         tauri::async_runtime::spawn(async move {
             tokio::time::sleep(Duration::from_secs(4)).await;
+            if crate::storage::migration_in_progress() {
+                return;
+            }
             let Ok(settings) = settings::load_settings() else {
                 return;
             };
@@ -1040,6 +1046,21 @@ pub fn trope_library_list() -> AppResult<Value> {
         "root": root.to_string_lossy(),
         "items": items,
     }))
+}
+
+pub fn storage_migration_status() -> AppResult<Value> {
+    let st = crate::storage::migration_status()?;
+    Ok(serde_json::to_value(st)?)
+}
+
+pub fn storage_migration_run(app: tauri::AppHandle) -> AppResult<Value> {
+    use tauri::Emitter;
+    crate::storage::set_progress_emitter(Some(std::sync::Arc::new(move |p| {
+        let _ = app.emit("storage-migrate-progress", p);
+    })));
+    let result = crate::storage::migration_run();
+    crate::storage::set_progress_emitter(None);
+    result
 }
 
 pub fn trope_summary_status(roots: Vec<String>) -> AppResult<Value> {

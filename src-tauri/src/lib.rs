@@ -24,6 +24,7 @@ mod project;
 mod project_genlog;
 mod rag;
 mod settings;
+mod storage;
 mod story;
 mod update;
 mod usage;
@@ -105,6 +106,8 @@ pub fn run() {
             commands::character_roster_ensure,
             commands::trope_library_ensure,
             commands::trope_library_list,
+            commands::storage_migration_status,
+            commands::storage_migration_run,
             commands::trope_summary_status,
             commands::project_ensure_characters_link,
             commands::lore_upsert,

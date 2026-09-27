@@ -42,6 +42,11 @@ fn now() -> String {
 }
 
 pub fn load_registry() -> AppResult<KbRegistry> {
+    if crate::storage::is_storage_migrated() {
+        if let Ok(Some(reg)) = crate::storage::app_store::load_kb_registry() {
+            return Ok(reg);
+        }
+    }
     let path = kb_registry_path()?;
     if !path.exists() {
         return Ok(KbRegistry::default());
@@ -54,6 +59,9 @@ pub fn load_registry() -> AppResult<KbRegistry> {
 }
 
 pub fn save_registry(reg: &KbRegistry) -> AppResult<()> {
+    if crate::storage::is_storage_migrated() {
+        return crate::storage::app_store::save_kb_registry(reg);
+    }
     let path = kb_registry_path()?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
@@ -248,6 +256,11 @@ pub fn ensure_trope_library() -> AppResult<PathBuf> {
 /// 冷路径：角色仓迁移 + 近义压缩 + 必要时 remap 各书章；成功后写 marker。
 pub fn maintain_trope_library() -> AppResult<PathBuf> {
     let root = ensure_trope_library()?;
+    if crate::storage::is_storage_migrated() {
+        let _ = crate::storage::library_store::open_library_db()?;
+        // SQLite 路径下近义压缩暂跳过文件树逻辑；库已就绪即可
+        return Ok(root);
+    }
     if let Ok(roster) = character_roster_dir() {
         let _ = migrate_tropes_between(&roster, &root);
     }
@@ -269,6 +282,13 @@ pub fn maintain_trope_library() -> AppResult<PathBuf> {
 /// 确保库存在；无 marker 时跑一次维护（兼容旧库首次升级）；`force_maintain` 强制再维护。
 pub fn ensure_trope_library_with_opts(force_maintain: bool) -> AppResult<PathBuf> {
     let root = ensure_trope_library()?;
+    if crate::storage::is_storage_migrated() {
+        let _ = crate::storage::library_store::open_library_db()?;
+        if force_maintain {
+            return maintain_trope_library();
+        }
+        return Ok(root);
+    }
     let marker = trope_lib_marker_path(&root);
     if force_maintain || !marker.exists() {
         return maintain_trope_library();
@@ -276,8 +296,11 @@ pub fn ensure_trope_library_with_opts(force_maintain: bool) -> AppResult<PathBuf
     Ok(root)
 }
 
-/// 轻量列出情节库条目（只读 tropes.json / kinks.json，不整树扫 lore）。
+/// 轻量列出情节库条目（SQLite 摘要或 tropes.json / kinks.json）。
 pub fn list_trope_library_entries_lite() -> Vec<project::LoreEntry> {
+    if crate::storage::is_storage_migrated() {
+        return crate::storage::library_store::list_lite().unwrap_or_default();
+    }
     let root = match ensure_trope_library() {
         Ok(p) => p,
         Err(_) => return vec![],
@@ -292,6 +315,9 @@ pub fn list_trope_library_entries_lite() -> Vec<project::LoreEntry> {
 }
 
 pub fn list_trope_library_entries() -> Vec<project::LoreEntry> {
+    if crate::storage::is_storage_migrated() {
+        return crate::storage::library_store::list_full().unwrap_or_default();
+    }
     list_trope_library_entries_lite()
 }
 
