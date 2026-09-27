@@ -280,6 +280,14 @@ export async function scanTropesFromRoot(root, opts = {}) {
     tropeScanState.updated = Array.isArray(r && r.updated) ? r.updated.length : tropeScanState.updated;
     tropeScanState.skipped = Number((r && r.skipped) || 0);
     applyReportUsage(r);
+    if (!tropeScanState.cancelled) {
+      try {
+        const { ensureTropeLibrary } = await import("./projectClient.js");
+        await ensureTropeLibrary({ maintain: true });
+      } catch {
+        /* 维护失败不挡扫描结果 */
+      }
+    }
     try {
       await refreshTropeIndex();
     } catch {

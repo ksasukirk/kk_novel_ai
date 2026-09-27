@@ -31,6 +31,8 @@ import { tropesScanConfirmText } from "../utils/usageEstimate.js";
 import { runTropeRefine } from "../services/tropeRefine.js";
 import { displayTropeContent, displayTropeTitle } from "../utils/tropeI18n.js";
 
+const PAGE_SIZE = 80;
+
 const items = ref([]);
 const rosterPath = ref("");
 const error = useToastError();
@@ -48,10 +50,13 @@ const showFieldPanel = ref(false);
 const refiningId = ref("");
 const cardFields = ref(readTropeCardFields());
 const cardDensity = ref(readTropeCardDensity());
+const pageLimit = ref(PAGE_SIZE);
 const scan = tropeScanState;
 let applyingRemote = false;
 let saveTimer = null;
-let scanRefreshTimer = null;
+/** @type {string} */
+let lastLoadedKey = "";
+let wasScanRunning = false;
 
 const chapterCount = computed(() => {
   const ch = (appState.project && appState.project.chapters) || [];
@@ -133,9 +138,28 @@ const visibleItems = computed(() => {
   return list;
 });
 
+const displayItems = computed(() => visibleItems.value.slice(0, pageLimit.value));
+
+const canShowMore = computed(() => pageLimit.value < visibleItems.value.length);
+
 const visibleCountText = computed(() =>
-  t("trope.visibleCount", { n: visibleItems.value.length, m: kindItems.value.length })
+  t("trope.visibleCount", {
+    n: Math.min(pageLimit.value, visibleItems.value.length),
+    m: kindItems.value.length,
+  })
 );
+
+function loadKey() {
+  return `${rosterPath.value || ""}|${Number(appState.tropeRevision) || 0}`;
+}
+
+function resetPageLimit() {
+  pageLimit.value = PAGE_SIZE;
+}
+
+function showMore() {
+  pageLimit.value += PAGE_SIZE;
+}
 
 function attrsOf(item) {
   return item && item.attrs && typeof item.attrs === "object" ? item.attrs : {};
@@ -195,17 +219,30 @@ function showEvidence(item) {
   return fieldOn("evidence") && !!attrsOf(item).evidence;
 }
 
-async function refresh() {
+/**
+ * @param {{ force?: boolean, maintain?: boolean }} [opts]
+ */
+async function refresh(opts = {}) {
   error.value = "";
+  const force = !!opts.force;
+  const maintain = !!opts.maintain;
+  if (!force && !maintain && rosterPath.value && lastLoadedKey && lastLoadedKey === loadKey()) {
+    return;
+  }
   try {
-    const ens = await project.ensureTropeLibrary();
-    rosterPath.value = ens.root || "";
+    if (maintain) {
+      const ens = await project.ensureTropeLibrary({ maintain: true });
+      rosterPath.value = ens.root || "";
+    }
+    const r = await project.listTropeLibrary();
+    rosterPath.value = (r && r.root) || rosterPath.value || "";
     if (!rosterPath.value) throw new Error(t("trope.noRoster"));
-    const r = await project.listLoreAt(rosterPath.value);
-    items.value = r.items || [];
+    items.value = (r && r.items) || [];
+    lastLoadedKey = loadKey();
   } catch (e) {
     error.value = String(e.message || e);
     items.value = [];
+    lastLoadedKey = "";
   }
 }
 
@@ -274,7 +311,7 @@ async function save(opts = {}) {
   error.value = "";
   if (!silent) status.value = "";
   try {
-    if (!rosterPath.value) await refresh();
+    if (!rosterPath.value) await refresh({ force: true });
     if (!rosterPath.value) throw new Error(t("trope.noPath"));
     if (!form.value.title.trim()) {
       if (silent) return;
@@ -289,8 +326,9 @@ async function save(opts = {}) {
       : kind === "kink"
         ? t("trope.savedKink")
         : t("trope.savedTrope");
-    await refresh();
     bumpTropeRevision();
+    lastLoadedKey = "";
+    await refresh({ force: true });
   } catch (e) {
     if (!silent) error.value = String(e.message || e);
   }
@@ -310,7 +348,7 @@ async function runScan(root) {
   error.value = "";
   try {
     await scanTropesFromRoot(root);
-    await refresh();
+    await refresh({ force: true });
   } catch (e) {
     error.value = String(e.message || e);
   }
@@ -362,7 +400,7 @@ async function onScanImport() {
       title: t("trope.scanImport"),
     });
     if (!ok) {
-      await refresh();
+      await refresh({ force: true });
       return;
     }
     await runScan(opened.import_root || opened.root);
@@ -423,24 +461,6 @@ watch(
   { deep: true }
 );
 
-watch(
-  () => [scan.added, scan.updated, scan.running],
-  () => {
-    if (!scan.running) {
-      if (scanRefreshTimer) {
-        clearTimeout(scanRefreshTimer);
-        scanRefreshTimer = null;
-      }
-      return;
-    }
-    if (scanRefreshTimer) clearTimeout(scanRefreshTimer);
-    scanRefreshTimer = setTimeout(() => {
-      scanRefreshTimer = null;
-      void refresh();
-    }, 800);
-  }
-);
-
 function currentEditItem() {
   const id = form.value.id;
   if (!id) return null;
@@ -478,7 +498,7 @@ async function onRefine(item) {
       projectRoot: appState.projectRoot || rosterPath.value,
       libraryRoot: rosterPath.value,
     });
-    await refresh();
+    await refresh({ force: true });
     if (saved && saved.id && (form.value.id === item.id || editorOpen.value)) {
       const fresh = (items.value || []).find((it) => it.id === saved.id) || saved;
       await edit(fresh);
@@ -509,15 +529,47 @@ async function remove(item) {
     applyingRemote = false;
   }
   if (expandedId.value === item.id) expandedId.value = "";
-  await refresh();
   bumpTropeRevision();
+  lastLoadedKey = "";
+  await refresh({ force: true });
 }
 
-onMounted(refresh);
-onActivated(refresh);
+watch(
+  () => [kindFilter.value, categoryFilter.value, searchQuery.value],
+  () => {
+    resetPageLimit();
+  }
+);
+
+watch(
+  () => appState.tropeRevision,
+  () => {
+    // 外部 bump（扫描等）后：若已在本页且 key 变了则补水
+    if (!rosterPath.value) return;
+    if (lastLoadedKey === loadKey()) return;
+    void refresh({ force: true });
+  }
+);
+
+watch(
+  () => scan.running,
+  (running) => {
+    if (wasScanRunning && !running) {
+      void refresh({ force: true });
+    }
+    wasScanRunning = !!running;
+  }
+);
+
+onMounted(() => {
+  void refresh({ force: true });
+});
+onActivated(() => {
+  if (rosterPath.value && lastLoadedKey && lastLoadedKey === loadKey()) return;
+  void refresh();
+});
 onUnmounted(() => {
   if (saveTimer) clearTimeout(saveTimer);
-  if (scanRefreshTimer) clearTimeout(scanRefreshTimer);
 });
 </script>
 
@@ -554,7 +606,7 @@ onUnmounted(() => {
           >
             {{ $t("common.kink") }}
           </button>
-          <button type="button" class="app-btn app-btn-light refresh-btn" :disabled="scan.running" @click="refresh">{{ $t("common.refresh") }}</button>
+          <button type="button" class="app-btn app-btn-light refresh-btn" :disabled="scan.running" @click="refresh({ force: true })">{{ $t("common.refresh") }}</button>
           <button type="button" class="app-btn app-btn-primary" :disabled="scan.running" @click="resetForm">{{ $t("trope.new") }}</button>
           <button type="button" class="app-btn" :disabled="!canScanCurrent" @click="onScanCurrent">{{ $t("trope.scanCurrent") }}</button>
           <button type="button" class="app-btn" :disabled="scan.running" @click="onScanImport">{{ $t("trope.scanImport") }}</button>
@@ -657,7 +709,7 @@ onUnmounted(() => {
       <div class="list-pane" @click="onListPaneClick">
         <div class="card-grid">
           <article
-            v-for="item in visibleItems"
+            v-for="item in displayItems"
             :key="item.id"
             class="lore-item"
             :class="{
@@ -730,6 +782,12 @@ onUnmounted(() => {
           </article>
         </div>
         <p v-if="!visibleItems.length" class="muted empty-hint">{{ $t("trope.empty") }}</p>
+        <div v-else-if="canShowMore" class="show-more-wrap">
+          <button type="button" class="app-btn app-btn-light" @click="showMore">
+            {{ $t("trope.showMore") }}
+            ({{ displayItems.length }} / {{ visibleItems.length }})
+          </button>
+        </div>
       </div>
 
       <aside v-if="editorOpen" class="editor editor-pane" @click.stop>
@@ -1078,11 +1136,16 @@ onUnmounted(() => {
   line-height: 1.4;
   display: -webkit-box;
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 4;
+  -webkit-line-clamp: 3;
   overflow: hidden;
 }
 .lore-item.compact .snippet {
   -webkit-line-clamp: 2;
+}
+.show-more-wrap {
+  display: flex;
+  justify-content: center;
+  padding: 12px 0 4px;
 }
 .full-content,
 .do-dont p,

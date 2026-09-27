@@ -1684,7 +1684,7 @@ fn parse_lore_list_bytes(text: &str) -> Vec<LoreEntry> {
     vec![]
 }
 
-fn read_lore_kind_list(root: &Path, kind: &str) -> AppResult<Vec<LoreEntry>> {
+pub fn read_lore_kind_list(root: &Path, kind: &str) -> AppResult<Vec<LoreEntry>> {
     let path = lore_list_path(root, kind);
     if !path.exists() {
         return Ok(vec![]);

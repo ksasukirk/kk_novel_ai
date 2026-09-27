@@ -104,6 +104,7 @@ pub fn run() {
             commands::lore_list_scoped,
             commands::character_roster_ensure,
             commands::trope_library_ensure,
+            commands::trope_library_list,
             commands::trope_summary_status,
             commands::project_ensure_characters_link,
             commands::lore_upsert,

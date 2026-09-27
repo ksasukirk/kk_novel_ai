@@ -1019,12 +1019,26 @@ pub fn character_roster_ensure() -> AppResult<Value> {
     }))
 }
 
-pub fn trope_library_ensure() -> AppResult<Value> {
-    let root = crate::kb::ensure_trope_library()?;
+pub fn trope_library_ensure(maintain: Option<bool>) -> AppResult<Value> {
+    let force = maintain.unwrap_or(false);
+    let root = crate::kb::ensure_trope_library_with_opts(force)?;
+    let marker_ok = root.join(".trope_lib_maintained").exists();
     Ok(json!({
         "ok": true,
         "root": root.to_string_lossy(),
         "novels_dir": crate::paths::novels_dir()?.to_string_lossy(),
+        "maintained": marker_ok,
+    }))
+}
+
+/// 情节库轻量列表（tropes.json + kinks.json）
+pub fn trope_library_list() -> AppResult<Value> {
+    let root = crate::kb::ensure_trope_library_with_opts(false)?;
+    let items = crate::kb::list_trope_library_entries_lite();
+    Ok(json!({
+        "ok": true,
+        "root": root.to_string_lossy(),
+        "items": items,
     }))
 }
 
@@ -1701,7 +1715,11 @@ pub async fn dispatch_rpc(req: Value) -> AppResult<Value> {
         "lore_list" => lore_list(req_str(&req, "root")?),
         "lore_list_scoped" => lore_list_scoped(req_str(&req, "root")?),
         "character_roster_ensure" => character_roster_ensure(),
-        "trope_library_ensure" => trope_library_ensure(),
+        "trope_library_ensure" => {
+            let maintain = req.get("maintain").and_then(|v| v.as_bool());
+            trope_library_ensure(maintain)
+        }
+        "trope_library_list" => trope_library_list(),
         "trope_summary_status" => {
             let mut roots: Vec<String> = req
                 .get("roots")

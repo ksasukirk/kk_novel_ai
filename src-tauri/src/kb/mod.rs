@@ -232,11 +232,22 @@ pub fn migrate_tropes_between(src: &Path, dest: &Path) -> AppResult<u32> {
     Ok(moved)
 }
 
-/// 确保全局情节/喜好库存在：`{novels}/_library/lore/{tropes,kinks}.json`
-/// 首次会把旧角色仓里的 tropes/kinks 迁过来。
+const TROPE_LIB_MARKER: &str = ".trope_lib_maintained";
+
+fn trope_lib_marker_path(root: &Path) -> PathBuf {
+    root.join(TROPE_LIB_MARKER)
+}
+
+/// 热路径：只保证 `{novels}/_library/lore` 存在，不做迁移/近义压缩。
 pub fn ensure_trope_library() -> AppResult<PathBuf> {
     let root = trope_library_dir()?;
     fs::create_dir_all(root.join("lore"))?;
+    Ok(root)
+}
+
+/// 冷路径：角色仓迁移 + 近义压缩 + 必要时 remap 各书章；成功后写 marker。
+pub fn maintain_trope_library() -> AppResult<PathBuf> {
+    let root = ensure_trope_library()?;
     if let Ok(roster) = character_roster_dir() {
         let _ = migrate_tropes_between(&roster, &root);
     }
@@ -251,19 +262,37 @@ pub fn ensure_trope_library() -> AppResult<PathBuf> {
             }
         }
     }
+    let _ = fs::write(trope_lib_marker_path(&root), now());
     Ok(root)
 }
 
-pub fn list_trope_library_entries() -> Vec<project::LoreEntry> {
+/// 确保库存在；无 marker 时跑一次维护（兼容旧库首次升级）；`force_maintain` 强制再维护。
+pub fn ensure_trope_library_with_opts(force_maintain: bool) -> AppResult<PathBuf> {
+    let root = ensure_trope_library()?;
+    let marker = trope_lib_marker_path(&root);
+    if force_maintain || !marker.exists() {
+        return maintain_trope_library();
+    }
+    Ok(root)
+}
+
+/// 轻量列出情节库条目（只读 tropes.json / kinks.json，不整树扫 lore）。
+pub fn list_trope_library_entries_lite() -> Vec<project::LoreEntry> {
     let root = match ensure_trope_library() {
         Ok(p) => p,
         Err(_) => return vec![],
     };
-    project::list_lore(&root)
-        .unwrap_or_default()
-        .into_iter()
-        .filter(|e| project::is_trope_kind(&e.kind))
-        .collect()
+    let mut out = Vec::new();
+    for kind in ["trope", "kink"] {
+        if let Ok(items) = project::read_lore_kind_list(&root, kind) {
+            out.extend(items.into_iter().filter(|e| project::is_trope_kind(&e.kind)));
+        }
+    }
+    out
+}
+
+pub fn list_trope_library_entries() -> Vec<project::LoreEntry> {
+    list_trope_library_entries_lite()
 }
 
 pub struct OpenedKb {

@@ -433,8 +433,13 @@ pub fn character_roster_ensure() -> Result<Value, String> {
 }
 
 #[tauri::command]
-pub fn trope_library_ensure() -> Result<Value, String> {
-    api::trope_library_ensure().map_err(Into::into)
+pub fn trope_library_ensure(maintain: Option<bool>) -> Result<Value, String> {
+    api::trope_library_ensure(maintain).map_err(Into::into)
+}
+
+#[tauri::command]
+pub fn trope_library_list() -> Result<Value, String> {
+    api::trope_library_list().map_err(Into::into)
 }
 
 #[tauri::command]

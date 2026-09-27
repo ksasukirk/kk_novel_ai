@@ -505,8 +505,19 @@ export async function ensureCharacterRoster() {
   return await invoke("character_roster_ensure");
 }
 
-export async function ensureTropeLibrary() {
-  return await invoke("trope_library_ensure");
+/**
+ * 确保情节库目录存在。
+ * @param {{ maintain?: boolean }} [opts] maintain=true 强制迁移+近义压缩
+ */
+export async function ensureTropeLibrary(opts = {}) {
+  const payload = {};
+  if (opts.maintain) payload.maintain = true;
+  return await invoke("trope_library_ensure", payload);
+}
+
+/** 轻量列出情节库条目（tropes.json + kinks.json） */
+export async function listTropeLibrary() {
+  return await invoke("trope_library_list");
 }
 
 export async function listTropeSummaryStatus(roots) {
