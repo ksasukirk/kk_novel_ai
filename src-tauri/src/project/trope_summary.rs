@@ -2,13 +2,12 @@
 //! 代码路径: kk_novel_ai/src-tauri/src/project/trope_summary.rs
 
 use super::{
-    chapters_dir, count_non_ws, now, open_project, save_project_meta, should_skip_scan_dir,
+    count_non_ws, now, open_project, read_chapter, save_project_meta, should_skip_scan_dir,
     NovelProject,
 };
 use crate::error::AppResult;
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use std::fs;
 use std::path::Path;
 
 fn has_summary(project: &NovelProject) -> bool {
@@ -25,12 +24,11 @@ pub fn mark_trope_summary_dirty(project: &mut NovelProject) {
     }
 }
 
-fn chapter_body(root: &Path, file: &str) -> String {
-    let path = chapters_dir(root).join(file);
-    if path.exists() {
-        fs::read_to_string(path).unwrap_or_default()
-    } else {
-        String::new()
+/// 统一经 read_chapter（文件或 work.sqlite），避免迁库后盖章读空 md
+fn chapter_body(root: &Path, chapter_id: &str) -> String {
+    match read_chapter(root, chapter_id) {
+        Ok((_, content)) => content,
+        Err(_) => String::new(),
     }
 }
 
@@ -39,7 +37,7 @@ pub fn content_fingerprint(root: &Path, project: &NovelProject) -> String {
     for ch in &project.chapters {
         hasher.update(ch.id.as_bytes());
         hasher.update(b"\n");
-        hasher.update(chapter_body(root, &ch.file).as_bytes());
+        hasher.update(chapter_body(root, &ch.id).as_bytes());
         hasher.update(b"\n");
     }
     format!("{:x}", hasher.finalize())
@@ -53,7 +51,7 @@ fn prose_stats(root: &Path, project: &NovelProject) -> (bool, u64, usize) {
     let mut chars = 0u64;
     let mut chapters = 0usize;
     for ch in &project.chapters {
-        let n = count_non_ws(&chapter_body(root, &ch.file));
+        let n = count_non_ws(&chapter_body(root, &ch.id));
         if n > 0 {
             chapters += 1;
             chars += n as u64;
@@ -158,9 +156,10 @@ pub fn trope_summary_status_list(roots: &[String]) -> Value {
 mod tests {
     use super::*;
     use crate::project::{
-        create_chapter, delete_chapter, save_project_meta, write_chapter, ChapterMeta, NovelProject,
-        VolumeMeta,
+        chapters_dir, create_chapter, delete_chapter, save_project_meta, write_chapter, ChapterMeta,
+        NovelProject, VolumeMeta,
     };
+    use std::fs;
     use uuid::Uuid;
 
     fn tmp_root(name: &str) -> std::path::PathBuf {
@@ -175,7 +174,6 @@ mod tests {
     fn seed_novel(root: &Path, body: &str) -> String {
         let ch_id = Uuid::new_v4().to_string();
         let file = "0001-第一章.md".to_string();
-        fs::write(chapters_dir(root).join(&file), body).unwrap();
         let project = NovelProject {
             id: Uuid::new_v4().to_string(),
             title: "t".into(),
@@ -195,7 +193,7 @@ mod tests {
             }],
             chapters: vec![ChapterMeta {
                 id: ch_id.clone(),
-                file,
+                file: file.clone(),
                 title: "第一章".into(),
                 title_src: String::new(),
                 summary: String::new(),
@@ -217,7 +215,9 @@ mod tests {
             trope_summary_dirty: false,
             legacy_sections_collapsed: true,
         };
+        // 迁库环境下 save_project_meta 会建 work.sqlite 但正文为空，须再经 write_chapter 写入
         save_project_meta(root, &project).unwrap();
+        write_chapter(root, &ch_id, body).unwrap();
         ch_id
     }
 
@@ -248,9 +248,14 @@ mod tests {
     #[test]
     fn status_list_backfills_dirty_on_external_edit() {
         let root = tmp_root("external_edit");
-        let _id = seed_novel(&root, "hello body");
-        stamp_trope_summary(&root).unwrap();
-        fs::write(chapters_dir(&root).join("0001-第一章.md"), "tampered").unwrap();
+        let id = seed_novel(&root, "hello body");
+        assert!(stamp_trope_summary(&root).unwrap());
+        // 绕过 write_chapter（会主动 dirty），模拟库外改正文
+        if crate::storage::work_db_exists(&root) {
+            crate::storage::work_store::write_chapter_content(&root, &id, "tampered").unwrap();
+        } else {
+            fs::write(chapters_dir(&root).join("0001-第一章.md"), "tampered").unwrap();
+        }
         let v = trope_summary_status_list(&[root.to_string_lossy().to_string()]);
         let item = &v["items"][0];
         assert_eq!(item["status"], "stale");
@@ -297,5 +302,74 @@ mod tests {
         stamp_trope_summary(&root).unwrap();
         delete_chapter(&root, &meta.id).unwrap();
         assert!(open_project(&root).unwrap().project.trope_summary_dirty);
+    }
+
+    /// 仅有 work.sqlite、无 chapters/*.md 时仍可盖章（迁库后路径）
+    #[test]
+    fn stamp_works_with_sqlite_only_no_md() {
+        let root = tmp_root("sqlite_only");
+        let ch_id = Uuid::new_v4().to_string();
+        let file = "0001-第一章.md".to_string();
+        let body = "sqlite only chapter body for stamp";
+        let project = NovelProject {
+            id: Uuid::new_v4().to_string(),
+            title: "sqlite-only".into(),
+            kind: "novel".into(),
+            genre: String::new(),
+            style: String::new(),
+            book_outline: String::new(),
+            source_file: None,
+            title_src: String::new(),
+            linked_kb_roots: vec![],
+            volumes: vec![VolumeMeta {
+                id: Uuid::new_v4().to_string(),
+                title: "v".into(),
+                chapter_ids: vec![ch_id.clone()],
+                arc_goal: String::new(),
+                arc_summary: String::new(),
+            }],
+            chapters: vec![ChapterMeta {
+                id: ch_id.clone(),
+                file: file.clone(),
+                title: "第一章".into(),
+                title_src: String::new(),
+                summary: String::new(),
+                status: "draft".into(),
+                pov_lore_id: None,
+                focus_arc_ids: vec![],
+                must_do: String::new(),
+                must_not: String::new(),
+                reader_knows: String::new(),
+                character_knows: String::new(),
+                beats: vec![],
+                trope_ids: vec![],
+            }],
+            outline_mindmap: None,
+            created_at: "t".into(),
+            updated_at: "t".into(),
+            trope_summary_at: None,
+            trope_summary_fingerprint: None,
+            trope_summary_dirty: false,
+            legacy_sections_collapsed: true,
+        };
+        crate::storage::work_store::save_full_project(
+            &root,
+            &project,
+            &[(ch_id, body.to_string())],
+        )
+        .unwrap();
+        let md = chapters_dir(&root).join(&file);
+        if md.exists() {
+            fs::remove_file(&md).unwrap();
+        }
+        assert!(!md.exists());
+        assert!(has_chapter_prose(
+            &root,
+            &open_project(&root).unwrap().project
+        ));
+        assert!(stamp_trope_summary(&root).unwrap());
+        let v = trope_summary_status_list(&[root.to_string_lossy().to_string()]);
+        assert_eq!(v["items"][0]["status"], "current");
+        assert_eq!(v["items"][0]["has_prose"], true);
     }
 }

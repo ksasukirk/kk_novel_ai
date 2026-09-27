@@ -246,6 +246,11 @@ pub fn parse_txt_chapters(path: &Path) -> AppResult<Vec<ParsedChapter>> {
 
     for line in reader.lines() {
         let line = line.map_err(|e| AppError::t_fmt("errors.readTxtFailed", &[("e", &e.to_string())]))?;
+        // 剥 UTF-8 BOM / CR，避免首行 `\u{feff}第一章` 匹配失败导致丢章
+        let line = line
+            .trim_start_matches('\u{feff}')
+            .trim_end_matches('\r')
+            .to_string();
         all_lines.push(line.clone());
         if let Some(title) = match_heading(&line) {
             saw_eq = true;
@@ -2169,6 +2174,44 @@ mod tests {
         assert_eq!(ch[0].title, "第1章 开头");
         assert!(ch[0].body.contains("正文甲"));
         assert_eq!(ch[1].title, "第2章 后续");
+    }
+
+    /// 首行带 UTF-8 BOM 时仍识别「第一章」，不丢开头正文
+    #[test]
+    fn parse_cn_chapter_with_bom_keeps_first() {
+        let path = write_tmp(
+            "bom_chap.txt",
+            "\u{feff}第一章\n\n正文\n\n第六章\n\n后文\n",
+        );
+        let ch = parse_txt_chapters(&path).unwrap();
+        assert_eq!(ch.len(), 2, "got {:?}", ch.iter().map(|c| &c.title).collect::<Vec<_>>());
+        assert_eq!(ch[0].title, "第一章");
+        assert!(ch[0].body.contains("正文"), "body={:?}", ch[0].body);
+        assert_eq!(ch[1].title, "第六章");
+        assert!(ch[1].body.contains("后文"));
+    }
+
+    /// 样例路径存在时验收：BOM + 第一章后直接第六章（无二～五章标题）
+    #[test]
+    fn parse_real_bom_sample_if_present() {
+        let path = PathBuf::from(
+            r"U:\WaitingClassify\Kids\Novel\NTR\我超绝可爱白胖雌肉飞机杯似的双胞胎女儿.txt",
+        );
+        if !path.is_file() {
+            return;
+        }
+        let ch = parse_txt_chapters(&path).unwrap();
+        assert!(ch.len() >= 2, "got {} chapters", ch.len());
+        assert!(
+            ch[0].title.contains("第一"),
+            "first title={:?}",
+            ch[0].title
+        );
+        assert!(
+            non_ws_chars(&ch[0].body) > 1000,
+            "first body too short: {}",
+            non_ws_chars(&ch[0].body)
+        );
     }
 
     #[test]
