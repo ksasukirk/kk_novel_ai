@@ -34,6 +34,21 @@ const pct = computed(() => {
 });
 const label = computed(() => {
   if (scanRunning.value) {
+    if (tropeScanState.phase === "structure") {
+      if ((tropeScanState.total || 0) <= 0) {
+        return t("trope.structureMeterPrep");
+      }
+      return t("trope.structureMeter", {
+        pct: pct.value,
+        current: tropeScanState.current,
+        total: tropeScanState.total,
+        rebuilt: tropeScanState.rebuilt,
+      });
+    }
+    // 尚未收到章数时不要写「0/0 章」，改显示准备中
+    if ((tropeScanState.total || 0) <= 0) {
+      return t("trope.scanMeterPrep");
+    }
     if (tropeScanState.batchTotal > 1) {
       return t("trope.scanMeterBatch", {
         book: tropeScanState.batchIndex || 1,

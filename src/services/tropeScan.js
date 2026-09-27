@@ -233,10 +233,11 @@ async function rebuildStructurePhase(projectRoot, opts = {}) {
   }
   tropeScanState.phase = "structure";
   tropeScanState.requestId = "";
+  // 保留上一阶段 total，避免顶栏长时间显示 0/0 章；首条 structure 进度会覆盖
   tropeScanState.current = 0;
-  tropeScanState.total = 0;
   tropeScanState.title = "";
   tropeScanState.rebuilt = 0;
+  tropeScanState.pct = 0;
   appState.statusMessage = t("trope.structureStarting");
   const r = await invoke("rebuild_structure_from_prose", {
     root: projectRoot,

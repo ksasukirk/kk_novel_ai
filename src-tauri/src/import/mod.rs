@@ -1894,9 +1894,52 @@ pub async fn tropes_scan_range(
         ..Default::default()
     };
 
+    let mut acc_usage = TokenUsage::default();
+    let mut acc_cost = 0.0_f64;
+    let mut acc_calls = 0_u64;
+    let mut last_model = String::new();
+    let mut done_steps = 0_usize;
+    // 先报章数，避免读盘/切块阶段前端一直显示 0/0
+    on_progress(tropes_scan_progress_json(
+        0,
+        n,
+        "",
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        &acc_usage,
+        acc_calls,
+        acc_cost,
+        &last_model,
+    ));
+
     let mut prepared = Vec::with_capacity(n);
     for (i, ch) in slice.iter().enumerate() {
+        if cancel.load(Ordering::Relaxed) {
+            report.cancelled = true;
+            break;
+        }
         let chap_no = from + i;
+        on_progress(tropes_scan_progress_json(
+            i + 1,
+            n,
+            &ch.title,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            &acc_usage,
+            acc_calls,
+            acc_cost,
+            &last_model,
+        ));
         match project::read_chapter(root, &ch.id) {
             Ok((_, content)) => prepared.push(PreparedScanChapter {
                 chap_no,
@@ -1914,12 +1957,10 @@ pub async fn tropes_scan_range(
             }),
         }
     }
+    if report.cancelled {
+        return Ok(report);
+    }
     let total_steps: usize = prepared.iter().map(|p| p.chunks.len()).sum();
-    let mut acc_usage = TokenUsage::default();
-    let mut acc_cost = 0.0_f64;
-    let mut acc_calls = 0_u64;
-    let mut last_model = String::new();
-    let mut done_steps = 0_usize;
 
     let mut emit = |current: usize,
                     title: &str,
