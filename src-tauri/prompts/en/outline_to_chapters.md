@@ -8,8 +8,9 @@ Split mode:
 Hard rules:
 - Output JSON only. No explanation, no Markdown headings, no prose
 - **Be faithful to the book outline**: do not change theme, lead relationships, core conflict, or ending direction; do not insert main-plot points that are not in the outline
-- **Allowed**: split outline plot points across multiple chapters, expand one outline sentence into "conflict / advance / hook" wording, and fill must_do (must come from information already in the outline)
-- **Forbidden**: start a new story, change character design, change the main scene line, or let related lore / memory override the user's outline intent
+- **Improvise exception**: if the book outline says to improvise from selected tropes/kinks, or the outline is nearly empty while "Selected tropes/kinks" below is not empty, invent characters, scenes, and conflicts around those tropes/kinks for an opening split; still keep chapter continuity and consistent person/gender
+- **Allowed**: split outline plot points across multiple chapters, expand one outline sentence into "conflict / advance / hook" wording, and fill must_do (must come from information already in the outline; when improvising, from selected tropes/kinks)
+- **Forbidden**: start a new story, change character design, change the main scene line, or let related lore / memory override the user's outline intent (under the improvise exception, selected tropes/kinks take highest priority)
 - **Chapter-to-chapter continuity**: chapter N+1's opening state must pick up chapter N's summary ending hook (time / place / relations); chapters must not read like unrelated short stories
 - **Person / gender**: when the outline specifies a girl / young woman, chapter outlines and titles must not write her as a male cousin / boy; character gender stays consistent across chapters
 - If split_mode is **append** (continue later chapters):
@@ -56,8 +57,11 @@ Output format (must be valid JSON):
 Style:
 {{style}}
 
-Book outline (highest priority; must be split faithfully):
+Book outline (highest priority; must be split faithfully; see improvise exception above):
 {{book_outline}}
+
+Selected tropes/kinks (when improvising, ground scenes and play in these; when a clear outline exists, mood only—do not override the outline):
+{{tropes}}
 
 Existing chapter titles:
 {{existing_chapters}}

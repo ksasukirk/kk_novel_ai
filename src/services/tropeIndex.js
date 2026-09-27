@@ -27,7 +27,9 @@ export function coalesceTropes(scoped) {
   const push = (row, scope) => {
     const entry = row.entry || row;
     if (!entry || !isTropeKind(entry.kind)) return;
-    const key = normalizeTitle(entry.title) || entry.id;
+    // 与情节库页同一口径：优先按 id 去重（避免同名不同条被压成一条导致「共」对不上）
+    const id = String(entry.id || "").trim();
+    const key = id || normalizeTitle(entry.title);
     if (!key) return;
     if (scope === "local" || !byKey.has(key)) {
       byKey.set(key, {

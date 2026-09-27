@@ -497,7 +497,9 @@ async function onGenerateChapterQueue() {
       instruction: instruction.value,
     });
     if (!seed) {
-      error.value = t("ai.needPrompt");
+      error.value = (selectedTropeIds.value || []).length
+        ? t("ai.needPromptOrTropes")
+        : t("ai.needPrompt");
       floatExpanded.value = true;
       return;
     }

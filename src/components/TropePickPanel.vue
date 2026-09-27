@@ -332,20 +332,25 @@ function onHide() {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  align-content: start;
   padding-right: 2px;
 }
 .pick-card {
-  border-radius: 10px;
-  padding: 8px 10px;
+  border-radius: 8px;
+  padding: 6px 7px;
   background: var(--surface, rgba(0, 0, 0, 0.03));
   border: 1px solid color-mix(in srgb, var(--muted) 22%, transparent);
   cursor: pointer;
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 3px;
+  min-width: 0;
+}
+.pick-card.expanded {
+  grid-column: 1 / -1;
 }
 .pick-card:hover {
   border-color: color-mix(in srgb, var(--accent) 40%, transparent);
@@ -361,51 +366,72 @@ function onHide() {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 6px;
+  gap: 4px;
 }
 .card-title {
-  font-size: 13px;
-  line-height: 1.3;
+  font-size: 12px;
+  line-height: 1.25;
+  font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
 }
 .card-ops {
   display: flex;
   flex-shrink: 0;
-  gap: 4px;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
 }
 .card-op {
   border: none;
   background: transparent;
   color: var(--muted);
-  font-size: 11px;
+  font-size: 10px;
   cursor: pointer;
   padding: 0;
+  line-height: 1.2;
 }
 .card-op:hover {
   color: var(--accent);
 }
 .kind-tag {
   pointer-events: none;
-  font-size: 11px;
+  font-size: 10px;
+  padding: 0 5px;
+  min-height: 16px;
+}
+.tag-row {
+  gap: 3px;
 }
 .snippet,
 .full-content,
 .do-dont {
   margin: 0;
-  font-size: 12px;
-  line-height: 1.45;
+  font-size: 11px;
+  line-height: 1.35;
   color: var(--text);
   white-space: pre-wrap;
 }
 .snippet {
   display: -webkit-box;
-  -webkit-line-clamp: 3;
-  line-clamp: 3;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
   color: var(--muted);
 }
 .empty-hint {
+  grid-column: 1 / -1;
   margin: 8px 4px;
   font-size: 12px;
+}
+@media (max-width: 360px) {
+  .pick-list {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

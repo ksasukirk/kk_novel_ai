@@ -37,6 +37,7 @@ import {
   estimateSplitMaxTokens,
   parseOutlineToChapters,
 } from "../utils/outlineChapters.js";
+import { buildFreePlaySeedFromTropes } from "./tropeSelect.js";
 
 export { parseOutlineToChapters } from "../utils/outlineChapters.js";
 
@@ -88,15 +89,19 @@ async function chapterIsReusableEmpty(chapter) {
 }
 
 /**
- * 拆章用的「创作提示 / 全书大纲」：优先上方大纲框，其次底部指令
- * @param {{ bookOutline?: string, instruction?: string }} [opts]
+ * 拆章用的「创作提示 / 全书大纲」：优先上方大纲框，其次底部指令；
+ * 皆空且已勾选情节/喜好时，用自由发挥种子（允许无提示词开拆）
+ * @param {{ bookOutline?: string, instruction?: string, allowTropes?: boolean }} [opts]
  */
 export function resolveBookOutlineSeed(opts = {}) {
   const fromOpt = String(opts.bookOutline ?? "").trim();
   if (fromOpt) return fromOpt;
   const fromPanel = String(aiPanelForm.bookOutline || "").trim();
   if (fromPanel) return fromPanel;
-  return String(opts.instruction ?? aiPanelForm.instruction ?? "").trim();
+  const fromInstr = String(opts.instruction ?? aiPanelForm.instruction ?? "").trim();
+  if (fromInstr) return fromInstr;
+  if (opts.allowTropes === false) return "";
+  return String(buildFreePlaySeedFromTropes() || "").trim();
 }
 
 /**

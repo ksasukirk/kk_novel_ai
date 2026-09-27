@@ -721,6 +721,7 @@ fn should_inject_selected_tropes(task: &WritingTask) -> bool {
             | WritingTask::SameSlotVariant
             | WritingTask::Outline
             | WritingTask::OutlineToBeats
+            | WritingTask::OutlineToChapters
             | WritingTask::SectionPlan
     )
 }

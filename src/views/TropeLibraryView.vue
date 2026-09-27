@@ -143,12 +143,20 @@ const displayItems = computed(() => visibleItems.value.slice(0, pageLimit.value)
 
 const canShowMore = computed(() => pageLimit.value < visibleItems.value.length);
 
-const visibleCountText = computed(() =>
-  t("trope.visibleCount", {
-    n: Math.min(pageLimit.value, visibleItems.value.length),
-    m: kindItems.value.length,
-  })
-);
+const visibleCountText = computed(() => {
+  const filtered = visibleItems.value.length;
+  const total = kindItems.value.length;
+  const loaded = Math.min(pageLimit.value, filtered);
+  // 与写作侧栏同一口径：筛选条数 / 当前列表总数；分页另附「已加载」
+  if (loaded < filtered) {
+    return t("trope.visibleCountLoaded", {
+      n: filtered,
+      m: total,
+      loaded,
+    });
+  }
+  return t("trope.visibleCount", { n: filtered, m: total });
+});
 
 function loadKey() {
   return `${rosterPath.value || ""}|${Number(appState.tropeRevision) || 0}`;
