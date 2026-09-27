@@ -2167,14 +2167,19 @@ pub fn replace_all_chapters(root: &Path, chapters: &[(String, String)]) -> AppRe
         return Err(AppError::t("errors.importChapterEmpty"));
     }
     let mut opened = open_project(root)?;
-    for ch in &opened.project.chapters {
-        let path = chapters_dir(root).join(&ch.file);
-        if path.exists() {
-            let _ = fs::remove_file(&path);
+    let use_db = use_work_db(root) || crate::storage::is_storage_migrated();
+    if !use_db {
+        for ch in &opened.project.chapters {
+            let path = chapters_dir(root).join(&ch.file);
+            if path.exists() {
+                let _ = fs::remove_file(&path);
+            }
         }
+        fs::create_dir_all(chapters_dir(root))?;
     }
     let mut metas = Vec::with_capacity(chapters.len());
     let mut ids = Vec::with_capacity(chapters.len());
+    let mut bodies: Vec<(String, String)> = Vec::with_capacity(chapters.len());
     for (i, (title, body)) in chapters.iter().enumerate() {
         let idx = i + 1;
         let id = Uuid::new_v4().to_string();
@@ -2185,7 +2190,11 @@ pub fn replace_all_chapters(root: &Path, chapters: &[(String, String)]) -> AppRe
         } else {
             format!("# {title}\n\n{trimmed}\n")
         };
-        fs::write(chapters_dir(root).join(&file), content)?;
+        if use_db {
+            bodies.push((id.clone(), content));
+        } else {
+            fs::write(chapters_dir(root).join(&file), content)?;
+        }
         ids.push(id.clone());
         metas.push(ChapterMeta {
             id,
@@ -2217,7 +2226,12 @@ pub fn replace_all_chapters(root: &Path, chapters: &[(String, String)]) -> AppRe
         });
     }
     mark_trope_summary_dirty(&mut opened.project);
-    save_project_meta(root, &opened.project)?;
+    if use_db {
+        crate::storage::work_store::save_full_project(root, &opened.project, &bodies)?;
+        put_project_cache(root, &opened.project);
+    } else {
+        save_project_meta(root, &opened.project)?;
+    }
     Ok(())
 }
 

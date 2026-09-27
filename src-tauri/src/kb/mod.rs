@@ -114,6 +114,34 @@ fn stable_id(kb_id: &str, local_id: &str) -> String {
 /// 确保通用知识库目录存在
 pub fn ensure_universal() -> AppResult<OpenedKb> {
     let root = universal_kb_dir()?;
+    if crate::storage::is_storage_migrated() {
+        let _ = crate::storage::kb_store::open_kb_db()?;
+        if let Some(project) = crate::storage::kb_store::load_meta()? {
+            return Ok(OpenedKb { root, project });
+        }
+        let project = NovelProject {
+            id: Uuid::new_v4().to_string(),
+            title: "通用知识库".into(),
+            kind: "universal".into(),
+            genre: String::new(),
+            style: String::new(),
+            book_outline: String::new(),
+            source_file: None,
+            title_src: String::new(),
+            linked_kb_roots: vec![],
+            volumes: vec![],
+            chapters: vec![],
+            outline_mindmap: None,
+            created_at: now(),
+            updated_at: now(),
+            trope_summary_at: None,
+            trope_summary_fingerprint: None,
+            trope_summary_dirty: false,
+            legacy_sections_collapsed: true,
+        };
+        crate::storage::kb_store::save_meta(&project)?;
+        return Ok(OpenedKb { root, project });
+    }
     let pj = root.join("project.json");
     if pj.exists() {
         let opened = project::open_project(&root)?;
@@ -161,6 +189,34 @@ pub fn ensure_universal() -> AppResult<OpenedKb> {
 /// 确保全局角色仓存在（kind=character_roster）
 pub fn ensure_character_roster() -> AppResult<OpenedKb> {
     let root = character_roster_dir()?;
+    if crate::storage::is_storage_migrated() {
+        let _ = crate::storage::characters_store::open_characters_db()?;
+        if let Some(project) = crate::storage::characters_store::load_meta()? {
+            return Ok(OpenedKb { root, project });
+        }
+        let project = NovelProject {
+            id: Uuid::new_v4().to_string(),
+            title: "全局角色仓".into(),
+            kind: "character_roster".into(),
+            genre: String::new(),
+            style: String::new(),
+            book_outline: String::new(),
+            source_file: None,
+            title_src: String::new(),
+            linked_kb_roots: vec![],
+            volumes: vec![],
+            chapters: vec![],
+            outline_mindmap: None,
+            created_at: now(),
+            updated_at: now(),
+            trope_summary_at: None,
+            trope_summary_fingerprint: None,
+            trope_summary_dirty: false,
+            legacy_sections_collapsed: true,
+        };
+        crate::storage::characters_store::save_meta(&project)?;
+        return Ok(OpenedKb { root, project });
+    }
     let pj = root.join("project.json");
     if pj.exists() {
         let _ = fs::create_dir_all(root.join("lore").join("tropes"));
