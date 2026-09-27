@@ -30,6 +30,7 @@ import {
 import { tropesScanConfirmText } from "../utils/usageEstimate.js";
 import { runTropeRefine } from "../services/tropeRefine.js";
 import { displayTropeContent, displayTropeTitle } from "../utils/tropeI18n.js";
+import CapsuleSwitch from "../components/CapsuleSwitch.vue";
 
 const PAGE_SIZE = 80;
 
@@ -186,6 +187,18 @@ function toggleCategory(id) {
 function toggleField(id) {
   cardFields.value = { ...cardFields.value, [id]: !cardFields.value[id] };
   saveTropeCardFields(cardFields.value);
+}
+
+function setField(id, on) {
+  const next = !!on;
+  if (!!cardFields.value[id] === next) return;
+  cardFields.value = { ...cardFields.value, [id]: next };
+  saveTropeCardFields(cardFields.value);
+}
+
+function fieldLabel(id) {
+  const key = "trope.field" + String(id || "").charAt(0).toUpperCase() + String(id || "").slice(1);
+  return t(key);
 }
 
 function setDensity(d) {
@@ -627,10 +640,17 @@ onUnmounted(() => {
             {{ $t("trope.cardDisplay") }}
           </button>
           <div v-if="showFieldPanel" class="field-panel">
-            <label v-for="id in TROPE_CARD_FIELD_IDS" :key="id" class="field-check">
-              <input type="checkbox" :checked="fieldOn(id)" @change="toggleField(id)" />
-              {{ $t("trope.field" + id.charAt(0).toUpperCase() + id.slice(1)) }}
-            </label>
+            <div
+              v-for="id in TROPE_CARD_FIELD_IDS"
+              :key="id"
+              class="field-switch-row"
+            >
+              <CapsuleSwitch
+                :model-value="fieldOn(id)"
+                :label="fieldLabel(id)"
+                @update:model-value="(v) => setField(id, v)"
+              />
+            </div>
             <div class="density-row">
               <span class="muted">{{ $t("trope.density") }}</span>
               <button
@@ -936,27 +956,45 @@ onUnmounted(() => {
   right: 0;
   top: calc(100% + 6px);
   z-index: 8;
-  min-width: 200px;
-  padding: 10px 12px;
+  min-width: 220px;
+  width: max-content;
+  max-width: min(320px, 92vw);
+  padding: 12px 14px;
   border-radius: var(--radius-lg, 10px);
   background: var(--surface-solid, #1c1c1c);
   box-shadow: var(--shadow, 0 8px 24px rgba(0, 0, 0, 0.25));
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
-.field-check {
+.field-switch-row {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 0.85rem;
+  min-width: 0;
+}
+.field-switch-row :deep(.capsule-switch) {
+  width: 100%;
+  flex-direction: row-reverse;
+  justify-content: space-between;
+  gap: 12px;
+}
+.field-switch-row :deep(.capsule-switch-text) {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  text-align: left;
+  font-size: 13px;
+  font-weight: 600;
+  writing-mode: horizontal-tb;
 }
 .density-row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
-  margin-top: 4px;
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--muted) 28%, transparent);
 }
 .scan-meter-wrap {
   margin-top: 10px;
