@@ -1250,7 +1250,7 @@
     "noOutlineErr": "No chapter outline; split chapters or write this chapter outline first",
     "needPrompt": "Fill a creative prompt above or in the instruction bar; or select tropes/kinks first to improvise",
     "needPromptOrTropes": "Fill a creative prompt, or select tropes/kinks first",
-    "freePlayFromTropes": "Improvise an opening and chapter split from the selected tropes/kinks below; no fixed outline required. You may invent characters, scenes, and conflicts while keeping tone and intensity consistent:\n{{list}}",
+    "freePlayFromTropes": "Improvise an opening and chapter split from the selected tropes/kinks below; no fixed outline required. You may invent characters, scenes, and conflicts while keeping tone and intensity consistent:\n{list}",
     "wroteCancel": "Wrote {n} chapters to contents; writing cancelled",
     "wroteDone": "Wrote {n} chapters from outline",
     "promptSaved": "Creative prompt saved",
