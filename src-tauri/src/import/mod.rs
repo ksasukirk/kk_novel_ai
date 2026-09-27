@@ -19,7 +19,10 @@ use std::sync::Arc;
 use std::sync::OnceLock;
 use uuid::Uuid;
 
+mod rebuild_structure;
 mod title_translate;
+
+pub use rebuild_structure::{rebuild_structure_from_prose, RebuildStructureReport};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ParsedChapter {

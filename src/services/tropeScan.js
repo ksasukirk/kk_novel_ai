@@ -1,5 +1,5 @@
 /**
- * 全书情节/喜好扫描：调后端 tropes_scan，写入全局仓
+ * 全书情节/喜好扫描 + 按正文重建章纲/生成块
  * 代码路径: kk_novel_ai/src/services/tropeScan.js
  */
 import { reactive } from "vue";
@@ -17,6 +17,8 @@ export const tropeScanState = reactive({
   batchTitle: "",
   cancelled: false,
   requestId: "",
+  /** tropes | structure */
+  phase: "",
   root: "",
   current: 0,
   total: 0,
@@ -24,6 +26,7 @@ export const tropeScanState = reactive({
   added: 0,
   updated: 0,
   skipped: 0,
+  rebuilt: 0,
   error: "",
   chunk: 0,
   chunks: 0,
@@ -41,9 +44,7 @@ export const tropeScanState = reactive({
   model: "",
 });
 
-let unlistenStart = null;
-let unlistenProgress = null;
-let unlistenError = null;
+let unlistenFns = [];
 
 export function scanUsageObject(state = tropeScanState) {
   return {
@@ -80,25 +81,30 @@ function resetUsageFields() {
   tropeScanState.calls = 0;
   tropeScanState.costCny = 0;
   tropeScanState.model = "";
+  tropeScanState.rebuilt = 0;
 }
 
-function applyReportUsage(r) {
+function applyReportUsage(r, { accumulate = false } = {}) {
   if (!r) return;
-  if (r.total_tokens != null) tropeScanState.tokens = Number(r.total_tokens) || 0;
-  if (r.prompt_tokens != null) tropeScanState.promptTokens = Number(r.prompt_tokens) || 0;
+  const add = (cur, next) => (accumulate ? (Number(cur) || 0) + (Number(next) || 0) : Number(next) || 0);
+  if (r.total_tokens != null) tropeScanState.tokens = add(tropeScanState.tokens, r.total_tokens);
+  if (r.prompt_tokens != null) {
+    tropeScanState.promptTokens = add(tropeScanState.promptTokens, r.prompt_tokens);
+  }
   if (r.completion_tokens != null) {
-    tropeScanState.completionTokens = Number(r.completion_tokens) || 0;
+    tropeScanState.completionTokens = add(tropeScanState.completionTokens, r.completion_tokens);
   }
   if (r.prompt_cache_hit_tokens != null) {
-    tropeScanState.cacheHit = Number(r.prompt_cache_hit_tokens) || 0;
+    tropeScanState.cacheHit = add(tropeScanState.cacheHit, r.prompt_cache_hit_tokens);
   }
   if (r.prompt_cache_miss_tokens != null) {
-    tropeScanState.cacheMiss = Number(r.prompt_cache_miss_tokens) || 0;
+    tropeScanState.cacheMiss = add(tropeScanState.cacheMiss, r.prompt_cache_miss_tokens);
   }
   if (r.usage_source != null) tropeScanState.usageSource = String(r.usage_source || "");
-  if (r.calls != null) tropeScanState.calls = Number(r.calls) || 0;
-  if (r.cost_cny != null) tropeScanState.costCny = Number(r.cost_cny) || 0;
+  if (r.calls != null) tropeScanState.calls = add(tropeScanState.calls, r.calls);
+  if (r.cost_cny != null) tropeScanState.costCny = add(tropeScanState.costCny, r.cost_cny);
   if (r.model_used != null) tropeScanState.model = String(r.model_used || "");
+  if (r.rebuilt != null) tropeScanState.rebuilt = Number(r.rebuilt) || 0;
   if (tropeScanState.steps > 0) {
     tropeScanState.pct = Math.round((tropeScanState.step / tropeScanState.steps) * 100);
   } else if (!tropeScanState.cancelled) {
@@ -112,49 +118,74 @@ function applyProgress(payload) {
     return;
   }
   if (payload.request_id) tropeScanState.requestId = payload.request_id;
+  if (payload.phase != null) tropeScanState.phase = String(payload.phase || "");
   if (payload.current != null) tropeScanState.current = Number(payload.current) || 0;
   if (payload.total != null) tropeScanState.total = Number(payload.total) || 0;
   if (payload.title != null) tropeScanState.title = String(payload.title || "");
   if (payload.added != null) tropeScanState.added = Number(payload.added) || 0;
   if (payload.updated != null) tropeScanState.updated = Number(payload.updated) || 0;
   if (payload.skipped != null) tropeScanState.skipped = Number(payload.skipped) || 0;
+  if (payload.rebuilt != null) tropeScanState.rebuilt = Number(payload.rebuilt) || 0;
   if (payload.chunk != null) tropeScanState.chunk = Number(payload.chunk) || 0;
   if (payload.chunks != null) tropeScanState.chunks = Number(payload.chunks) || 0;
   if (payload.step != null) tropeScanState.step = Number(payload.step) || 0;
   if (payload.steps != null) tropeScanState.steps = Number(payload.steps) || 0;
   if (payload.pct != null) tropeScanState.pct = Number(payload.pct) || 0;
-  if (payload.tokens != null) tropeScanState.tokens = Number(payload.tokens) || 0;
-  if (payload.prompt_tokens != null) tropeScanState.promptTokens = Number(payload.prompt_tokens) || 0;
-  if (payload.completion_tokens != null) {
-    tropeScanState.completionTokens = Number(payload.completion_tokens) || 0;
+  // structure 进度里的 usage 是阶段内累计；勿覆盖 phase1 账本，结束时再 accumulate
+  if (tropeScanState.phase !== "structure") {
+    if (payload.tokens != null) tropeScanState.tokens = Number(payload.tokens) || 0;
+    if (payload.prompt_tokens != null) tropeScanState.promptTokens = Number(payload.prompt_tokens) || 0;
+    if (payload.completion_tokens != null) {
+      tropeScanState.completionTokens = Number(payload.completion_tokens) || 0;
+    }
+    if (payload.cache_hit != null) tropeScanState.cacheHit = Number(payload.cache_hit) || 0;
+    if (payload.cache_miss != null) tropeScanState.cacheMiss = Number(payload.cache_miss) || 0;
+    if (payload.usage_source != null) tropeScanState.usageSource = String(payload.usage_source || "");
+    if (payload.calls != null) tropeScanState.calls = Number(payload.calls) || 0;
+    if (payload.cost_cny != null) tropeScanState.costCny = Number(payload.cost_cny) || 0;
+    if (payload.model_used != null) tropeScanState.model = String(payload.model_used || "");
   }
-  if (payload.cache_hit != null) tropeScanState.cacheHit = Number(payload.cache_hit) || 0;
-  if (payload.cache_miss != null) tropeScanState.cacheMiss = Number(payload.cache_miss) || 0;
-  if (payload.usage_source != null) tropeScanState.usageSource = String(payload.usage_source || "");
-  if (payload.calls != null) tropeScanState.calls = Number(payload.calls) || 0;
-  if (payload.cost_cny != null) tropeScanState.costCny = Number(payload.cost_cny) || 0;
-  if (payload.model_used != null) tropeScanState.model = String(payload.model_used || "");
+
+  if (tropeScanState.phase === "structure") {
+    appState.statusMessage = t("trope.structureProgress", {
+      current: tropeScanState.current,
+      total: tropeScanState.total,
+      title: tropeScanState.title || "",
+      rebuilt: tropeScanState.rebuilt,
+    });
+  }
 }
 
 async function bindEvents() {
   await unbindEvents();
-  unlistenStart = await listen("tropes-scan-start", (event) => {
-    applyProgress(event && event.payload);
-  });
-  unlistenProgress = await listen("tropes-scan-progress", (event) => {
-    applyProgress(event && event.payload);
-  });
-  unlistenError = await listen("tropes-scan-error", (event) => {
-    const p = event && event.payload;
-    if (p && p.error) tropeScanState.error = String(p.error);
-  });
+  const pairs = [
+    ["tropes-scan-start", applyProgress],
+    ["tropes-scan-progress", applyProgress],
+    [
+      "tropes-scan-error",
+      (event) => {
+        const p = event && event.payload;
+        if (p && p.error) tropeScanState.error = String(p.error);
+      },
+    ],
+    ["rebuild-structure-start", applyProgress],
+    ["rebuild-structure-progress", applyProgress],
+    [
+      "rebuild-structure-error",
+      (event) => {
+        const p = event && event.payload;
+        if (p && p.error) tropeScanState.error = String(p.error);
+      },
+    ],
+  ];
+  for (const [name, handler] of pairs) {
+    unlistenFns.push(await listen(name, handler));
+  }
 }
 
 async function unbindEvents() {
-  const fns = [unlistenStart, unlistenProgress, unlistenError];
-  unlistenStart = null;
-  unlistenProgress = null;
-  unlistenError = null;
+  const fns = unlistenFns;
+  unlistenFns = [];
   for (const fn of fns) {
     try {
       if (typeof fn === "function") await fn();
@@ -175,6 +206,46 @@ export function cancelTropeScan() {
   const rid = tropeScanState.requestId;
   if (!rid) return;
   void invoke("llm_cancel", { requestId: rid }).catch(() => {});
+}
+
+async function refreshOpenProjectIfMatch(projectRoot) {
+  if (!projectRoot || appState.projectRoot !== projectRoot) return;
+  try {
+    const project = await import("./projectClient.js");
+    await project.getProject(projectRoot);
+    if (appState.chapterId) {
+      await project.loadChapter(appState.chapterId);
+    }
+  } catch {
+    /* 刷新失败不挡总结结果 */
+  }
+}
+
+/**
+ * phase2：按正文重建章纲 + 单生成块
+ * @param {string} projectRoot
+ * @param {{ from?: number, to?: number }} [opts]
+ */
+async function rebuildStructurePhase(projectRoot, opts = {}) {
+  if (batchAbort || tropeScanState.cancelled) {
+    tropeScanState.cancelled = true;
+    return { cancelled: true };
+  }
+  tropeScanState.phase = "structure";
+  tropeScanState.requestId = "";
+  tropeScanState.current = 0;
+  tropeScanState.total = 0;
+  tropeScanState.title = "";
+  tropeScanState.rebuilt = 0;
+  appState.statusMessage = t("trope.structureStarting");
+  const r = await invoke("rebuild_structure_from_prose", {
+    root: projectRoot,
+    from: opts.from ?? 1,
+    to: opts.to ?? 0,
+  });
+  tropeScanState.cancelled = !!(r && r.cancelled) || batchAbort;
+  applyReportUsage(r, { accumulate: true });
+  return r;
 }
 
 /**
@@ -221,7 +292,7 @@ export async function scanTropesQueue(entries) {
           result.failed += 1;
           continue;
         }
-        if (Number(r.scanned || 0) === 0) result.empty += 1;
+        if (Number(r.scanned || 0) === 0 && Number(r.rebuilt || 0) === 0) result.empty += 1;
         else result.ok += 1;
       } catch {
         result.failed += 1;
@@ -242,7 +313,7 @@ export async function scanTropesQueue(entries) {
 
 /**
  * @param {string} root
- * @param {{ from?: number, to?: number }} [opts]
+ * @param {{ from?: number, to?: number, skipStructure?: boolean }} [opts]
  */
 export async function scanTropesFromRoot(root, opts = {}) {
   const projectRoot = String(root || "").trim();
@@ -253,12 +324,14 @@ export async function scanTropesFromRoot(root, opts = {}) {
   tropeScanState.root = projectRoot;
   tropeScanState.cancelled = false;
   tropeScanState.requestId = "";
+  tropeScanState.phase = "tropes";
   tropeScanState.current = 0;
   tropeScanState.total = 0;
   tropeScanState.title = "";
   tropeScanState.added = 0;
   tropeScanState.updated = 0;
   tropeScanState.skipped = 0;
+  tropeScanState.rebuilt = 0;
   tropeScanState.error = "";
   resetUsageFields();
   appState.statusMessage = t("trope.scanProgress", {
@@ -275,7 +348,7 @@ export async function scanTropesFromRoot(root, opts = {}) {
       from: opts.from ?? 1,
       to: opts.to ?? 0,
     });
-    tropeScanState.cancelled = !!(r && r.cancelled);
+    tropeScanState.cancelled = !!(r && r.cancelled) || batchAbort;
     tropeScanState.added = Array.isArray(r && r.added) ? r.added.length : tropeScanState.added;
     tropeScanState.updated = Array.isArray(r && r.updated) ? r.updated.length : tropeScanState.updated;
     tropeScanState.skipped = Number((r && r.skipped) || 0);
@@ -293,7 +366,28 @@ export async function scanTropesFromRoot(root, opts = {}) {
     } catch {
       /* ignore */
     }
+
+    let structure = null;
+    if (!tropeScanState.cancelled && !opts.skipStructure) {
+      try {
+        structure = await rebuildStructurePhase(projectRoot, opts);
+        if (structure) {
+          r.rebuilt = Number(structure.rebuilt || 0);
+          r.structure_skipped = Number(structure.skipped || 0);
+          r.structure_failed = Array.isArray(structure.failed) ? structure.failed.length : 0;
+          if (structure.cancelled) r.cancelled = true;
+        }
+      } catch (e) {
+        tropeScanState.error = String(e.message || e);
+        appState.statusMessage = t("trope.structureFailed", { msg: tropeScanState.error });
+        // 情节扫描已成功：不因结构重建失败整单失败
+        r.structure_error = tropeScanState.error;
+      }
+    }
+
     bumpTropeRevision();
+    await refreshOpenProjectIfMatch(projectRoot);
+
     const usage = formatScanUsage();
     if (tropeScanState.cancelled) {
       appState.statusMessage =
@@ -303,10 +397,11 @@ export async function scanTropesFromRoot(root, opts = {}) {
         }) + (usage ? ` · ${usage}` : "");
     } else {
       appState.statusMessage =
-        t("trope.scanDone", {
+        t("trope.scanDoneWithStructure", {
           added: tropeScanState.added,
           updated: tropeScanState.updated,
           skipped: tropeScanState.skipped,
+          rebuilt: tropeScanState.rebuilt,
         }) + (usage ? ` · ${usage}` : "");
     }
     return r;
@@ -318,5 +413,6 @@ export async function scanTropesFromRoot(root, opts = {}) {
     await unbindEvents();
     tropeScanState.running = false;
     tropeScanState.root = "";
+    tropeScanState.phase = "";
   }
 }

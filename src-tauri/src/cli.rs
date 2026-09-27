@@ -1391,6 +1391,7 @@ fn tools_manifest() -> Value {
             {"cmd": "import_novel_txt", "args": ["file", "title?", "translate_titles?", "translate_locale?"], "desc": "导入 TXT 为写作小说（kind=novel）；默认不翻译标题"},
             {"cmd": "import_distill", "args": ["root", "from?", "to?", "apply?", "resume?", "job_id?", "instruction?"], "desc": "按章蒸馏知识库"},
             {"cmd": "tropes_scan", "args": ["root", "from?", "to?"], "desc": "按章抽取情节/喜好到全局仓（to=0 扫完全书）"},
+            {"cmd": "rebuild_structure_from_prose", "args": ["root", "from?", "to?"], "desc": "按正文强制重写章纲 + 单生成块指令/摘要（to=0 全书）"},
             {"cmd": "trope_summary_status", "args": ["roots"], "desc": "批量读作品情节/喜好总结状态（未总结/已总结/已修改）"},
             {"cmd": "import_apply_pending", "args": ["root", "job_id"], "desc": "应用 distill pending"},
             {"cmd": "kb_registry_list", "desc": "列出小说知识库 + 通用库"},

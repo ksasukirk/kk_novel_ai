@@ -135,6 +135,7 @@ pub fn run() {
             commands::import_novel_txt,
             commands::import_distill,
             commands::tropes_scan,
+            commands::rebuild_structure_from_prose,
             commands::import_apply_pending,
             commands::pick_file,
             commands::kb_registry_list,

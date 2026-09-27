@@ -1295,6 +1295,24 @@ pub async fn tropes_scan(
     Ok(serde_json::to_value(report)?)
 }
 
+pub async fn rebuild_structure_from_prose(
+    root: &str,
+    from: u64,
+    to: u64,
+    cancel: Arc<AtomicBool>,
+    on_progress: impl FnMut(Value),
+) -> AppResult<Value> {
+    let report = import::rebuild_structure_from_prose(
+        Path::new(root),
+        from as usize,
+        to as usize,
+        cancel,
+        on_progress,
+    )
+    .await?;
+    Ok(serde_json::to_value(report)?)
+}
+
 pub fn kb_registry_list() -> AppResult<Value> {
     crate::kb::registry_list_json()
 }
@@ -1843,6 +1861,20 @@ pub async fn dispatch_rpc(req: Value) -> AppResult<Value> {
                 Arc::new(AtomicBool::new(false)),
                 |p| {
                     eprintln!("[tropes scan] {p}");
+                },
+            )
+            .await
+        }
+        "rebuild_structure_from_prose" => {
+            let from = req.get("from").and_then(|v| v.as_u64()).unwrap_or(1);
+            let to = req.get("to").and_then(|v| v.as_u64()).unwrap_or(0);
+            rebuild_structure_from_prose(
+                req_str(&req, "root")?,
+                from,
+                to,
+                Arc::new(AtomicBool::new(false)),
+                |p| {
+                    eprintln!("[rebuild structure] {p}");
                 },
             )
             .await

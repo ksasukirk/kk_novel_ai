@@ -61,6 +61,14 @@ pub fn prompt(name: &str) -> &'static str {
         ("ja", "block_digest.md") => include_str!("../prompts/ja/block_digest.md"),
         (_, "block_digest.md") => include_str!("../prompts/block_digest.md"),
 
+        ("en", "rebuild_chapter_from_body.md") => {
+            include_str!("../prompts/en/rebuild_chapter_from_body.md")
+        }
+        ("ja", "rebuild_chapter_from_body.md") => {
+            include_str!("../prompts/ja/rebuild_chapter_from_body.md")
+        }
+        (_, "rebuild_chapter_from_body.md") => include_str!("../prompts/rebuild_chapter_from_body.md"),
+
         ("en", "cast_extract.md") => include_str!("../prompts/en/cast_extract.md"),
         ("ja", "cast_extract.md") => include_str!("../prompts/ja/cast_extract.md"),
         (_, "cast_extract.md") => include_str!("../prompts/cast_extract.md"),
