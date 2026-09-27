@@ -1806,6 +1806,7 @@ fn tropes_scan_progress_json(
     model_used: &str,
 ) -> Value {
     json!({
+        "phase": "tropes",
         "current": current,
         "total": total,
         "title": title,

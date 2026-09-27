@@ -32,38 +32,76 @@ const pct = computed(() => {
   }
   return Math.max(0, Math.min(100, Number(appState.genProgressPct) || 0));
 });
+function shortTitle(raw, max = 10) {
+  const s = String(raw || "").trim();
+  if (!s) return "";
+  const chars = [...s];
+  if (chars.length <= max) return s;
+  return `${chars.slice(0, max).join("")}…`;
+}
+
+/** 标题空时去掉多余「 · 」 */
+function tidyMeter(s) {
+  return String(s || "")
+    .replace(/\s*·\s*·/g, " · ")
+    .replace(/\s*·\s*$/g, "")
+    .trim();
+}
+
 const label = computed(() => {
   if (scanRunning.value) {
+    const chTitle = shortTitle(tropeScanState.title);
     if (tropeScanState.phase === "structure") {
       if ((tropeScanState.total || 0) <= 0) {
         return t("trope.structureMeterPrep");
       }
-      return t("trope.structureMeter", {
-        pct: pct.value,
-        current: tropeScanState.current,
-        total: tropeScanState.total,
-        rebuilt: tropeScanState.rebuilt,
-      });
+      return tidyMeter(
+        t("trope.structureMeter", {
+          pct: pct.value,
+          current: tropeScanState.current,
+          total: tropeScanState.total,
+          rebuilt: tropeScanState.rebuilt,
+          title: chTitle,
+        })
+      );
     }
     // 尚未收到章数时不要写「0/0 章」，改显示准备中
     if ((tropeScanState.total || 0) <= 0) {
       return t("trope.scanMeterPrep");
     }
     if (tropeScanState.batchTotal > 1) {
-      return t("trope.scanMeterBatch", {
-        book: tropeScanState.batchIndex || 1,
-        books: tropeScanState.batchTotal,
-        title: tropeScanState.batchTitle || "",
+      return tidyMeter(
+        t("trope.scanMeterBatch", {
+          book: tropeScanState.batchIndex || 1,
+          books: tropeScanState.batchTotal,
+          title: shortTitle(tropeScanState.batchTitle || "", 8),
+          pct: pct.value,
+          current: tropeScanState.current,
+          total: tropeScanState.total,
+          chapter: chTitle,
+        })
+      );
+    }
+    if (tropeScanState.chunk > 0 && tropeScanState.chunks > 1) {
+      return tidyMeter(
+        t("trope.scanMeterChunk", {
+          pct: pct.value,
+          current: tropeScanState.current,
+          total: tropeScanState.total,
+          chunk: tropeScanState.chunk,
+          chunks: tropeScanState.chunks,
+          title: chTitle,
+        })
+      );
+    }
+    return tidyMeter(
+      t("trope.scanMeter", {
         pct: pct.value,
         current: tropeScanState.current,
         total: tropeScanState.total,
-      });
-    }
-    return t("trope.scanMeter", {
-      pct: pct.value,
-      current: tropeScanState.current,
-      total: tropeScanState.total,
-    });
+        title: chTitle,
+      })
+    );
   }
   if (!appState.generating && pct.value >= 100) return t("progress.done");
   if (indeterminate.value) return t("progress.connecting");
@@ -107,9 +145,14 @@ const label = computed(() => {
   box-sizing: border-box;
 }
 .gen-progress.compact {
-  width: 168px;
-  max-width: 200px;
-  flex: 0 0 168px;
+  width: 260px;
+  max-width: min(42vw, 320px);
+  flex: 0 1 260px;
+}
+.gen-progress.compact .label {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .gen-progress.panel {
   width: 100%;

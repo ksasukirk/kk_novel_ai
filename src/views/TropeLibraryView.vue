@@ -430,14 +430,25 @@ const scanIndeterminate = computed(
 const scanUsageText = computed(() => formatScanUsage(scan));
 const scanMeterLabel = computed(() => {
   if (scanIndeterminate.value) return t("progress.connecting");
-  if (scan.chunk && scan.chunks) {
+  const title = String(scan.title || "").trim();
+  const short =
+    title.length > 12 ? `${[...title].slice(0, 12).join("")}…` : title;
+  if (scan.chunk && scan.chunks > 1) {
     return t("trope.scanMeterChunk", {
       pct: scanPct.value,
+      current: scan.current,
+      total: scan.total,
       chunk: scan.chunk,
       chunks: scan.chunks,
+      title: short,
     });
   }
-  return t("trope.scanMeter", { pct: scanPct.value, current: scan.current, total: scan.total });
+  return t("trope.scanMeter", {
+    pct: scanPct.value,
+    current: scan.current,
+    total: scan.total,
+    title: short,
+  });
 });
 
 watch(

@@ -166,7 +166,7 @@ pub fn outline_hook_missing(body: &str, outline: &str) -> bool {
     !compact_body.contains(&needle)
 }
 
-/// 按句切到 120～250 字，供超长/复读摘要回收。
+/// 按句/分句切到 120～250 字，供超长/复读摘要回收；禁止在词中硬切。
 pub fn compress_chapter_summary(text: &str) -> String {
     let t = text.trim();
     if t.is_empty() {
@@ -180,13 +180,32 @@ pub fn compress_chapter_summary(text: &str) -> String {
     let min = 120.min(n);
     let max = 250.min(n);
     let mut cut = max;
+    let mut weak = None;
     for i in (min..max).rev() {
         if matches!(chars[i], '。' | '！' | '？' | '\n' | '.' | '!' | '?') {
             cut = i + 1;
+            weak = None;
             break;
         }
+        if weak.is_none() && matches!(chars[i], '，' | '；' | '、' | ',' | ';') {
+            weak = Some(i);
+        }
     }
-    chars[..cut].iter().collect()
+    if let Some(i) = weak {
+        let head: String = chars[..i].iter().collect();
+        let head = head.trim_end();
+        if head.chars().count() >= min {
+            return format!("{head}。");
+        }
+    }
+    let head: String = chars[..cut].iter().collect();
+    let head = head.trim_end();
+    if prose_incomplete(&head) {
+        let trimmed: String = head.chars().take(249).collect();
+        format!("{trimmed}…")
+    } else {
+        head.to_string()
+    }
 }
 
 /// 摘要不合格时：块笔记优先，否则把超长/复读稿压到 120～250 字；禁止再写占位句。

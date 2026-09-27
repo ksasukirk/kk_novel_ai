@@ -403,7 +403,12 @@ function useStructureTree() {
             <h2 class="sub">{{ $t("outline.chapters") }}</h2>
             <div v-for="ch in chapters" :key="ch.id" class="outline-card">
               <input v-model="drafts[ch.id].title" type="text" />
-              <textarea v-model="drafts[ch.id].summary" rows="3" :placeholder="$t('outline.chSummaryPh')" />
+              <textarea
+                v-model="drafts[ch.id].summary"
+                class="ch-summary-area"
+                rows="3"
+                :placeholder="$t('outline.chSummaryPh')"
+              />
               <textarea v-model="drafts[ch.id].must_do" rows="2" :placeholder="$t('outline.mustDo')" />
               <textarea v-model="drafts[ch.id].must_not" rows="2" :placeholder="$t('outline.mustNot')" />
               <p v-if="snapshots[ch.id]" class="written-sum muted">
@@ -533,6 +538,13 @@ function useStructureTree() {
 }
 .outline-card .app-btn {
   align-self: flex-start;
+}
+.ch-summary-area {
+  min-height: 4.8em;
+  resize: vertical;
+  field-sizing: content;
+  overflow: auto;
+  white-space: pre-wrap;
 }
 .written-sum {
   font-size: 12px;

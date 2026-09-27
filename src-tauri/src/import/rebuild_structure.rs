@@ -45,10 +45,121 @@ struct RebuildFields {
     summary: String,
     instruction: String,
     digest: String,
+    /// 模型给的短标题（不含「第N章」）；空表示不改名
+    chapter_title: String,
 }
 
 fn count_non_ws(s: &str) -> usize {
     s.chars().filter(|c| !c.is_whitespace()).count()
+}
+
+/// 导入无章标时的占位：第1段（约1–3323字）
+pub(crate) fn is_segment_placeholder_title(title: &str) -> bool {
+    let t = title.trim();
+    if t.is_empty() {
+        return true;
+    }
+    static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let re = RE.get_or_init(|| {
+        regex::Regex::new(r"^第\s*[0-9一二三四五六七八九十百千零〇两]+\s*段").expect("segment title")
+    });
+    re.is_match(t)
+}
+
+/// 已有「第N章」但名称空，或整段是占位 → 需要生成章名
+pub(crate) fn needs_generated_chapter_title(title: &str) -> bool {
+    let t = title.trim();
+    if is_segment_placeholder_title(t) {
+        return true;
+    }
+    static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let re = RE.get_or_init(|| {
+        regex::Regex::new(r"^第\s*[0-9一二三四五六七八九十百千零〇两]+\s*章\s*[：:\-]?\s*(.*)$")
+            .expect("chapter title")
+    });
+    if let Some(c) = re.captures(t) {
+        let rest = c.get(1).map(|m| m.as_str().trim()).unwrap_or("");
+        return rest.is_empty();
+    }
+    false
+}
+
+pub(crate) fn chapter_index_label(index: usize) -> String {
+    const CN: [&str; 10] = ["一", "二", "三", "四", "五", "六", "七", "八", "九", "十"];
+    if index >= 1 && index <= 10 {
+        format!("第{}章", CN[index - 1])
+    } else if index > 0 {
+        format!("第{index}章")
+    } else {
+        "第一章".into()
+    }
+}
+
+/// 把模型短名与序号拼成「第一章 短名」；短名里若已带第N章则剥掉重拼
+pub(crate) fn compose_chapter_title(index: usize, raw_name: &str) -> String {
+    let label = chapter_index_label(index);
+    let mut name = raw_name.trim().trim_start_matches('#').trim().to_string();
+    static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let re = RE.get_or_init(|| {
+        regex::Regex::new(r"^第\s*[0-9一二三四五六七八九十百千零〇两]+\s*章\s*[：:\-]?\s*")
+            .expect("strip chapter num")
+    });
+    name = re.replace(&name, "").trim().to_string();
+    // 去掉误带的「第N段…」
+    static SEG: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    let seg = SEG.get_or_init(|| {
+        regex::Regex::new(r"^第\s*[0-9一二三四五六七八九十百千零〇两]+\s*段\s*[（(]?.*$")
+            .expect("strip segment")
+    });
+    if seg.is_match(&name) {
+        name.clear();
+    }
+    // 过长截断，避免目录爆炸
+    if name.chars().count() > 24 {
+        name = name.chars().take(24).collect();
+    }
+    if name.is_empty() {
+        label
+    } else {
+        format!("{label} {name}")
+    }
+}
+
+/// 用新标题替换正文首行 Markdown 标题（或插入）
+pub(crate) fn ensure_body_title_line(body: &str, title: &str) -> String {
+    let title = title.trim();
+    let trimmed = body.trim_start_matches('\u{feff}').trim();
+    if title.is_empty() {
+        return if trimmed.is_empty() {
+            String::new()
+        } else {
+            format!("{trimmed}\n")
+        };
+    }
+    if trimmed.is_empty() {
+        return format!("# {title}\n");
+    }
+    let mut lines = trimmed.lines();
+    if let Some(first) = lines.next() {
+        let f = first.trim();
+        if f.starts_with('#') {
+            let rest: String = lines.collect::<Vec<_>>().join("\n");
+            let rest = rest.trim_start_matches('\n').trim_start();
+            if rest.is_empty() {
+                return format!("# {title}\n");
+            }
+            return format!("# {title}\n\n{rest}\n");
+        }
+    }
+    format!("# {title}\n\n{trimmed}\n")
+}
+
+fn title_rules_for_prompt(need: bool) -> &'static str {
+    if need {
+        "- `chapter_title`：**必填**。根据正文概括的本章短标题（**不要**写「第N章」「第N段」编号，约 2～12 字）；系统会拼成「第一章 xxx」并写入章标题与正文首行"
+    } else {
+        "- `chapter_title`：留空字符串（当前已有正式章名，不要改）"
+    }
 }
 
 /// 过长正文：头 + 尾窗口，避免超上下文
@@ -65,25 +176,72 @@ pub(crate) fn window_body(text: &str, window_chars: usize) -> String {
     format!("{head}\n\n……\n\n{tail}")
 }
 
+/// 半句截断时回退到最近完整句/分句，避免章纲停在「从背后」这类半截。
+pub(crate) fn polish_field_ending(s: &str) -> String {
+    let t = s.trim();
+    if t.is_empty() || !crate::writing::continuity::prose_incomplete(t) {
+        return t.to_string();
+    }
+    let chars: Vec<char> = t.chars().collect();
+    for i in (0..chars.len()).rev() {
+        if matches!(chars[i], '。' | '！' | '？' | '.' | '!' | '?') {
+            return chars[..=i].iter().collect();
+        }
+    }
+    // 从后往前找分句；优先够长的，没有长的也接受较短完整分句
+    let mut best: Option<(usize, String)> = None;
+    for i in (0..chars.len()).rev() {
+        if !matches!(chars[i], '，' | '；' | '、' | ',' | ';' | '\n') {
+            continue;
+        }
+        let head: String = chars[..i].iter().collect();
+        let head = head.trim_end().to_string();
+        let n = head.chars().count();
+        if n < 8 {
+            continue;
+        }
+        let candidate = format!("{head}。");
+        match &best {
+            Some((bn, _)) if *bn >= n => {}
+            _ => best = Some((n, candidate)),
+        }
+        if n >= 40 {
+            break;
+        }
+    }
+    best.map(|(_, s)| s).unwrap_or_else(|| t.to_string())
+}
+
+fn field_looks_cut(s: &str) -> bool {
+    let t = s.trim();
+    !t.is_empty() && crate::writing::continuity::prose_incomplete(t)
+}
+
 pub(crate) fn parse_rebuild_json(raw: &str) -> AppResult<RebuildFields> {
     let cleaned = strip_json_fence(raw);
     let v: Value = serde_json::from_str(&cleaned).map_err(|e| {
         AppError::msg(format!("rebuild_chapter_from_body JSON: {e}"))
     })?;
-    let summary = v
-        .get("summary")
-        .and_then(|x| x.as_str())
-        .unwrap_or("")
-        .trim()
-        .to_string();
-    let instruction = v
-        .get("instruction")
-        .and_then(|x| x.as_str())
-        .unwrap_or("")
-        .trim()
-        .to_string();
-    let digest = v
-        .get("digest")
+    let summary = polish_field_ending(
+        v.get("summary")
+            .and_then(|x| x.as_str())
+            .unwrap_or("")
+            .trim(),
+    );
+    let instruction = polish_field_ending(
+        v.get("instruction")
+            .and_then(|x| x.as_str())
+            .unwrap_or("")
+            .trim(),
+    );
+    let digest = polish_field_ending(
+        v.get("digest")
+            .and_then(|x| x.as_str())
+            .unwrap_or("")
+            .trim(),
+    );
+    let chapter_title = v
+        .get("chapter_title")
         .and_then(|x| x.as_str())
         .unwrap_or("")
         .trim()
@@ -95,6 +253,7 @@ pub(crate) fn parse_rebuild_json(raw: &str) -> AppResult<RebuildFields> {
         summary,
         instruction,
         digest,
+        chapter_title,
     })
 }
 
@@ -280,6 +439,8 @@ pub async fn rebuild_structure_from_prose(
             break;
         }
         let title = ch.title.clone();
+        let chapter_index = from + i;
+        let need_title = needs_generated_chapter_title(&title);
         on_progress(progress_json(
             root,
             i + 1,
@@ -313,7 +474,9 @@ pub async fn rebuild_structure_from_prose(
         }
         let user = tpl
             .replace("{{title}}", &title)
-            .replace("{{body}}", &clipped);
+            .replace("{{body}}", &clipped)
+            .replace("{{chapter_index}}", &chapter_index.to_string())
+            .replace("{{title_rules}}", title_rules_for_prompt(need_title));
         let messages = vec![
             ChatMessage {
                 role: "system".into(),
@@ -321,10 +484,17 @@ pub async fn rebuild_structure_from_prose(
             },
             ChatMessage {
                 role: "user".into(),
-                content: format!("章节：{title}\n请输出 JSON。"),
+                content: if need_title {
+                    format!(
+                        "章节序号：{chapter_index}\n当前标题：{title}\n请输出 JSON（须含 chapter_title 短标题）。"
+                    )
+                } else {
+                    format!("章节：{title}\n请输出 JSON。")
+                },
             },
         ];
-        let max_tokens = 1200u32;
+        // summary+instruction+digest 中文合计可达 ~1200 字，1200 tokens 易半句截断
+        let max_tokens = 2800u32;
         let options = ChatOptions {
             model: Some(model.clone()),
             temperature: Some(settings.analysis_temperature.unwrap_or(0.3)),
@@ -338,7 +508,7 @@ pub async fn rebuild_structure_from_prose(
             break;
         }
 
-        let chat_out = match client.chat(&settings, &messages, &options).await {
+        let mut chat_out = match client.chat(&settings, &messages, &options).await {
             Ok(r) => r,
             Err(e) => {
                 report.failed.push(format!("{}: llm {e}", ch.title));
@@ -349,7 +519,7 @@ pub async fn rebuild_structure_from_prose(
         acc_calls += 1;
         last_model = model.clone();
 
-        let fields = match parse_rebuild_json(&chat_out.text) {
+        let mut fields = match parse_rebuild_json(&chat_out.text) {
             Ok(f) => f,
             Err(e) => {
                 report.failed.push(format!("{}: parse {e}", ch.title));
@@ -371,6 +541,38 @@ pub async fn rebuild_structure_from_prose(
             }
         };
 
+        // 章纲仍半句收束时重试一次（抬温度略降、强调完整句）
+        if field_looks_cut(&fields.summary) && !cancel.load(Ordering::Relaxed) {
+            let mut retry_msgs = messages.clone();
+            retry_msgs.push(ChatMessage {
+                role: "assistant".into(),
+                content: chat_out.text.clone(),
+            });
+            retry_msgs.push(ChatMessage {
+                role: "user".into(),
+                content: "上一版 summary 停在半句。请重新输出完整 JSON：summary/instruction/digest 都必须用完整句收束，覆盖正文头尾关键事件，禁止半截停笔。".into(),
+            });
+            let retry_opts = ChatOptions {
+                model: Some(model.clone()),
+                temperature: Some(settings.analysis_temperature.unwrap_or(0.3).min(0.25)),
+                max_tokens: Some(3200),
+                stream: false,
+                ..Default::default()
+            };
+            if let Ok(retry_out) = client.chat(&settings, &retry_msgs, &retry_opts).await {
+                acc_usage.saturating_add_assign(&retry_out.usage);
+                acc_calls += 1;
+                if let Ok(f2) = parse_rebuild_json(&retry_out.text) {
+                    if !field_looks_cut(&f2.summary)
+                        || f2.summary.chars().count() > fields.summary.chars().count()
+                    {
+                        fields = f2;
+                        chat_out = retry_out;
+                    }
+                }
+            }
+        }
+
         let summary = if fields.summary.trim().is_empty() {
             fields.digest.clone()
         } else {
@@ -379,10 +581,51 @@ pub async fn rebuild_structure_from_prose(
         let digest = project::sanitize_block_digest(&fields.digest);
         let instruction = fields.instruction.clone();
 
+        let mut new_title = title.clone();
+        let mut body_out = body.clone();
+        if need_title {
+            let name = if fields.chapter_title.trim().is_empty() {
+                // 模型漏给时用摘要首句凑短名，保证仍有「第N章」
+                summary
+                    .chars()
+                    .take(12)
+                    .collect::<String>()
+                    .trim_matches(|c: char| c.is_whitespace() || "。！？，、；：".contains(c))
+                    .to_string()
+            } else {
+                fields.chapter_title.clone()
+            };
+            new_title = compose_chapter_title(chapter_index, &name);
+            body_out = ensure_body_title_line(&body, &new_title);
+            if let Err(e) = project::write_chapter(root, &ch.id, &body_out) {
+                report.failed.push(format!("{}: write body title {e}", ch.title));
+                continue;
+            }
+            // 保留导入占位到 title_src，便于对照
+            if let Ok(mut opened) = project::open_project(root) {
+                if let Some(meta) = opened
+                    .project
+                    .chapters
+                    .iter_mut()
+                    .find(|c| c.id == ch.id)
+                {
+                    if meta.title_src.trim().is_empty() && is_segment_placeholder_title(&title) {
+                        meta.title_src = title.clone();
+                    }
+                }
+                let _ = project::save_project_meta(root, &opened.project);
+            }
+        }
+
         if let Err(e) = project::update_chapter_meta(
             root,
             &ch.id,
             ChapterMetaPatch {
+                title: if need_title {
+                    Some(new_title.clone())
+                } else {
+                    None
+                },
                 summary: Some(summary.clone()),
                 ..Default::default()
             },
@@ -392,7 +635,7 @@ pub async fn rebuild_structure_from_prose(
         }
 
         let (sidecar, block_key) =
-            build_single_gen_sidecar(&body, &instruction, &digest, &last_model);
+            build_single_gen_sidecar(&body_out, &instruction, &digest, &last_model);
         if let Err(e) = project::write_genblocks(root, &ch.id, &sidecar) {
             report.failed.push(format!("{}: genblocks {e}", ch.title));
             continue;
@@ -449,6 +692,10 @@ pub async fn rebuild_structure_from_prose(
     report.calls = acc_calls;
     report.cost_cny = acc_cost;
     report.model_used = last_model;
+    // write_chapter 改首行标题会标 dirty；总结管线内重建完后按新正文重新盖章
+    if report.rebuilt > 0 && !report.cancelled {
+        let _ = project::stamp_trope_summary(root);
+    }
     Ok(report)
 }
 
@@ -470,6 +717,46 @@ mod tests {
         let raw = "```json\n{\"summary\":\"s\",\"instruction\":\"i\",\"digest\":\"d\"}\n```";
         let f = parse_rebuild_json(raw).unwrap();
         assert_eq!(f.summary, "s");
+    }
+
+    #[test]
+    fn segment_placeholder_detected() {
+        assert!(is_segment_placeholder_title("第1段（约1–3323字）"));
+        assert!(is_segment_placeholder_title("第十二段"));
+        assert!(needs_generated_chapter_title("第3段（约900–1200字）"));
+        assert!(needs_generated_chapter_title("第一章"));
+        assert!(!needs_generated_chapter_title("第一章 寻仙"));
+        assert!(!needs_generated_chapter_title("第2章 后续"));
+    }
+
+    #[test]
+    fn compose_title_strips_and_numbers() {
+        assert_eq!(compose_chapter_title(1, "班主任的秘密"), "第一章 班主任的秘密");
+        assert_eq!(compose_chapter_title(2, "第2章 放学后"), "第二章 放学后");
+        assert_eq!(compose_chapter_title(11, "尾声"), "第11章 尾声");
+    }
+
+    #[test]
+    fn body_title_line_replaces_heading() {
+        let body = "# 第1段（约1–10字）\n\n正文开始。\n";
+        let out = ensure_body_title_line(body, "第一章 开端");
+        assert!(out.starts_with("# 第一章 开端\n"), "{out}");
+        assert!(out.contains("正文开始。"), "{out}");
+    }
+
+    #[test]
+    fn polish_cuts_mid_clause_at_comma() {
+        let s = "早饭后乐乐来电约自习，午睡后跳绳，回家后乐乐从背后";
+        let out = polish_field_ending(s);
+        assert!(out.ends_with('。'), "{out}");
+        assert!(!out.contains("从背后"), "{out}");
+        assert!(out.contains("跳绳"), "{out}");
+    }
+
+    #[test]
+    fn polish_keeps_complete_sentence() {
+        let s = "早饭后乐乐来电约自习，午睡后跳绳。";
+        assert_eq!(polish_field_ending(s), s);
     }
 
     #[test]

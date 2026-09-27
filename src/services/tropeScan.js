@@ -112,12 +112,65 @@ function applyReportUsage(r, { accumulate = false } = {}) {
   }
 }
 
-function applyProgress(payload) {
-  if (!payload) return;
-  if (payload.request_id && tropeScanState.requestId && payload.request_id !== tropeScanState.requestId) {
+/** Tauri listen 回调是 { payload }；兼容直接塞 payload 的调用 */
+function unwrapProgressPayload(eventOrPayload) {
+  if (!eventOrPayload || typeof eventOrPayload !== "object") return null;
+  if (eventOrPayload.payload != null && typeof eventOrPayload.payload === "object") {
+    return eventOrPayload.payload;
+  }
+  return eventOrPayload;
+}
+
+function syncStatusFromScan() {
+  if (tropeScanState.phase === "structure") {
+    appState.statusMessage = t("trope.structureProgress", {
+      current: tropeScanState.current,
+      total: tropeScanState.total,
+      title: tropeScanState.title || "",
+      rebuilt: tropeScanState.rebuilt,
+    });
     return;
   }
-  if (payload.request_id) tropeScanState.requestId = payload.request_id;
+  let base = t("trope.scanProgress", {
+    current: tropeScanState.current,
+    total: tropeScanState.total,
+    added: tropeScanState.added,
+    updated: tropeScanState.updated,
+  });
+  if (tropeScanState.title) {
+    base += ` · ${tropeScanState.title}`;
+  }
+  if (tropeScanState.chunk > 0 && tropeScanState.chunks > 0) {
+    base += ` · ${t("trope.scanChunk", {
+      chunk: tropeScanState.chunk,
+      chunks: tropeScanState.chunks,
+    })}`;
+  }
+  const usage = formatScanUsage();
+  appState.statusMessage = usage ? `${base} · ${usage}` : base;
+}
+
+function applyProgress(eventOrPayload) {
+  const payload = unwrapProgressPayload(eventOrPayload);
+  if (!payload) return;
+
+  const incomingRid = payload.request_id != null ? String(payload.request_id) : "";
+  // start 事件通常只有 request_id/root/phase，允许换号（tropes → structure）
+  const looksLikeStart =
+    incomingRid &&
+    payload.current == null &&
+    payload.pct == null &&
+    payload.step == null &&
+    (payload.root != null || payload.phase != null);
+  if (
+    incomingRid &&
+    tropeScanState.requestId &&
+    incomingRid !== tropeScanState.requestId &&
+    !looksLikeStart
+  ) {
+    return;
+  }
+  if (incomingRid) tropeScanState.requestId = incomingRid;
   if (payload.phase != null) tropeScanState.phase = String(payload.phase || "");
   if (payload.current != null) tropeScanState.current = Number(payload.current) || 0;
   if (payload.total != null) tropeScanState.total = Number(payload.total) || 0;
@@ -146,13 +199,9 @@ function applyProgress(payload) {
     if (payload.model_used != null) tropeScanState.model = String(payload.model_used || "");
   }
 
-  if (tropeScanState.phase === "structure") {
-    appState.statusMessage = t("trope.structureProgress", {
-      current: tropeScanState.current,
-      total: tropeScanState.total,
-      title: tropeScanState.title || "",
-      rebuilt: tropeScanState.rebuilt,
-    });
+  // start 事件不刷状态文案，避免盖掉「准备扫描 / 重建中」
+  if (!looksLikeStart) {
+    syncStatusFromScan();
   }
 }
 
@@ -164,7 +213,7 @@ async function bindEvents() {
     [
       "tropes-scan-error",
       (event) => {
-        const p = event && event.payload;
+        const p = unwrapProgressPayload(event);
         if (p && p.error) tropeScanState.error = String(p.error);
       },
     ],
@@ -173,7 +222,7 @@ async function bindEvents() {
     [
       "rebuild-structure-error",
       (event) => {
-        const p = event && event.payload;
+        const p = unwrapProgressPayload(event);
         if (p && p.error) tropeScanState.error = String(p.error);
       },
     ],
@@ -238,6 +287,10 @@ async function rebuildStructurePhase(projectRoot, opts = {}) {
   tropeScanState.title = "";
   tropeScanState.rebuilt = 0;
   tropeScanState.pct = 0;
+  tropeScanState.chunk = 0;
+  tropeScanState.chunks = 0;
+  tropeScanState.step = 0;
+  tropeScanState.steps = 0;
   appState.statusMessage = t("trope.structureStarting");
   const r = await invoke("rebuild_structure_from_prose", {
     root: projectRoot,

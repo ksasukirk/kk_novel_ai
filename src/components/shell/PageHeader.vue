@@ -104,8 +104,9 @@ const emit = defineEmits(["toggle-sidebar"]);
 }
 
 .header-progress {
-  flex: 0 0 168px;
-  width: 168px;
+  flex: 0 1 260px;
+  width: min(42vw, 320px);
+  max-width: 320px;
   height: 22px;
   max-height: 22px;
   overflow: hidden;
