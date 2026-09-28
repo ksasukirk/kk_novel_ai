@@ -46,13 +46,14 @@ const items = ref([]);
 const rosterPath = ref("");
 const error = useToastError();
 const status = ref("");
-/** all | trope | kink */
+/** all | trope | kink | style — style 为文风分区，列表按 kind=all */
 const kindFilter = ref("all");
 const searchQuery = ref("");
 /** "" | "__uncat__" | 规范名 */
 const categoryFilter = ref("");
 /** "" | "__nostyle__" | 规范文风名 */
 const styleFilter = ref("");
+const stylePartition = computed(() => kindFilter.value === "style");
 const form = ref(emptyForm("trope"));
 const importTitle = ref("");
 const editorOpen = ref(false);
@@ -100,7 +101,9 @@ const libraryItems = computed(() =>
 );
 
 const kindItems = computed(() => {
-  if (kindFilter.value === "all") return libraryItems.value;
+  if (kindFilter.value === "all" || kindFilter.value === "style") {
+    return libraryItems.value;
+  }
   return libraryItems.value.filter((it) => it.kind === kindFilter.value);
 });
 
@@ -134,13 +137,22 @@ const styleCounts = computed(() => {
     }
   }
   return {
-    chips: TROPE_STYLE_IDS.filter((id) => counts[id] > 0).map((id) => ({
+    chips: TROPE_STYLE_IDS.map((id) => ({
       id,
-      n: counts[id],
+      n: counts[id] || 0,
     })),
     nostyle,
   };
 });
+
+function setKindFilter(id) {
+  kindFilter.value = id;
+}
+
+function enterStylePartition() {
+  kindFilter.value = "style";
+  categoryFilter.value = "";
+}
 
 const visibleItems = computed(() => {
   let list = kindItems.value;
@@ -672,7 +684,7 @@ onUnmounted(() => {
             type="button"
             class="chip"
             :class="kindFilter === 'all' ? 'chip-active' : ''"
-            @click="kindFilter = 'all'"
+            @click="setKindFilter('all')"
           >
             {{ $t("common.all") }}
           </button>
@@ -680,7 +692,7 @@ onUnmounted(() => {
             type="button"
             class="chip"
             :class="kindFilter === 'trope' ? 'chip-active' : ''"
-            @click="kindFilter = 'trope'"
+            @click="setKindFilter('trope')"
           >
             {{ $t("common.trope") }}
           </button>
@@ -688,9 +700,17 @@ onUnmounted(() => {
             type="button"
             class="chip"
             :class="kindFilter === 'kink' ? 'chip-active' : ''"
-            @click="kindFilter = 'kink'"
+            @click="setKindFilter('kink')"
           >
             {{ $t("common.kink") }}
+          </button>
+          <button
+            type="button"
+            class="chip"
+            :class="stylePartition ? 'chip-active' : ''"
+            @click="enterStylePartition()"
+          >
+            {{ $t("trope.style") }}
           </button>
           <button type="button" class="app-btn app-btn-light refresh-btn" :disabled="scan.running" @click="refresh({ force: true })">{{ $t("common.refresh") }}</button>
           <button type="button" class="app-btn app-btn-primary" :disabled="scan.running" @click="resetForm">{{ $t("trope.new") }}</button>
@@ -747,47 +767,56 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <div class="cat-row">
-        <button
-          v-if="categoryCounts.uncat"
-          type="button"
-          class="chip cat-chip-btn"
-          :class="categoryFilter === '__uncat__' ? 'chip-active' : ''"
-          @click="toggleCategory('__uncat__')"
-        >
-          {{ $t("trope.uncategorized") }} {{ categoryCounts.uncat }}
-        </button>
-        <button
-          v-for="chip in categoryCounts.chips"
-          :key="chip.id"
-          type="button"
-          class="chip cat-chip-btn"
-          :class="categoryFilter === chip.id ? 'chip-active' : ''"
-          @click="toggleCategory(chip.id)"
-        >
-          {{ $t(categoryLabelKey(chip.id)) }} {{ chip.n }}
-        </button>
+      <div v-show="!stylePartition" class="filter-partition">
+        <span class="partition-label">{{ $t("trope.fieldTags") }}</span>
+        <div class="cat-row">
+          <button
+            v-if="categoryCounts.uncat"
+            type="button"
+            class="chip cat-chip-btn"
+            :class="categoryFilter === '__uncat__' ? 'chip-active' : ''"
+            @click="toggleCategory('__uncat__')"
+          >
+            {{ $t("trope.uncategorized") }} {{ categoryCounts.uncat }}
+          </button>
+          <button
+            v-for="chip in categoryCounts.chips"
+            :key="chip.id"
+            type="button"
+            class="chip cat-chip-btn"
+            :class="categoryFilter === chip.id ? 'chip-active' : ''"
+            @click="toggleCategory(chip.id)"
+          >
+            {{ $t(categoryLabelKey(chip.id)) }} {{ chip.n }}
+          </button>
+        </div>
       </div>
-      <div class="cat-row">
-        <button
-          v-if="styleCounts.nostyle"
-          type="button"
-          class="chip cat-chip-btn style-chip-btn"
-          :class="styleFilter === '__nostyle__' ? 'chip-active' : ''"
-          @click="toggleStyleFilter('__nostyle__')"
-        >
-          {{ $t("trope.noStyle") }} {{ styleCounts.nostyle }}
-        </button>
-        <button
-          v-for="chip in styleCounts.chips"
-          :key="'style-' + chip.id"
-          type="button"
-          class="chip cat-chip-btn style-chip-btn"
-          :class="styleFilter === chip.id ? 'chip-active' : ''"
-          @click="toggleStyleFilter(chip.id)"
-        >
-          {{ $t(styleLabelKey(chip.id)) }} {{ chip.n }}
-        </button>
+      <div class="filter-partition" :class="{ 'is-emphasis': stylePartition }">
+        <span class="partition-label">{{ $t("trope.style") }}</span>
+        <div class="cat-row">
+          <button
+            v-if="styleCounts.nostyle"
+            type="button"
+            class="chip cat-chip-btn style-chip-btn"
+            :class="styleFilter === '__nostyle__' ? 'chip-active' : ''"
+            @click="toggleStyleFilter('__nostyle__')"
+          >
+            {{ $t("trope.noStyle") }} {{ styleCounts.nostyle }}
+          </button>
+          <button
+            v-for="chip in styleCounts.chips"
+            :key="'style-' + chip.id"
+            type="button"
+            class="chip cat-chip-btn style-chip-btn"
+            :class="[
+              styleFilter === chip.id ? 'chip-active' : '',
+              chip.n === 0 ? 'chip-empty' : '',
+            ]"
+            @click="toggleStyleFilter(chip.id)"
+          >
+            {{ $t(styleLabelKey(chip.id)) }} {{ chip.n }}
+          </button>
+        </div>
       </div>
 
       <div v-if="scan.running" class="scan-meter-wrap">
@@ -1037,6 +1066,35 @@ onUnmounted(() => {
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
+}
+.filter-partition {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 6px 8px;
+  margin-top: 4px;
+}
+.filter-partition .cat-row {
+  flex: 1 1 200px;
+}
+.partition-label {
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted, #888);
+  line-height: 24px;
+  min-width: 2.5em;
+}
+.filter-partition.is-emphasis {
+  padding: 4px 6px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent-soft, #fce7f3) 55%, transparent);
+}
+.filter-partition.is-emphasis .partition-label {
+  color: var(--accent, #be185d);
+}
+.chip-empty {
+  opacity: 0.55;
 }
 .tabs {
   flex: 1 1 auto;

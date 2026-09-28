@@ -29,7 +29,7 @@ import { displayTropeContent, displayTropeTitle } from "../utils/tropeI18n.js";
 
 const emit = defineEmits(["hide"]);
 
-/** all | trope | kink */
+/** all | trope | kink | style — style 为文风分区，列表按 kind=all */
 const kindFilter = ref("all");
 const searchQuery = ref("");
 /** "" | "__uncat__" | 规范名 */
@@ -37,13 +37,16 @@ const categoryFilter = ref("");
 /** "" | "__nostyle__" | 规范文风名 */
 const styleFilter = ref("");
 const expandedId = ref("");
+const stylePartition = computed(() => kindFilter.value === "style");
 
 const libraryItems = computed(() =>
   (appState.tropeList || []).filter((it) => it && isTropeKind(it.kind))
 );
 
 const kindItems = computed(() => {
-  if (kindFilter.value === "all") return libraryItems.value;
+  if (kindFilter.value === "all" || kindFilter.value === "style") {
+    return libraryItems.value;
+  }
   return libraryItems.value.filter((it) => it.kind === kindFilter.value);
 });
 
@@ -77,9 +80,9 @@ const styleCounts = computed(() => {
     }
   }
   return {
-    chips: TROPE_STYLE_IDS.filter((id) => counts[id] > 0).map((id) => ({
+    chips: TROPE_STYLE_IDS.map((id) => ({
       id,
-      n: counts[id],
+      n: counts[id] || 0,
     })),
     nostyle,
   };
@@ -124,6 +127,15 @@ const selectedCount = computed(() => (aiPanelForm.selectedTropeIds || []).length
 const visibleCountText = computed(() =>
   t("trope.visibleCount", { n: visibleItems.value.length, m: kindItems.value.length })
 );
+
+function setKindFilter(id) {
+  kindFilter.value = id;
+}
+
+function enterStylePartition() {
+  kindFilter.value = "style";
+  categoryFilter.value = "";
+}
 
 function toggleCategory(id) {
   categoryFilter.value = categoryFilter.value === id ? "" : id;
@@ -188,7 +200,7 @@ function onHide() {
         type="button"
         class="chip"
         :class="kindFilter === 'all' ? 'chip-active' : ''"
-        @click="kindFilter = 'all'"
+        @click="setKindFilter('all')"
       >
         {{ $t("common.all") }}
       </button>
@@ -196,7 +208,7 @@ function onHide() {
         type="button"
         class="chip"
         :class="kindFilter === 'trope' ? 'chip-active' : ''"
-        @click="kindFilter = 'trope'"
+        @click="setKindFilter('trope')"
       >
         {{ $t("common.trope") }}
       </button>
@@ -204,9 +216,17 @@ function onHide() {
         type="button"
         class="chip"
         :class="kindFilter === 'kink' ? 'chip-active' : ''"
-        @click="kindFilter = 'kink'"
+        @click="setKindFilter('kink')"
       >
         {{ $t("common.kink") }}
+      </button>
+      <button
+        type="button"
+        class="chip"
+        :class="stylePartition ? 'chip-active' : ''"
+        @click="enterStylePartition()"
+      >
+        {{ $t("trope.style") }}
       </button>
     </div>
     <input
@@ -215,47 +235,56 @@ function onHide() {
       class="pick-search"
       :placeholder="$t('trope.searchPh')"
     />
-    <div class="cat-row">
-      <button
-        v-if="categoryCounts.uncat"
-        type="button"
-        class="chip cat-chip"
-        :class="categoryFilter === '__uncat__' ? 'chip-active' : ''"
-        @click="toggleCategory('__uncat__')"
-      >
-        {{ $t("trope.uncategorized") }} {{ categoryCounts.uncat }}
-      </button>
-      <button
-        v-for="chip in categoryCounts.chips"
-        :key="chip.id"
-        type="button"
-        class="chip cat-chip"
-        :class="categoryFilter === chip.id ? 'chip-active' : ''"
-        @click="toggleCategory(chip.id)"
-      >
-        {{ $t(categoryLabelKey(chip.id)) }} {{ chip.n }}
-      </button>
+    <div v-show="!stylePartition" class="filter-partition">
+      <span class="partition-label">{{ $t("trope.fieldTags") }}</span>
+      <div class="cat-row">
+        <button
+          v-if="categoryCounts.uncat"
+          type="button"
+          class="chip cat-chip"
+          :class="categoryFilter === '__uncat__' ? 'chip-active' : ''"
+          @click="toggleCategory('__uncat__')"
+        >
+          {{ $t("trope.uncategorized") }} {{ categoryCounts.uncat }}
+        </button>
+        <button
+          v-for="chip in categoryCounts.chips"
+          :key="chip.id"
+          type="button"
+          class="chip cat-chip"
+          :class="categoryFilter === chip.id ? 'chip-active' : ''"
+          @click="toggleCategory(chip.id)"
+        >
+          {{ $t(categoryLabelKey(chip.id)) }} {{ chip.n }}
+        </button>
+      </div>
     </div>
-    <div class="cat-row">
-      <button
-        v-if="styleCounts.nostyle"
-        type="button"
-        class="chip cat-chip style-chip"
-        :class="styleFilter === '__nostyle__' ? 'chip-active' : ''"
-        @click="toggleStyleFilter('__nostyle__')"
-      >
-        {{ $t("trope.noStyle") }} {{ styleCounts.nostyle }}
-      </button>
-      <button
-        v-for="chip in styleCounts.chips"
-        :key="'style-' + chip.id"
-        type="button"
-        class="chip cat-chip style-chip"
-        :class="styleFilter === chip.id ? 'chip-active' : ''"
-        @click="toggleStyleFilter(chip.id)"
-      >
-        {{ $t(styleLabelKey(chip.id)) }} {{ chip.n }}
-      </button>
+    <div class="filter-partition" :class="{ 'is-emphasis': stylePartition }">
+      <span class="partition-label">{{ $t("trope.style") }}</span>
+      <div class="cat-row">
+        <button
+          v-if="styleCounts.nostyle"
+          type="button"
+          class="chip cat-chip style-chip"
+          :class="styleFilter === '__nostyle__' ? 'chip-active' : ''"
+          @click="toggleStyleFilter('__nostyle__')"
+        >
+          {{ $t("trope.noStyle") }} {{ styleCounts.nostyle }}
+        </button>
+        <button
+          v-for="chip in styleCounts.chips"
+          :key="'style-' + chip.id"
+          type="button"
+          class="chip cat-chip style-chip"
+          :class="[
+            styleFilter === chip.id ? 'chip-active' : '',
+            chip.n === 0 ? 'chip-empty' : '',
+          ]"
+          @click="toggleStyleFilter(chip.id)"
+        >
+          {{ $t(styleLabelKey(chip.id)) }} {{ chip.n }}
+        </button>
+      </div>
     </div>
     <p class="muted pick-count-line">{{ visibleCountText }}</p>
     <div class="pick-list">
@@ -377,6 +406,31 @@ function onHide() {
   gap: 4px;
   align-items: center;
 }
+.filter-partition {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 4px 6px;
+}
+.filter-partition .cat-row {
+  flex: 1 1 120px;
+}
+.partition-label {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted, #888);
+  line-height: 20px;
+  min-width: 2.2em;
+}
+.filter-partition.is-emphasis {
+  padding: 3px 4px;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--accent-soft, #fce7f3) 55%, transparent);
+}
+.filter-partition.is-emphasis .partition-label {
+  color: var(--accent, #be185d);
+}
 .cat-chip,
 .style-chip {
   font-size: 11px;
@@ -385,6 +439,9 @@ function onHide() {
 }
 .style-chip {
   border-style: dashed;
+}
+.chip-empty {
+  opacity: 0.55;
 }
 .pick-search {
   width: 100%;
