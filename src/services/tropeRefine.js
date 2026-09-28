@@ -28,7 +28,9 @@ function parseRefine(raw) {
     const obj = JSON.parse(s);
     const row = obj && Array.isArray(obj.tropes) && obj.tropes[0] ? obj.tropes[0] : obj;
     if (!row || typeof row !== "object") return null;
-    const kind = String(row.kind || "").trim() === "kink" ? "kink" : "trope";
+    const kindRaw = String(row.kind || "").trim();
+    const kind =
+      kindRaw === "kink" ? "kink" : kindRaw === "style" ? "style" : "trope";
     const title = String(row.title || "").trim();
     const titleEn = String(row.title_en || "").trim();
     const content = String(row.content || "").trim();
@@ -63,7 +65,7 @@ function parseRefine(raw) {
 function cardPayload(item) {
   const attrs = (item && item.attrs && typeof item.attrs === "object") ? item.attrs : {};
   return {
-    kind: item.kind === "kink" ? "kink" : "trope",
+    kind: item.kind === "kink" ? "kink" : item.kind === "style" ? "style" : "trope",
     title: item.title || "",
     title_en: attrs.title_en || "",
     content: item.content || "",

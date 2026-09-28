@@ -63,6 +63,9 @@ Book outline (highest priority; must be split faithfully; see improvise exceptio
 Selected tropes/kinks (when improvising, ground scenes and play in these; when a clear outline exists, mood only—do not override the outline):
 {{tropes}}
 
+Selected prose styles (must show in narration/dialogue; ignore if empty):
+{{prose_styles}}
+
 Existing chapter titles:
 {{existing_chapters}}
 

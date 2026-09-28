@@ -9,6 +9,7 @@ Hard rules:
 - Do not close mid-sentence or mid-scene just because length is met; no padding, no repetition loops, no jumping scenes to fill space
 - Strictly follow the "active beat" and "narrative direction anchor"; do not go off-topic
 - **Trope / kink library**: if selected tropes are not "(none)" and their process is unfinished, this fill must continue fulfilling them; do not name-drop only; listed prose styles must show in narration and dialogue
+- **Prose style cards**: if selected prose styles is not empty, narration and dialogue must follow those cards; project writing voice stays separate
 
 Chapter outline:
 {{outline}}
@@ -24,6 +25,9 @@ Narrative direction anchor:
 
 Selected tropes and kinks (fulfill as process; ignore if empty):
 {{tropes}}
+
+Selected prose styles (must show in narration/dialogue; ignore if empty):
+{{prose_styles}}
 
 Original task note:
 {{instruction}}

@@ -16,6 +16,9 @@ Related lore:
 Selected tropes and kinks (cover landing points; ignore if empty):
 {{tropes}}
 
+Selected prose styles (must show in narration/dialogue; ignore if empty):
+{{prose_styles}}
+
 Memory digest:
 {{memory}}
 

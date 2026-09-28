@@ -510,6 +510,9 @@ const tropeTagsPlot = computed(() =>
 const tropeTagsKink = computed(() =>
   tropeTags.value.filter((x) => x && x.kind === "kink")
 );
+const tropeTagsStyle = computed(() =>
+  tropeTags.value.filter((x) => x && x.kind === "style")
+);
 
 function isFocusTropeSelected(id) {
   return isTropeSelected(id);
@@ -984,6 +987,17 @@ function onMapSelect(n) {
                   <button
                     v-for="c in tropeTagsKink"
                     :key="'k' + c.id"
+                    type="button"
+                    class="chip"
+                    :class="{ 'chip-active': isFocusTropeSelected(c.id) }"
+                    :title="$t('trope.selectHint')"
+                    @click="toggleFocusTrope(c.id)"
+                  >
+                    {{ c.title }}
+                  </button>
+                  <button
+                    v-for="c in tropeTagsStyle"
+                    :key="'s' + c.id"
                     type="button"
                     class="chip"
                     :class="{ 'chip-active': isFocusTropeSelected(c.id) }"

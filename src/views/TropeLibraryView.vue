@@ -10,7 +10,7 @@ import * as kb from "../services/kbClient.js";
 import { appConfirm, appConfirmDelete } from "../services/confirmDialog.js";
 import { useToastError } from "../services/toast.js";
 import { isCancelledMsg, t } from "../i18n/index.js";
-import { isTropeKind, tropeKindLabelKey } from "../utils/tropeKinds.js";
+import { isPlotKind, isTropeKind, tropeKindLabelKey } from "../utils/tropeKinds.js";
 import { cancelTropeScan, formatScanUsage, scanTropesFromRoot, tropeScanState } from "../services/tropeScan.js";
 import {
   TROPE_CARD_FIELD_IDS,
@@ -46,14 +46,13 @@ const items = ref([]);
 const rosterPath = ref("");
 const error = useToastError();
 const status = ref("");
-/** all | trope | kink | style — style 为文风分区，列表按 kind=all */
+/** all | trope | kink | style */
 const kindFilter = ref("all");
 const searchQuery = ref("");
 /** "" | "__uncat__" | 规范名 */
 const categoryFilter = ref("");
-/** "" | "__nostyle__" | 规范文风名 */
-const styleFilter = ref("");
-const stylePartition = computed(() => kindFilter.value === "style");
+/** 弱关联 attrs.styles 筛选："" | "__nostyle__" | 规范文风名 */
+const styleTagFilter = ref("");
 const form = ref(emptyForm("trope"));
 const importTitle = ref("");
 const editorOpen = ref(false);
@@ -70,6 +69,10 @@ let saveTimer = null;
 let lastLoadedKey = "";
 let wasScanRunning = false;
 
+const showPlotFilters = computed(
+  () => kindFilter.value === "all" || kindFilter.value === "trope" || kindFilter.value === "kink"
+);
+
 const chapterCount = computed(() => {
   const ch = (appState.project && appState.project.chapters) || [];
   return ch.length;
@@ -80,9 +83,10 @@ const canScanCurrent = computed(
 );
 
 function emptyForm(kind) {
+  const k = kind === "kink" ? "kink" : kind === "style" ? "style" : "trope";
   return {
     id: "",
-    kind: kind === "kink" ? "kink" : "trope",
+    kind: k,
     title: "",
     titleEn: "",
     content: "",
@@ -101,16 +105,19 @@ const libraryItems = computed(() =>
 );
 
 const kindItems = computed(() => {
-  if (kindFilter.value === "all" || kindFilter.value === "style") {
-    return libraryItems.value;
-  }
+  if (kindFilter.value === "all") return libraryItems.value;
   return libraryItems.value.filter((it) => it.kind === kindFilter.value);
 });
+
+/** 弱关联标签计数：只看情节/喜好 */
+const plotKinkItems = computed(() =>
+  kindItems.value.filter((it) => isPlotKind(it.kind))
+);
 
 const categoryCounts = computed(() => {
   const counts = {};
   let uncat = 0;
-  for (const it of kindItems.value) {
+  for (const it of plotKinkItems.value) {
     const tags = itemCategoryTags(it);
     if (!tags.length) uncat += 1;
     for (const tag of tags) {
@@ -126,10 +133,10 @@ const categoryCounts = computed(() => {
   };
 });
 
-const styleCounts = computed(() => {
+const styleTagCounts = computed(() => {
   const counts = {};
   let nostyle = 0;
-  for (const it of kindItems.value) {
+  for (const it of plotKinkItems.value) {
     const styles = itemStyleTags(it);
     if (!styles.length) nostyle += 1;
     for (const s of styles) {
@@ -137,9 +144,9 @@ const styleCounts = computed(() => {
     }
   }
   return {
-    chips: TROPE_STYLE_IDS.map((id) => ({
+    chips: TROPE_STYLE_IDS.filter((id) => counts[id] > 0).map((id) => ({
       id,
-      n: counts[id] || 0,
+      n: counts[id],
     })),
     nostyle,
   };
@@ -147,24 +154,25 @@ const styleCounts = computed(() => {
 
 function setKindFilter(id) {
   kindFilter.value = id;
-}
-
-function enterStylePartition() {
-  kindFilter.value = "style";
-  categoryFilter.value = "";
+  if (id === "style") {
+    categoryFilter.value = "";
+    styleTagFilter.value = "";
+  }
 }
 
 const visibleItems = computed(() => {
   let list = kindItems.value;
-  if (categoryFilter.value === "__uncat__") {
-    list = list.filter((it) => itemIsUncategorized(it));
-  } else if (categoryFilter.value) {
-    list = list.filter((it) => itemCategoryTags(it).includes(categoryFilter.value));
-  }
-  if (styleFilter.value === "__nostyle__") {
-    list = list.filter((it) => itemHasNoStyles(it));
-  } else if (styleFilter.value) {
-    list = list.filter((it) => itemStyleTags(it).includes(styleFilter.value));
+  if (showPlotFilters.value) {
+    if (categoryFilter.value === "__uncat__") {
+      list = list.filter((it) => itemIsUncategorized(it));
+    } else if (categoryFilter.value) {
+      list = list.filter((it) => itemCategoryTags(it).includes(categoryFilter.value));
+    }
+    if (styleTagFilter.value === "__nostyle__") {
+      list = list.filter((it) => isPlotKind(it.kind) && itemHasNoStyles(it));
+    } else if (styleTagFilter.value) {
+      list = list.filter((it) => itemStyleTags(it).includes(styleTagFilter.value));
+    }
   }
   const q = searchQuery.value.trim().toLowerCase();
   if (q) {
@@ -252,7 +260,7 @@ function toggleCategory(id) {
 }
 
 function toggleStyleFilter(id) {
-  styleFilter.value = styleFilter.value === id ? "" : id;
+  styleTagFilter.value = styleTagFilter.value === id ? "" : id;
 }
 
 function toggleField(id) {
@@ -336,7 +344,7 @@ async function edit(item) {
   const attrs = attrsOf(item);
   form.value = {
     id: item.id,
-    kind: item.kind === "kink" ? "kink" : "trope",
+    kind: item.kind === "kink" ? "kink" : item.kind === "style" ? "style" : "trope",
     title: item.title || "",
     titleEn: attrs.title_en || "",
     content: item.content || "",
@@ -355,7 +363,12 @@ async function edit(item) {
 
 async function resetForm() {
   applyingRemote = true;
-  const kind = kindFilter.value === "kink" ? "kink" : "trope";
+  const kind =
+    kindFilter.value === "kink"
+      ? "kink"
+      : kindFilter.value === "style"
+        ? "style"
+        : "trope";
   form.value = emptyForm(kind);
   status.value = "";
   editorOpen.value = true;
@@ -364,17 +377,22 @@ async function resetForm() {
 }
 
 function buildPayload() {
-  const kind = form.value.kind === "kink" ? "kink" : "trope";
-  const attrs = {
-    intensity: String(form.value.intensity || "3"),
-  };
+  const kind =
+    form.value.kind === "kink"
+      ? "kink"
+      : form.value.kind === "style"
+        ? "style"
+        : "trope";
+  const attrs = {};
+  if (kind !== "style") {
+    attrs.intensity = String(form.value.intensity || "3");
+    attrs.tags = formatTropeTags(form.value.tags);
+    attrs.styles = formatTropeStyles(form.value.styles);
+  }
   if (form.value.doText.trim()) attrs.do = form.value.doText.trim();
   if (form.value.dontText.trim()) attrs.dont = form.value.dontText.trim();
   if (form.value.titleEn.trim()) attrs.title_en = form.value.titleEn.trim();
   if (form.value.contentEn.trim()) attrs.content_en = form.value.contentEn.trim();
-  const tags = formatTropeTags(form.value.tags);
-  attrs.tags = tags;
-  attrs.styles = formatTropeStyles(form.value.styles);
   return {
     id: form.value.id || "",
     kind,
@@ -403,7 +421,12 @@ async function save(opts = {}) {
       if (silent) return;
       throw new Error(t("trope.needTitle"));
     }
-    const kind = form.value.kind === "kink" ? "kink" : "trope";
+    const kind =
+      form.value.kind === "kink"
+        ? "kink"
+        : form.value.kind === "style"
+          ? "style"
+          : "trope";
     const r = await project.upsertLoreAt(rosterPath.value, buildPayload());
     const saved = r && r.item;
     if (saved && saved.id) form.value.id = saved.id;
@@ -411,7 +434,9 @@ async function save(opts = {}) {
       ? t("trope.savedAuto")
       : kind === "kink"
         ? t("trope.savedKink")
-        : t("trope.savedTrope");
+        : kind === "style"
+          ? t("trope.savedStyle")
+          : t("trope.savedTrope");
     bumpTropeRevision();
     lastLoadedKey = "";
     await refresh({ force: true });
@@ -621,7 +646,9 @@ async function remove(item) {
   await project.deleteLoreAt(rosterPath.value, item.id);
   if (form.value.id === item.id) {
     applyingRemote = true;
-    form.value = emptyForm(kindFilter.value === "kink" ? "kink" : "trope");
+    form.value = emptyForm(
+      kindFilter.value === "kink" ? "kink" : kindFilter.value === "style" ? "style" : "trope"
+    );
     editorOpen.value = false;
     await nextTick();
     applyingRemote = false;
@@ -633,7 +660,7 @@ async function remove(item) {
 }
 
 watch(
-  () => [kindFilter.value, categoryFilter.value, styleFilter.value, searchQuery.value],
+  () => [kindFilter.value, categoryFilter.value, styleTagFilter.value, searchQuery.value],
   () => {
     resetPageLimit();
   }
@@ -707,10 +734,10 @@ onUnmounted(() => {
           <button
             type="button"
             class="chip"
-            :class="stylePartition ? 'chip-active' : ''"
-            @click="enterStylePartition()"
+            :class="kindFilter === 'style' ? 'chip-active' : ''"
+            @click="setKindFilter('style')"
           >
-            {{ $t("trope.style") }}
+            {{ $t("common.style") }}
           </button>
           <button type="button" class="app-btn app-btn-light refresh-btn" :disabled="scan.running" @click="refresh({ force: true })">{{ $t("common.refresh") }}</button>
           <button type="button" class="app-btn app-btn-primary" :disabled="scan.running" @click="resetForm">{{ $t("trope.new") }}</button>
@@ -767,7 +794,7 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <div v-show="!stylePartition" class="filter-partition">
+      <div v-show="showPlotFilters" class="filter-partition">
         <span class="partition-label">{{ $t("trope.fieldTags") }}</span>
         <div class="cat-row">
           <button
@@ -791,27 +818,24 @@ onUnmounted(() => {
           </button>
         </div>
       </div>
-      <div class="filter-partition" :class="{ 'is-emphasis': stylePartition }">
-        <span class="partition-label">{{ $t("trope.style") }}</span>
+      <div v-show="showPlotFilters" class="filter-partition">
+        <span class="partition-label">{{ $t("trope.styleTag") }}</span>
         <div class="cat-row">
           <button
-            v-if="styleCounts.nostyle"
+            v-if="styleTagCounts.nostyle"
             type="button"
             class="chip cat-chip-btn style-chip-btn"
-            :class="styleFilter === '__nostyle__' ? 'chip-active' : ''"
+            :class="styleTagFilter === '__nostyle__' ? 'chip-active' : ''"
             @click="toggleStyleFilter('__nostyle__')"
           >
-            {{ $t("trope.noStyle") }} {{ styleCounts.nostyle }}
+            {{ $t("trope.noStyle") }} {{ styleTagCounts.nostyle }}
           </button>
           <button
-            v-for="chip in styleCounts.chips"
+            v-for="chip in styleTagCounts.chips"
             :key="'style-' + chip.id"
             type="button"
             class="chip cat-chip-btn style-chip-btn"
-            :class="[
-              styleFilter === chip.id ? 'chip-active' : '',
-              chip.n === 0 ? 'chip-empty' : '',
-            ]"
+            :class="styleTagFilter === chip.id ? 'chip-active' : ''"
             @click="toggleStyleFilter(chip.id)"
           >
             {{ $t(styleLabelKey(chip.id)) }} {{ chip.n }}
@@ -896,17 +920,17 @@ onUnmounted(() => {
               <div class="tag-row">
                 <span class="chip chip-active kind-tag">{{ $t(tropeKindLabelKey(item.kind)) }}</span>
                 <span
-                  v-if="fieldOn('intensity') && attrsOf(item).intensity"
+                  v-if="fieldOn('intensity') && item.kind !== 'style' && attrsOf(item).intensity"
                   class="chip kind-tag"
                 >{{ $t("trope.intensityShort", { n: attrsOf(item).intensity }) }}</span>
                 <span
-                  v-if="fieldOn('tags')"
+                  v-if="fieldOn('tags') && item.kind !== 'style'"
                   v-for="tag in itemCategoryTags(item)"
                   :key="tag"
                   class="chip kind-tag cat-chip"
                 >{{ $t(categoryLabelKey(tag)) }}</span>
                 <span
-                  v-if="fieldOn('styles')"
+                  v-if="fieldOn('styles') && item.kind !== 'style'"
                   v-for="st in itemStyleTags(item)"
                   :key="'st-' + st"
                   class="chip kind-tag style-chip"
@@ -949,6 +973,7 @@ onUnmounted(() => {
           <select v-model="form.kind">
             <option value="trope">{{ $t("common.trope") }}</option>
             <option value="kink">{{ $t("common.kink") }}</option>
+            <option value="style">{{ $t("common.style") }}</option>
           </select>
         </div>
         <div class="field">
@@ -956,7 +981,13 @@ onUnmounted(() => {
           <input
             v-model="form.title"
             type="text"
-            :placeholder="form.kind === 'kink' ? $t('trope.titlePhKink') : $t('trope.titlePhTrope')"
+            :placeholder="
+              form.kind === 'kink'
+                ? $t('trope.titlePhKink')
+                : form.kind === 'style'
+                  ? $t('trope.titlePhStyle')
+                  : $t('trope.titlePhTrope')
+            "
           />
         </div>
         <div class="field">
@@ -967,13 +998,13 @@ onUnmounted(() => {
           <label class="field-label">{{ $t("lore.keywords") }}</label>
           <input v-model="form.keywords" type="text" :placeholder="$t('trope.keywordsPh')" />
         </div>
-        <div class="field">
+        <div v-if="form.kind !== 'style'" class="field">
           <label class="field-label">{{ $t("trope.intensity") }}</label>
           <select v-model="form.intensity">
             <option v-for="n in 5" :key="n" :value="String(n)">{{ n }}</option>
           </select>
         </div>
-        <div class="field">
+        <div v-if="form.kind !== 'style'" class="field">
           <label class="field-label">{{ $t("trope.tags") }}</label>
           <div class="tag-row editor-tags">
             <button
@@ -988,8 +1019,8 @@ onUnmounted(() => {
             </button>
           </div>
         </div>
-        <div class="field">
-          <label class="field-label">{{ $t("trope.style") }}</label>
+        <div v-if="form.kind !== 'style'" class="field">
+          <label class="field-label">{{ $t("trope.styleTag") }}</label>
           <div class="tag-row editor-tags">
             <button
               v-for="id in TROPE_STYLE_IDS"
@@ -1013,7 +1044,11 @@ onUnmounted(() => {
         </div>
         <div class="field">
           <label class="field-label">{{ $t("trope.content") }}</label>
-          <textarea v-model="form.content" rows="10" :placeholder="$t('trope.contentPh')" />
+          <textarea
+            v-model="form.content"
+            rows="10"
+            :placeholder="form.kind === 'style' ? $t('trope.contentPhStyle') : $t('trope.contentPh')"
+          />
         </div>
         <div class="field">
           <label class="field-label">{{ $t("trope.contentEn") }}</label>

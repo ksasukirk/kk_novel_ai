@@ -6,7 +6,7 @@
 import { computed, ref } from "vue";
 import { appState } from "../stores/appState.js";
 import { aiPanelForm, insertInstructionText } from "../stores/aiPanelState.js";
-import { isTropeKind, tropeKindLabelKey } from "../utils/tropeKinds.js";
+import { isPlotKind, isTropeKind, tropeKindLabelKey } from "../utils/tropeKinds.js";
 import {
   TROPE_CATEGORY_IDS,
   categoryLabelKey,
@@ -29,31 +29,36 @@ import { displayTropeContent, displayTropeTitle } from "../utils/tropeI18n.js";
 
 const emit = defineEmits(["hide"]);
 
-/** all | trope | kink | style — style 为文风分区，列表按 kind=all */
+/** all | trope | kink | style */
 const kindFilter = ref("all");
 const searchQuery = ref("");
 /** "" | "__uncat__" | 规范名 */
 const categoryFilter = ref("");
-/** "" | "__nostyle__" | 规范文风名 */
-const styleFilter = ref("");
+/** 弱关联 attrs.styles："" | "__nostyle__" | 规范文风名 */
+const styleTagFilter = ref("");
 const expandedId = ref("");
-const stylePartition = computed(() => kindFilter.value === "style");
+
+const showPlotFilters = computed(
+  () => kindFilter.value === "all" || kindFilter.value === "trope" || kindFilter.value === "kink"
+);
 
 const libraryItems = computed(() =>
   (appState.tropeList || []).filter((it) => it && isTropeKind(it.kind))
 );
 
 const kindItems = computed(() => {
-  if (kindFilter.value === "all" || kindFilter.value === "style") {
-    return libraryItems.value;
-  }
+  if (kindFilter.value === "all") return libraryItems.value;
   return libraryItems.value.filter((it) => it.kind === kindFilter.value);
 });
+
+const plotKinkItems = computed(() =>
+  kindItems.value.filter((it) => isPlotKind(it.kind))
+);
 
 const categoryCounts = computed(() => {
   const counts = {};
   let uncat = 0;
-  for (const it of kindItems.value) {
+  for (const it of plotKinkItems.value) {
     const tags = itemCategoryTags(it);
     if (!tags.length) uncat += 1;
     for (const tag of tags) {
@@ -69,10 +74,10 @@ const categoryCounts = computed(() => {
   };
 });
 
-const styleCounts = computed(() => {
+const styleTagCounts = computed(() => {
   const counts = {};
   let nostyle = 0;
-  for (const it of kindItems.value) {
+  for (const it of plotKinkItems.value) {
     const styles = itemStyleTags(it);
     if (!styles.length) nostyle += 1;
     for (const s of styles) {
@@ -80,9 +85,9 @@ const styleCounts = computed(() => {
     }
   }
   return {
-    chips: TROPE_STYLE_IDS.map((id) => ({
+    chips: TROPE_STYLE_IDS.filter((id) => counts[id] > 0).map((id) => ({
       id,
-      n: counts[id] || 0,
+      n: counts[id],
     })),
     nostyle,
   };
@@ -90,15 +95,17 @@ const styleCounts = computed(() => {
 
 const visibleItems = computed(() => {
   let list = kindItems.value;
-  if (categoryFilter.value === "__uncat__") {
-    list = list.filter((it) => itemIsUncategorized(it));
-  } else if (categoryFilter.value) {
-    list = list.filter((it) => itemCategoryTags(it).includes(categoryFilter.value));
-  }
-  if (styleFilter.value === "__nostyle__") {
-    list = list.filter((it) => itemHasNoStyles(it));
-  } else if (styleFilter.value) {
-    list = list.filter((it) => itemStyleTags(it).includes(styleFilter.value));
+  if (showPlotFilters.value) {
+    if (categoryFilter.value === "__uncat__") {
+      list = list.filter((it) => itemIsUncategorized(it));
+    } else if (categoryFilter.value) {
+      list = list.filter((it) => itemCategoryTags(it).includes(categoryFilter.value));
+    }
+    if (styleTagFilter.value === "__nostyle__") {
+      list = list.filter((it) => isPlotKind(it.kind) && itemHasNoStyles(it));
+    } else if (styleTagFilter.value) {
+      list = list.filter((it) => itemStyleTags(it).includes(styleTagFilter.value));
+    }
   }
   const q = searchQuery.value.trim().toLowerCase();
   if (q) {
@@ -130,11 +137,10 @@ const visibleCountText = computed(() =>
 
 function setKindFilter(id) {
   kindFilter.value = id;
-}
-
-function enterStylePartition() {
-  kindFilter.value = "style";
-  categoryFilter.value = "";
+  if (id === "style") {
+    categoryFilter.value = "";
+    styleTagFilter.value = "";
+  }
 }
 
 function toggleCategory(id) {
@@ -142,7 +148,7 @@ function toggleCategory(id) {
 }
 
 function toggleStyleFilter(id) {
-  styleFilter.value = styleFilter.value === id ? "" : id;
+  styleTagFilter.value = styleTagFilter.value === id ? "" : id;
 }
 
 function toggleExpand(id, ev) {
@@ -223,10 +229,10 @@ function onHide() {
       <button
         type="button"
         class="chip"
-        :class="stylePartition ? 'chip-active' : ''"
-        @click="enterStylePartition()"
+        :class="kindFilter === 'style' ? 'chip-active' : ''"
+        @click="setKindFilter('style')"
       >
-        {{ $t("trope.style") }}
+        {{ $t("common.style") }}
       </button>
     </div>
     <input
@@ -235,7 +241,7 @@ function onHide() {
       class="pick-search"
       :placeholder="$t('trope.searchPh')"
     />
-    <div v-show="!stylePartition" class="filter-partition">
+    <div v-show="showPlotFilters" class="filter-partition">
       <span class="partition-label">{{ $t("trope.fieldTags") }}</span>
       <div class="cat-row">
         <button
@@ -259,27 +265,24 @@ function onHide() {
         </button>
       </div>
     </div>
-    <div class="filter-partition" :class="{ 'is-emphasis': stylePartition }">
-      <span class="partition-label">{{ $t("trope.style") }}</span>
+    <div v-show="showPlotFilters" class="filter-partition">
+      <span class="partition-label">{{ $t("trope.styleTag") }}</span>
       <div class="cat-row">
         <button
-          v-if="styleCounts.nostyle"
+          v-if="styleTagCounts.nostyle"
           type="button"
           class="chip cat-chip style-chip"
-          :class="styleFilter === '__nostyle__' ? 'chip-active' : ''"
+          :class="styleTagFilter === '__nostyle__' ? 'chip-active' : ''"
           @click="toggleStyleFilter('__nostyle__')"
         >
-          {{ $t("trope.noStyle") }} {{ styleCounts.nostyle }}
+          {{ $t("trope.noStyle") }} {{ styleTagCounts.nostyle }}
         </button>
         <button
-          v-for="chip in styleCounts.chips"
+          v-for="chip in styleTagCounts.chips"
           :key="'style-' + chip.id"
           type="button"
           class="chip cat-chip style-chip"
-          :class="[
-            styleFilter === chip.id ? 'chip-active' : '',
-            chip.n === 0 ? 'chip-empty' : '',
-          ]"
+          :class="styleTagFilter === chip.id ? 'chip-active' : ''"
           @click="toggleStyleFilter(chip.id)"
         >
           {{ $t(styleLabelKey(chip.id)) }} {{ chip.n }}
@@ -317,13 +320,18 @@ function onHide() {
         </div>
         <div class="tag-row">
           <span class="chip kind-tag">{{ $t(tropeKindLabelKey(item.kind)) }}</span>
-          <span v-if="attrsOf(item).intensity" class="chip kind-tag">{{
-            $t("trope.intensityShort", { n: attrsOf(item).intensity })
-          }}</span>
-          <span v-for="tag in itemCategoryTags(item)" :key="tag" class="chip kind-tag cat-chip">{{
-            $t(categoryLabelKey(tag))
-          }}</span>
           <span
+            v-if="item.kind !== 'style' && attrsOf(item).intensity"
+            class="chip kind-tag"
+          >{{ $t("trope.intensityShort", { n: attrsOf(item).intensity }) }}</span>
+          <span
+            v-if="item.kind !== 'style'"
+            v-for="tag in itemCategoryTags(item)"
+            :key="tag"
+            class="chip kind-tag cat-chip"
+          >{{ $t(categoryLabelKey(tag)) }}</span>
+          <span
+            v-if="item.kind !== 'style'"
             v-for="st in itemStyleTags(item)"
             :key="'st-' + st"
             class="chip kind-tag style-chip"

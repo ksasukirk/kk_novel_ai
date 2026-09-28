@@ -1801,22 +1801,22 @@ pub fn read_lore_kind_list_fs(root: &Path, kind: &str) -> AppResult<Vec<LoreEntr
 }
 
 pub fn is_trope_kind(kind: &str) -> bool {
-    kind == "trope" || kind == "kink"
+    kind == "trope" || kind == "kink" || kind == "style"
 }
 
 fn lore_list_filename(kind: &str) -> &'static str {
-    if kind == "kink" {
-        "kinks.json"
-    } else {
-        "tropes.json"
+    match kind {
+        "kink" => "kinks.json",
+        "style" => "styles.json",
+        _ => "tropes.json",
     }
 }
 
 fn lore_kind_dirname(kind: &str) -> &'static str {
-    if kind == "kink" {
-        "kinks"
-    } else {
-        "tropes"
+    match kind {
+        "kink" => "kinks",
+        "style" => "styles",
+        _ => "tropes",
     }
 }
 
@@ -1872,7 +1872,7 @@ fn dedupe_lore_by_id(items: &mut Vec<LoreEntry>) {
 
 /// 把旧的 lore/tropes/*.json、lore/kinks/*.json 收进 tropes.json / kinks.json 列表。
 fn migrate_trope_kind_lists(root: &Path) -> AppResult<()> {
-    for kind in ["trope", "kink"] {
+    for kind in ["trope", "kink", "style"] {
         let dir = lore_dir(root).join(lore_kind_dirname(kind));
         let mut from_files = Vec::new();
         if dir.exists() {
@@ -1900,7 +1900,7 @@ fn migrate_trope_kind_lists(root: &Path) -> AppResult<()> {
 }
 
 fn prune_legacy_trope_files(root: &Path, lore_id: &str) -> AppResult<()> {
-    for kind in ["trope", "kink"] {
+    for kind in ["trope", "kink", "style"] {
         let dir = lore_dir(root).join(lore_kind_dirname(kind));
         if !dir.exists() {
             continue;
@@ -1921,13 +1921,21 @@ fn prune_legacy_trope_files(root: &Path, lore_id: &str) -> AppResult<()> {
 
 fn upsert_trope_list_entry(root: &Path, entry: LoreEntry) -> AppResult<LoreEntry> {
     migrate_trope_kind_lists(root)?;
-    let kind = if entry.kind == "kink" { "kink" } else { "trope" };
-    let other = if kind == "kink" { "trope" } else { "kink" };
-    let mut other_items = read_lore_kind_list(root, other)?;
-    let before = other_items.len();
-    other_items.retain(|e| e.id != entry.id);
-    if other_items.len() != before {
-        write_lore_kind_list(root, other, &other_items)?;
+    let kind = match entry.kind.as_str() {
+        "kink" => "kink",
+        "style" => "style",
+        _ => "trope",
+    };
+    for other in ["trope", "kink", "style"] {
+        if other == kind {
+            continue;
+        }
+        let mut other_items = read_lore_kind_list(root, other)?;
+        let before = other_items.len();
+        other_items.retain(|e| e.id != entry.id);
+        if other_items.len() != before {
+            write_lore_kind_list(root, other, &other_items)?;
+        }
     }
     let mut items = read_lore_kind_list(root, kind)?;
     if !entry.id.is_empty() {
@@ -1938,7 +1946,28 @@ fn upsert_trope_list_entry(root: &Path, entry: LoreEntry) -> AppResult<LoreEntry
             return Ok(entry);
         }
     }
-    if let Some(pos) = items.iter().position(|e| tropes_are_similar(e, &entry)) {
+    // 文风种子条按标题精确去重，避免近义合并吃掉规范名
+    if kind == "style" {
+        if let Some(pos) = items
+            .iter()
+            .position(|e| normalize_lore_title(&e.title) == normalize_lore_title(&entry.title))
+        {
+            let mut keep = items[pos].clone();
+            if keep.content.trim().is_empty() && !entry.content.trim().is_empty() {
+                keep.content = entry.content.clone();
+            }
+            for k in &entry.keywords {
+                if !keep.keywords.iter().any(|x| normalize_lore_title(x) == normalize_lore_title(k))
+                {
+                    keep.keywords.push(k.clone());
+                }
+            }
+            items[pos] = keep.clone();
+            write_lore_kind_list(root, kind, &items)?;
+            prune_legacy_trope_files(root, &keep.id)?;
+            return Ok(keep);
+        }
+    } else if let Some(pos) = items.iter().position(|e| tropes_are_similar(e, &entry)) {
         let merged = merge_trope_lore(&items[pos], &entry);
         items[pos] = merged.clone();
         write_lore_kind_list(root, kind, &items)?;
@@ -1946,6 +1975,7 @@ fn upsert_trope_list_entry(root: &Path, entry: LoreEntry) -> AppResult<LoreEntry
         return Ok(merged);
     }
     let mut entry = entry;
+    entry.kind = kind.into();
     if entry.id.is_empty() {
         entry.id = Uuid::new_v4().to_string();
     }
@@ -1995,7 +2025,7 @@ fn collect_lore_json_files_only(dir: &Path, out: &mut Vec<LoreEntry>) -> AppResu
                 .file_name()
                 .and_then(|s| s.to_str())
                 .unwrap_or("");
-            if name == "tropes.json" || name == "kinks.json" {
+            if name == "tropes.json" || name == "kinks.json" || name == "styles.json" {
                 continue;
             }
             let text = fs::read_to_string(&path)?;
@@ -2047,6 +2077,7 @@ pub fn upsert_lore(root: &Path, mut entry: LoreEntry) -> AppResult<LoreEntry> {
         "character" => "characters",
         "trope" => "tropes",
         "kink" => "kinks",
+        "style" => "styles",
         _ => "world",
     };
     let dir = lore_dir(root).join(kind_dir);
@@ -2104,13 +2135,14 @@ pub fn delete_lore(root: &Path, lore_id: &str) -> AppResult<()> {
             if roots_equal(root, &lib) {
                 let _ = crate::storage::library_store::delete_entry("trope", lore_id);
                 let _ = crate::storage::library_store::delete_entry("kink", lore_id);
+                let _ = crate::storage::library_store::delete_entry("style", lore_id);
                 return Ok(());
             }
         }
     }
     migrate_trope_kind_lists(root)?;
     let mut found = false;
-    for kind in ["trope", "kink"] {
+    for kind in ["trope", "kink", "style"] {
         let mut items = read_lore_kind_list(root, kind)?;
         let before = items.len();
         items.retain(|e| e.id != lore_id);
@@ -2130,7 +2162,7 @@ pub fn delete_lore(root: &Path, lore_id: &str) -> AppResult<()> {
             .file_name()
             .and_then(|s| s.to_str())
             .unwrap_or("");
-        if name == "tropes.json" || name == "kinks.json" {
+        if name == "tropes.json" || name == "kinks.json" || name == "styles.json" {
             continue;
         }
         let text = fs::read_to_string(&path)?;

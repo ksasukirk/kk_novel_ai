@@ -83,10 +83,25 @@ pub fn init_library_schema(conn: &Connection) -> AppResult<()> {
             updated_at TEXT NOT NULL DEFAULT '',
             snippet TEXT NOT NULL DEFAULT ''
         );
+        CREATE TABLE IF NOT EXISTS styles (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL DEFAULT '',
+            content TEXT NOT NULL DEFAULT '',
+            keywords_json TEXT NOT NULL DEFAULT '[]',
+            tags_json TEXT NOT NULL DEFAULT '[]',
+            attrs_json TEXT NOT NULL DEFAULT '{}',
+            links_json TEXT NOT NULL DEFAULT '[]',
+            sources_json TEXT NOT NULL DEFAULT '[]',
+            unique_flag INTEGER NOT NULL DEFAULT 0,
+            updated_at TEXT NOT NULL DEFAULT '',
+            snippet TEXT NOT NULL DEFAULT ''
+        );
         CREATE INDEX IF NOT EXISTS idx_tropes_title ON tropes(title);
         CREATE INDEX IF NOT EXISTS idx_tropes_updated ON tropes(updated_at);
         CREATE INDEX IF NOT EXISTS idx_kinks_title ON kinks(title);
         CREATE INDEX IF NOT EXISTS idx_kinks_updated ON kinks(updated_at);
+        CREATE INDEX IF NOT EXISTS idx_styles_title ON styles(title);
+        CREATE INDEX IF NOT EXISTS idx_styles_updated ON styles(updated_at);
         "#,
     )
     .map_err(|e| AppError::msg(format!("init library schema: {e}")))?;

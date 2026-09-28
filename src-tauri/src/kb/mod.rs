@@ -302,11 +302,53 @@ fn trope_lib_marker_path(root: &Path) -> PathBuf {
     root.join(TROPE_LIB_MARKER)
 }
 
-/// 热路径：只保证 `{novels}/_library/lore` 存在，不做迁移/近义压缩。
+/// 热路径：只保证 `{novels}/_library/lore` 存在，并补齐规范文风种子条。
 pub fn ensure_trope_library() -> AppResult<PathBuf> {
     let root = trope_library_dir()?;
     fs::create_dir_all(root.join("lore"))?;
+    if crate::storage::is_storage_migrated() {
+        let _ = crate::storage::library_store::open_library_db()?;
+    }
+    let _ = seed_canon_prose_styles(&root);
     Ok(root)
+}
+
+/// 按封闭词表补齐 8 条文风条目；已有同名则跳过（不覆盖长文）。
+fn seed_canon_prose_styles(root: &Path) -> AppResult<()> {
+    use crate::project::trope_styles::{seed_starter_content, CANON_STYLES};
+    use std::collections::BTreeMap;
+
+    let existing = if crate::storage::is_storage_migrated() {
+        crate::storage::library_store::list_lite().unwrap_or_default()
+    } else {
+        project::read_lore_kind_list(root, "style").unwrap_or_default()
+    };
+    let have: std::collections::HashSet<String> = existing
+        .iter()
+        .filter(|e| e.kind == "style")
+        .map(|e| project::normalize_lore_title(&e.title))
+        .collect();
+
+    for title in CANON_STYLES {
+        let key = project::normalize_lore_title(title);
+        if have.contains(&key) {
+            continue;
+        }
+        let entry = project::LoreEntry {
+            id: String::new(),
+            kind: "style".into(),
+            title: (*title).to_string(),
+            content: seed_starter_content(title).to_string(),
+            keywords: vec![(*title).to_string()],
+            links: vec![],
+            attrs: BTreeMap::new(),
+            sources: vec![],
+            unique: true,
+            updated_at: String::new(),
+        };
+        let _ = project::upsert_lore(root, entry);
+    }
+    Ok(())
 }
 
 /// 冷路径：角色仓迁移 + 近义压缩 + 必要时 remap 各书章；成功后写 marker。
@@ -314,6 +356,7 @@ pub fn maintain_trope_library() -> AppResult<PathBuf> {
     let root = ensure_trope_library()?;
     if crate::storage::is_storage_migrated() {
         let _ = crate::storage::library_store::open_library_db()?;
+        let _ = seed_canon_prose_styles(&root);
         // SQLite 路径下近义压缩暂跳过文件树逻辑；库已就绪即可
         return Ok(root);
     }
@@ -362,7 +405,7 @@ pub fn list_trope_library_entries_lite() -> Vec<project::LoreEntry> {
         Err(_) => return vec![],
     };
     let mut out = Vec::new();
-    for kind in ["trope", "kink"] {
+    for kind in ["trope", "kink", "style"] {
         if let Ok(items) = project::read_lore_kind_list(&root, kind) {
             out.extend(items.into_iter().filter(|e| project::is_trope_kind(&e.kind)));
         }

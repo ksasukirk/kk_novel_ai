@@ -14,6 +14,7 @@ Hard rules:
 - Action subjects must be clear; anatomy ownership and dialogue must match the action happening now
 - Rhetoric ban: no stacked "not A, but B" / "it isn't… it's…" contrast
 - **Trope / kink library**: if selected tropes are not "(none)", fulfill them as process; do not name-drop; listed prose styles must show in narration and dialogue; do not treat unselected entries as must-dos
+- **Prose style cards**: if selected prose styles is not empty, narration and dialogue must follow those cards; project writing voice stays separate
 
 Style:
 {{style}}
@@ -35,6 +36,9 @@ Related lore:
 
 Selected tropes and kinks (fulfill as process; ignore if empty):
 {{tropes}}
+
+Selected prose styles (must show in narration/dialogue; ignore if empty):
+{{prose_styles}}
 
 Chapter outline:
 {{outline}}

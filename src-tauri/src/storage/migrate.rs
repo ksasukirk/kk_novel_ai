@@ -444,7 +444,7 @@ fn migrate_universal_kb() -> AppResult<()> {
 fn migrate_library() -> AppResult<()> {
     let root = trope_library_dir()?;
     let _ = library_store::open_library_db()?;
-    for kind in ["trope", "kink"] {
+    for kind in ["trope", "kink", "style"] {
         let items = project::read_lore_kind_list_fs(&root, kind).unwrap_or_default();
         library_store::replace_kind(kind, &items)?;
     }

@@ -578,103 +578,139 @@ fn lore_to_text(entries: &[&LoreEntry]) -> String {
 }
 
 fn is_trope_kind(kind: &str) -> bool {
+    kind == "trope" || kind == "kink" || kind == "style"
+}
+
+fn is_plot_kink_kind(kind: &str) -> bool {
     kind == "trope" || kind == "kink"
+}
+
+fn empty_inject_label(en: bool) -> String {
+    if en {
+        "(none)".into()
+    } else {
+        "（无）".into()
+    }
 }
 
 fn tropes_to_text(entries: &[&LoreEntry]) -> String {
     let loc = crate::prompt_i18n::writing_locale();
     let en = loc == "en";
+    let entries: Vec<&LoreEntry> = entries
+        .iter()
+        .copied()
+        .filter(|e| is_plot_kink_kind(&e.kind))
+        .collect();
     if entries.is_empty() {
-        return if en { "(none)".into() } else { "（无）".into() };
+        return empty_inject_label(en);
     }
-    let any_styles = entries.iter().any(|e| {
-        e.attrs
-            .get("styles")
-            .map(|s| !s.trim().is_empty())
-            .unwrap_or(false)
-    });
-    let body = entries
+    entries
         .iter()
         .map(|e| {
             let kind_label = if en {
-                if e.kind == "kink" { "kink" } else { "trope" }
+                if e.kind == "kink" {
+                    "kink"
+                } else {
+                    "trope"
+                }
             } else if e.kind == "kink" {
                 "喜好"
             } else {
                 "情节"
             };
-            let title = if en {
-                let te = e.attrs.get("title_en").map(|s| s.trim()).unwrap_or("");
-                if te.is_empty() {
-                    e.title.as_str()
-                } else {
-                    te
-                }
-            } else {
-                e.title.as_str()
-            };
-            let content = if en {
-                let ce = e.attrs.get("content_en").map(|s| s.trim()).unwrap_or("");
-                if ce.is_empty() {
-                    e.content.as_str()
-                } else {
-                    ce
-                }
-            } else {
-                e.content.as_str()
-            };
-            let intensity = e.attrs.get("intensity").map(|s| s.as_str()).unwrap_or("");
-            let do_line = e.attrs.get("do").map(|s| s.as_str()).unwrap_or("");
-            let dont_line = e.attrs.get("dont").map(|s| s.as_str()).unwrap_or("");
-            let tags = e.attrs.get("tags").map(|s| s.as_str()).unwrap_or("");
-            let styles = e.attrs.get("styles").map(|s| s.as_str()).unwrap_or("");
-            let mut extra = String::new();
-            if !intensity.is_empty() {
-                extra.push_str(&format!(
-                    "\n{}: {intensity}",
-                    if en { "intensity" } else { "强度" }
-                ));
-            }
-            if !tags.is_empty() {
-                extra.push_str(&format!("\n{}: {tags}", if en { "tags" } else { "标签" }));
-            }
-            if !styles.is_empty() {
-                extra.push_str(&format!(
-                    "\n{}: {styles}",
-                    if en { "style" } else { "文风" }
-                ));
-            }
-            if !do_line.is_empty() {
-                extra.push_str(&format!("\n{}: {do_line}", if en { "do" } else { "要写" }));
-            }
-            if !dont_line.is_empty() {
-                extra.push_str(&format!(
-                    "\n{}: {dont_line}",
-                    if en { "don't" } else { "不要" }
-                ));
-            }
-            format!(
-                "### {}（{}）\n{}: {}{}\n{}\n",
-                title,
-                kind_label,
-                if en { "keywords" } else { "关键词" },
-                e.keywords.join(", "),
-                extra,
-                content
-            )
+            format_lore_card_block(e, kind_label, en)
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn prose_styles_to_text(entries: &[&LoreEntry]) -> String {
+    let loc = crate::prompt_i18n::writing_locale();
+    let en = loc == "en";
+    let entries: Vec<&LoreEntry> = entries
+        .iter()
+        .copied()
+        .filter(|e| e.kind == "style")
+        .collect();
+    if entries.is_empty() {
+        return empty_inject_label(en);
+    }
+    let body = entries
+        .iter()
+        .map(|e| {
+            let kind_label = if en { "prose style" } else { "文风" };
+            format_lore_card_block(e, kind_label, en)
         })
         .collect::<Vec<_>>()
         .join("\n");
-    if any_styles {
-        let note = if en {
-            "Prose and dialogue must follow the listed styles."
-        } else {
-            "正文须贴近所列文风。"
-        };
-        format!("{note}\n\n{body}")
+    let note = if en {
+        "Selected prose styles must show in narration and dialogue."
     } else {
-        body
+        "勾选文风须体现在叙述与对白上。"
+    };
+    format!("{note}\n\n{body}")
+}
+
+fn format_lore_card_block(e: &LoreEntry, kind_label: &str, en: bool) -> String {
+    let title = if en {
+        let te = e.attrs.get("title_en").map(|s| s.trim()).unwrap_or("");
+        if te.is_empty() {
+            e.title.as_str()
+        } else {
+            te
+        }
+    } else {
+        e.title.as_str()
+    };
+    let content = if en {
+        let ce = e.attrs.get("content_en").map(|s| s.trim()).unwrap_or("");
+        if ce.is_empty() {
+            e.content.as_str()
+        } else {
+            ce
+        }
+    } else {
+        e.content.as_str()
+    };
+    let intensity = e.attrs.get("intensity").map(|s| s.as_str()).unwrap_or("");
+    let do_line = e.attrs.get("do").map(|s| s.as_str()).unwrap_or("");
+    let dont_line = e.attrs.get("dont").map(|s| s.as_str()).unwrap_or("");
+    let tags = e.attrs.get("tags").map(|s| s.as_str()).unwrap_or("");
+    let styles = e.attrs.get("styles").map(|s| s.as_str()).unwrap_or("");
+    let mut extra = String::new();
+    if !intensity.is_empty() {
+        extra.push_str(&format!(
+            "\n{}: {intensity}",
+            if en { "intensity" } else { "强度" }
+        ));
     }
+    if !tags.is_empty() {
+        extra.push_str(&format!("\n{}: {tags}", if en { "tags" } else { "标签" }));
+    }
+    if !styles.is_empty() && e.kind != "style" {
+        extra.push_str(&format!(
+            "\n{}: {styles}",
+            if en { "style tags" } else { "文风标签" }
+        ));
+    }
+    if !do_line.is_empty() {
+        extra.push_str(&format!("\n{}: {do_line}", if en { "do" } else { "要写" }));
+    }
+    if !dont_line.is_empty() {
+        extra.push_str(&format!(
+            "\n{}: {dont_line}",
+            if en { "don't" } else { "不要" }
+        ));
+    }
+    format!(
+        "### {}（{}）\n{}: {}{}\n{}\n",
+        title,
+        kind_label,
+        if en { "keywords" } else { "关键词" },
+        e.keywords.join(", "),
+        extra,
+        content
+    )
 }
 
 fn compact_trope_label(e: &LoreEntry) -> Option<String> {
@@ -694,6 +730,7 @@ fn compact_trope_label(e: &LoreEntry) -> Option<String> {
 pub(crate) fn format_known_tropes_compact(entries: &[LoreEntry]) -> String {
     let mut kinks: Vec<String> = Vec::new();
     let mut tropes: Vec<String> = Vec::new();
+    let mut styles: Vec<String> = Vec::new();
     for e in entries {
         if !is_trope_kind(&e.kind) {
             continue;
@@ -702,10 +739,10 @@ pub(crate) fn format_known_tropes_compact(entries: &[LoreEntry]) -> String {
             continue;
         };
         let ident = e.title.trim();
-        let bucket = if e.kind == "kink" {
-            &mut kinks
-        } else {
-            &mut tropes
+        let bucket = match e.kind.as_str() {
+            "kink" => &mut kinks,
+            "style" => &mut styles,
+            _ => &mut tropes,
         };
         if !bucket.iter().any(|x| x.split('|').next().unwrap_or(x) == ident) {
             bucket.push(label);
@@ -713,7 +750,8 @@ pub(crate) fn format_known_tropes_compact(entries: &[LoreEntry]) -> String {
     }
     kinks.reverse();
     tropes.reverse();
-    if kinks.is_empty() && tropes.is_empty() {
+    styles.reverse();
+    if kinks.is_empty() && tropes.is_empty() && styles.is_empty() {
         return "（无）".into();
     }
     let mut parts = Vec::new();
@@ -722,6 +760,9 @@ pub(crate) fn format_known_tropes_compact(entries: &[LoreEntry]) -> String {
     }
     if !tropes.is_empty() {
         parts.push(format!("trope: {}", tropes.join(" / ")));
+    }
+    if !styles.is_empty() {
+        parts.push(format!("style: {}", styles.join(" / ")));
     }
     parts.join("\n")
 }
@@ -1158,11 +1199,14 @@ pub fn assemble_messages_with_scores(
         .partition(|e| !is_trope_kind(&e.kind));
     all_lore = entity_lore;
     let selected_trope_ids = resolve_selected_trope_ids(req, &chapter);
-    let selected_tropes = collect_selected_tropes(&trope_pool, &selected_trope_ids);
-    let tropes_text = if should_inject_selected_tropes(&task) {
-        tropes_to_text(&selected_tropes)
+    let selected_all = collect_selected_tropes(&trope_pool, &selected_trope_ids);
+    let (tropes_text, prose_styles_text) = if should_inject_selected_tropes(&task) {
+        (
+            tropes_to_text(&selected_all),
+            prose_styles_to_text(&selected_all),
+        )
     } else {
-        "（无）".into()
+        ("（无）".into(), "（无）".into())
     };
     let known_tropes_text = known_tropes_catalog(&trope_pool);
     let plot = crate::story::load_plot(root).unwrap_or_default();
@@ -1564,6 +1608,7 @@ pub fn assemble_messages_with_scores(
             ("prev_chapter_bridge", &prev_chapter_bridge),
             ("character_lock", &character_lock),
             ("tropes", &tropes_text),
+            ("prose_styles", &prose_styles_text),
             ("known_tropes", &known_tropes_text),
         ],
     );
@@ -1649,7 +1694,7 @@ pub fn assemble_messages_with_scores(
         });
     }
     if should_inject_selected_tropes(&task) {
-        for e in &selected_tropes {
+        for e in &selected_all {
             context_sources.items.push(ContextSourceItem {
                 kind: e.kind.clone(),
                 id: e.id.clone(),
@@ -2163,6 +2208,7 @@ pub async fn run_writing(
                         ("direction_anchor", &fill_ctx.direction_anchor),
                         ("active_beat", &fill_ctx.active_beat),
                         ("tropes", &fill_ctx.tropes),
+                        ("prose_styles", &fill_ctx.prose_styles),
                     ],
                 )
             } else {
@@ -2176,6 +2222,7 @@ pub async fn run_writing(
                         ("must_do", &fill_ctx.must_do),
                         ("direction_anchor", &fill_ctx.direction_anchor),
                         ("tropes", &fill_ctx.tropes),
+                        ("prose_styles", &fill_ctx.prose_styles),
                     ],
                 )
             };
@@ -2326,6 +2373,7 @@ struct LengthFillContext {
     direction_anchor: String,
     active_beat: String,
     tropes: String,
+    prose_styles: String,
 }
 
 fn build_length_fill_context(settings: &AppSettings, req: &WritingRequest) -> LengthFillContext {
@@ -2337,6 +2385,7 @@ fn build_length_fill_context(settings: &AppSettings, req: &WritingRequest) -> Le
             direction_anchor: "（无）".into(),
             active_beat: "（无）".into(),
             tropes: "（无）".into(),
+            prose_styles: "（无）".into(),
         };
     };
     let mut beat_progress = project::load_beat_progress(root, &req.chapter_id).unwrap_or_default();
@@ -2377,7 +2426,7 @@ fn build_length_fill_context(settings: &AppSettings, req: &WritingRequest) -> Le
     } else {
         format!("{}\n{}", chapter.title, chapter.summary)
     };
-    let tropes = {
+    let (tropes, prose_styles) = {
         let mut pool: Vec<LoreEntry> = project::list_lore(root).unwrap_or_default();
         if let Ok(opened) = project::open_project(root) {
             for link in &opened.project.linked_kb_roots {
@@ -2391,7 +2440,8 @@ fn build_length_fill_context(settings: &AppSettings, req: &WritingRequest) -> Le
         pool.extend(crate::kb::list_trope_library_entries());
         pool = project::coalesce_unique_lore(pool);
         let ids = resolve_selected_trope_ids(req, &chapter);
-        tropes_to_text(&collect_selected_tropes(&pool, &ids))
+        let selected = collect_selected_tropes(&pool, &ids);
+        (tropes_to_text(&selected), prose_styles_to_text(&selected))
     };
     LengthFillContext {
         outline,
@@ -2405,6 +2455,7 @@ fn build_length_fill_context(settings: &AppSettings, req: &WritingRequest) -> Le
             .map(beat_engine::beat_summary)
             .unwrap_or_else(|| "（无）".into()),
         tropes,
+        prose_styles,
     }
 }
 

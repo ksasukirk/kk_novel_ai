@@ -318,6 +318,7 @@ fn prefer_keeper<'a>(a: &'a LoreEntry, b: &'a LoreEntry) -> &'a LoreEntry {
 /// 压缩仓内近义重复。返回 被删 id → 保留 id。
 pub fn compact_similar_tropes(root: &Path) -> AppResult<HashMap<String, String>> {
     let mut id_map = HashMap::new();
+    // 文风种子条不参与近义压缩，避免规范名被并掉
     for kind in ["trope", "kink"] {
         let mut items = read_lore_kind_list(root, kind)?;
         if items.len() < 2 {

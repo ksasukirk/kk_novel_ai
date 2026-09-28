@@ -23,6 +23,7 @@ Hard rules:
 - Memory first: cross-chapter facts follow the "memory digest", but if that digest is a placeholder or conflicts with "previous chapter close / the end of recent prose", follow the previous close and the current prose tail; "recent text" is for style continuity. Do not restore deleted plot.
 - **Outline-guided priority** (when "active beat" is not "(none)"): active beat > narrative direction anchor > chapter must-dos > user tweaks; do not skip beats; do not write completed beats early
 - **Trope / kink library**: if "selected tropes and kinks" is not "(none)", fulfill the card's writing notes as process and sensation; do not name-drop tags only; listed prose styles must show in narration and dialogue; do not treat unselected library entries as must-dos
+- **Prose style cards**: if selected prose styles is not empty, narration and dialogue must follow those cards; project writing voice stays separate
 
 <!-- Keep the following blocks as stable as possible so the API prefix can be cached; put volatile content at the end -->
 
@@ -84,6 +85,9 @@ Dynamic ban list (do not write again):
 
 Selected tropes and kinks (fulfill as process; ignore if empty):
 {{tropes}}
+
+Selected prose styles (must show in narration/dialogue; ignore if empty):
+{{prose_styles}}
 
 User instruction:
 {{instruction}}

@@ -12,10 +12,18 @@ fn snippet_of(content: &str) -> String {
 }
 
 fn table_for_kind(kind: &str) -> &'static str {
-    if kind == "kink" || kind.starts_with("kink") {
-        "kinks"
-    } else {
-        "tropes"
+    match kind {
+        "kink" => "kinks",
+        "style" => "styles",
+        _ => "tropes",
+    }
+}
+
+fn kind_for_table(table: &str) -> &'static str {
+    match table {
+        "kinks" => "kink",
+        "styles" => "style",
+        _ => "trope",
     }
 }
 
@@ -84,6 +92,15 @@ pub fn upsert_entry(e: &LoreEntry) -> AppResult<()> {
     let tx = conn
         .unchecked_transaction()
         .map_err(|e| AppError::msg(e.to_string()))?;
+    for other in ["tropes", "kinks", "styles"] {
+        if other == table {
+            continue;
+        }
+        let _ = tx.execute(
+            &format!("DELETE FROM {other} WHERE id = ?1"),
+            params![e.id],
+        );
+    }
     upsert_tx(&tx, table, e)?;
     tx.commit().map_err(|e| AppError::msg(e.to_string()))?;
     Ok(())
@@ -120,7 +137,7 @@ fn list_table(table: &str, lite: bool) -> AppResult<Vec<LoreEntry>> {
         )
     };
     let _ = cols;
-    let kind = if table == "kinks" { "kink" } else { "trope" };
+    let kind = kind_for_table(table);
     let mut stmt = conn
         .prepare(&sql)
         .map_err(|e| AppError::msg(e.to_string()))?;
@@ -155,18 +172,20 @@ fn list_table(table: &str, lite: bool) -> AppResult<Vec<LoreEntry>> {
 pub fn list_lite() -> AppResult<Vec<LoreEntry>> {
     let mut out = list_table("tropes", true)?;
     out.extend(list_table("kinks", true)?);
+    out.extend(list_table("styles", true)?);
     Ok(out)
 }
 
 pub fn list_full() -> AppResult<Vec<LoreEntry>> {
     let mut out = list_table("tropes", false)?;
     out.extend(list_table("kinks", false)?);
+    out.extend(list_table("styles", false)?);
     Ok(out)
 }
 
 pub fn get_entry(kind: &str, id: &str) -> AppResult<Option<LoreEntry>> {
     let table = table_for_kind(kind);
-    let kind_s = if table == "kinks" { "kink" } else { "trope" };
+    let kind_s = kind_for_table(table);
     let conn = open_library_db()?;
     let row = conn
         .query_row(
@@ -199,7 +218,7 @@ pub fn get_entry(kind: &str, id: &str) -> AppResult<Option<LoreEntry>> {
     Ok(row)
 }
 
-pub fn count_all() -> AppResult<(i64, i64)> {
+pub fn count_all() -> AppResult<(i64, i64, i64)> {
     let conn = open_library_db()?;
     let t: i64 = conn
         .query_row("SELECT COUNT(*) FROM tropes", [], |r| r.get(0))
@@ -207,5 +226,8 @@ pub fn count_all() -> AppResult<(i64, i64)> {
     let k: i64 = conn
         .query_row("SELECT COUNT(*) FROM kinks", [], |r| r.get(0))
         .unwrap_or(0);
-    Ok((t, k))
+    let s: i64 = conn
+        .query_row("SELECT COUNT(*) FROM styles", [], |r| r.get(0))
+        .unwrap_or(0);
+    Ok((t, k, s))
 }

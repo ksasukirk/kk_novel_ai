@@ -12,6 +12,7 @@ Hard rules:
 - **Cross-chapter**: if "previous chapter close" is non-empty and not an opening, the **first beat** must continue from the previous chapter's ending state (same night / same place, or a clear transition); do not write an unrelated cold open
 - **Person**: follow the "character person lock"; do not write female characters as boys / male cousins
 - **Trope / kink library**: if selected tropes are not empty, beats must cover their process; do not put tags only in the title
+- **Prose style cards**: if selected prose styles is not empty, narration and dialogue must follow those cards; project writing voice stays separate
 
 Output format (must be valid JSON):
 {
@@ -56,6 +57,9 @@ Related lore:
 
 Selected tropes and kinks (beats must cover; ignore if empty):
 {{tropes}}
+
+Selected prose styles (must show in narration/dialogue; ignore if empty):
+{{prose_styles}}
 
 User instruction:
 {{instruction}}
