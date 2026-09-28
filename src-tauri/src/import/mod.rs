@@ -127,6 +127,7 @@ pub struct TropeDraft {
     pub keywords: Vec<String>,
     pub evidence: String,
     pub tags: Vec<String>,
+    pub styles: Vec<String>,
 }
 
 fn eq_heading() -> &'static Regex {
@@ -1091,6 +1092,16 @@ fn apply_chapter_extract(
                         .collect()
                 })
                 .unwrap_or_default();
+            let styles: Vec<String> = row
+                .get("styles")
+                .and_then(|v| v.as_array())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|x| x.as_str().map(|s| s.trim().to_string()))
+                        .filter(|s| !s.is_empty())
+                        .collect()
+                })
+                .unwrap_or_default();
             let existing_id = index.resolve(title);
             let existing = if let Some(id) = &existing_id {
                 project::list_lore(root)?
@@ -1108,6 +1119,7 @@ fn apply_chapter_extract(
                 keywords,
                 evidence: evidence.to_string(),
                 tags: project::trope_tags::parse_tag_values(&tags),
+                styles: project::trope_styles::parse_style_values(&styles),
             };
             let (saved, _) = upsert_trope_entry(root, &draft, existing)?;
             index.register(&saved.title, &saved.id, &[]);
@@ -1612,6 +1624,13 @@ pub fn upsert_trope_entry(
             .attrs
             .insert("tags".into(), project::trope_tags::format_tag_list(&tags));
     }
+    let styles = project::trope_styles::parse_style_values(&draft.styles);
+    if !styles.is_empty() {
+        incoming.attrs.insert(
+            "styles".into(),
+            project::trope_styles::format_style_list(&styles),
+        );
+    }
     let entry = if let Some(keep) = found {
         project::merge_trope_lore(&keep, &incoming)
     } else {
@@ -1741,6 +1760,16 @@ fn parse_trope_drafts(raw: &str) -> Vec<TropeDraft> {
                     .collect()
             })
             .unwrap_or_default();
+        let styles: Vec<String> = row
+            .get("styles")
+            .and_then(|v| v.as_array())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|x| x.as_str().map(|s| s.trim().to_string()))
+                    .filter(|s| !s.is_empty())
+                    .collect()
+            })
+            .unwrap_or_default();
         let mut title_en = json_trimmed(&row, "title_en");
         if title_en.is_empty() {
             title_en = compact_en;
@@ -1754,6 +1783,7 @@ fn parse_trope_drafts(raw: &str) -> Vec<TropeDraft> {
             keywords,
             evidence: json_trimmed(&row, "evidence"),
             tags: crate::project::trope_tags::parse_tag_values(&tags),
+            styles: crate::project::trope_styles::parse_style_values(&styles),
         });
     }
     out

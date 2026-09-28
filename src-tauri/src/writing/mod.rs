@@ -587,7 +587,13 @@ fn tropes_to_text(entries: &[&LoreEntry]) -> String {
     if entries.is_empty() {
         return if en { "(none)".into() } else { "（无）".into() };
     }
-    entries
+    let any_styles = entries.iter().any(|e| {
+        e.attrs
+            .get("styles")
+            .map(|s| !s.trim().is_empty())
+            .unwrap_or(false)
+    });
+    let body = entries
         .iter()
         .map(|e| {
             let kind_label = if en {
@@ -621,6 +627,7 @@ fn tropes_to_text(entries: &[&LoreEntry]) -> String {
             let do_line = e.attrs.get("do").map(|s| s.as_str()).unwrap_or("");
             let dont_line = e.attrs.get("dont").map(|s| s.as_str()).unwrap_or("");
             let tags = e.attrs.get("tags").map(|s| s.as_str()).unwrap_or("");
+            let styles = e.attrs.get("styles").map(|s| s.as_str()).unwrap_or("");
             let mut extra = String::new();
             if !intensity.is_empty() {
                 extra.push_str(&format!(
@@ -630,6 +637,12 @@ fn tropes_to_text(entries: &[&LoreEntry]) -> String {
             }
             if !tags.is_empty() {
                 extra.push_str(&format!("\n{}: {tags}", if en { "tags" } else { "标签" }));
+            }
+            if !styles.is_empty() {
+                extra.push_str(&format!(
+                    "\n{}: {styles}",
+                    if en { "style" } else { "文风" }
+                ));
             }
             if !do_line.is_empty() {
                 extra.push_str(&format!("\n{}: {do_line}", if en { "do" } else { "要写" }));
@@ -651,7 +664,17 @@ fn tropes_to_text(entries: &[&LoreEntry]) -> String {
             )
         })
         .collect::<Vec<_>>()
-        .join("\n")
+        .join("\n");
+    if any_styles {
+        let note = if en {
+            "Prose and dialogue must follow the listed styles."
+        } else {
+            "正文须贴近所列文风。"
+        };
+        format!("{note}\n\n{body}")
+    } else {
+        body
+    }
 }
 
 fn compact_trope_label(e: &LoreEntry) -> Option<String> {

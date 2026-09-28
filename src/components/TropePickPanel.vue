@@ -14,6 +14,12 @@ import {
   itemIsUncategorized,
 } from "../utils/tropeCategories.js";
 import {
+  TROPE_STYLE_IDS,
+  itemHasNoStyles,
+  itemStyleTags,
+  styleLabelKey,
+} from "../utils/tropeStyles.js";
+import {
   clearTropeSelection,
   isTropeSelected,
   toggleTropeSelection,
@@ -28,6 +34,8 @@ const kindFilter = ref("all");
 const searchQuery = ref("");
 /** "" | "__uncat__" | 规范名 */
 const categoryFilter = ref("");
+/** "" | "__nostyle__" | 规范文风名 */
+const styleFilter = ref("");
 const expandedId = ref("");
 
 const libraryItems = computed(() =>
@@ -58,12 +66,36 @@ const categoryCounts = computed(() => {
   };
 });
 
+const styleCounts = computed(() => {
+  const counts = {};
+  let nostyle = 0;
+  for (const it of kindItems.value) {
+    const styles = itemStyleTags(it);
+    if (!styles.length) nostyle += 1;
+    for (const s of styles) {
+      counts[s] = (counts[s] || 0) + 1;
+    }
+  }
+  return {
+    chips: TROPE_STYLE_IDS.filter((id) => counts[id] > 0).map((id) => ({
+      id,
+      n: counts[id],
+    })),
+    nostyle,
+  };
+});
+
 const visibleItems = computed(() => {
   let list = kindItems.value;
   if (categoryFilter.value === "__uncat__") {
     list = list.filter((it) => itemIsUncategorized(it));
   } else if (categoryFilter.value) {
     list = list.filter((it) => itemCategoryTags(it).includes(categoryFilter.value));
+  }
+  if (styleFilter.value === "__nostyle__") {
+    list = list.filter((it) => itemHasNoStyles(it));
+  } else if (styleFilter.value) {
+    list = list.filter((it) => itemStyleTags(it).includes(styleFilter.value));
   }
   const q = searchQuery.value.trim().toLowerCase();
   if (q) {
@@ -75,6 +107,7 @@ const visibleItems = computed(() => {
         it.content || "",
         (it.attrs && it.attrs.content_en) || "",
         itemCategoryTags(it).join(" "),
+        itemStyleTags(it).join(" "),
         (it.attrs && it.attrs.do) || "",
         (it.attrs && it.attrs.dont) || "",
       ]
@@ -94,6 +127,10 @@ const visibleCountText = computed(() =>
 
 function toggleCategory(id) {
   categoryFilter.value = categoryFilter.value === id ? "" : id;
+}
+
+function toggleStyleFilter(id) {
+  styleFilter.value = styleFilter.value === id ? "" : id;
 }
 
 function toggleExpand(id, ev) {
@@ -199,6 +236,27 @@ function onHide() {
         {{ $t(categoryLabelKey(chip.id)) }} {{ chip.n }}
       </button>
     </div>
+    <div class="cat-row">
+      <button
+        v-if="styleCounts.nostyle"
+        type="button"
+        class="chip cat-chip style-chip"
+        :class="styleFilter === '__nostyle__' ? 'chip-active' : ''"
+        @click="toggleStyleFilter('__nostyle__')"
+      >
+        {{ $t("trope.noStyle") }} {{ styleCounts.nostyle }}
+      </button>
+      <button
+        v-for="chip in styleCounts.chips"
+        :key="'style-' + chip.id"
+        type="button"
+        class="chip cat-chip style-chip"
+        :class="styleFilter === chip.id ? 'chip-active' : ''"
+        @click="toggleStyleFilter(chip.id)"
+      >
+        {{ $t(styleLabelKey(chip.id)) }} {{ chip.n }}
+      </button>
+    </div>
     <p class="muted pick-count-line">{{ visibleCountText }}</p>
     <div class="pick-list">
       <article
@@ -236,6 +294,11 @@ function onHide() {
           <span v-for="tag in itemCategoryTags(item)" :key="tag" class="chip kind-tag cat-chip">{{
             $t(categoryLabelKey(tag))
           }}</span>
+          <span
+            v-for="st in itemStyleTags(item)"
+            :key="'st-' + st"
+            class="chip kind-tag style-chip"
+          >{{ $t(styleLabelKey(st)) }}</span>
         </div>
         <p v-if="displayTropeContent(item) && expandedId !== item.id" class="snippet">{{ snippetOf(item) }}</p>
         <p v-if="expandedId === item.id && displayTropeContent(item)" class="full-content">{{ displayTropeContent(item) }}</p>
@@ -314,10 +377,14 @@ function onHide() {
   gap: 4px;
   align-items: center;
 }
-.cat-chip {
+.cat-chip,
+.style-chip {
   font-size: 11px;
   padding: 1px 7px;
   min-height: 20px;
+}
+.style-chip {
+  border-style: dashed;
 }
 .pick-search {
   width: 100%;

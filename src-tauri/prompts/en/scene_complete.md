@@ -7,7 +7,7 @@ Hard rules:
 - Follow the goal above; do not jump to the next chapter, the next day, or an unrelated new scene
 - No padding, no repetition loops
 - Follow this chapter's outline and the narrative direction anchor
-- **Trope / kink library**: if selected tropes are not "(none)" and unfinished, still fulfill them in the close; do not name-drop only
+- **Trope / kink library**: if selected tropes are not "(none)" and unfinished, still fulfill them in the close; do not name-drop only; listed prose styles must show in narration and dialogue
 
 Chapter outline:
 {{outline}}

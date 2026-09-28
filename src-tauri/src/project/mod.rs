@@ -6,6 +6,7 @@ pub mod work_catalog;
 mod trope_merge;
 mod trope_summary;
 pub(crate) mod trope_tags;
+pub(crate) mod trope_styles;
 
 pub use digest_sanitize::sanitize_block_digest;
 pub use trope_merge::{

@@ -4,7 +4,7 @@
 
 硬规则：
 - **只输出一个 JSON 对象**，不要 Markdown 围栏、不要解释
-- 格式：`{"tropes":[{"kind":"trope|kink","title":"中文短名","title_en":"english short name","matched_title":"命中库标题或空","content":"不超过40字的中文写法","content_en":"english notes, max 40 words","keywords":["关键词"],"evidence":"不超过20字的正文证据","tags":["规范分类"]}]}`
+- 格式：`{"tropes":[{"kind":"trope|kink","title":"中文短名","title_en":"english short name","matched_title":"命中库标题或空","content":"不超过40字的中文写法","content_en":"english notes, max 40 words","keywords":["关键词"],"evidence":"不超过20字的正文证据","tags":["规范分类"],"styles":["规范文风"]}]}`
 - `tropes` 最多 **8** 条；无则输出 `{"tropes":[]}`
 - `kind` 只能是 `trope`（情节套路）或 `kink`（喜好/玩法）
 - `title` 必须是 2～12 字**中文**规范名（这张卡的身份）；`title_en` 为英文短名（2～8 词），没有把握可空
@@ -16,6 +16,7 @@
 - 只抽本块**写出来的过程**；指令里点名但正文没写的不要抽
 - 不要抽人物名、地点、物品；不要把整章大纲复述成一条
 - `tags` 每条 1～3 个，**必须**从下列规范名中选，禁止自创：暴露、公开、后庭、口交、性交、排泄、体罚、羞耻、束缚、控制、群戏、道具、体液、禁忌、撞见、秘密。正文没写到的类不要标
+- `styles` 每条 0～2 个，**必须**从下列规范文风中选，禁止自创：含蓄、露骨、直言不讳、肮脏、细腻、粗口、克制、淫秽。看正文叙述/对白语气；看不出则 `[]`
 - 下一条用户消息是本块正文，只根据那条正文抽取
 
 已有情节/喜好（可空；`kink:` / `trope:` 各一行，斜杠分隔；条目为 `中文` 或 `中文|english`）：

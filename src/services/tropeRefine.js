@@ -8,6 +8,7 @@ import { upsertLoreAt, ensureTropeLibrary } from "./projectClient.js";
 import { refreshTropeIndex } from "./tropeIndex.js";
 import { isTropeKind } from "../utils/tropeKinds.js";
 import { formatTropeTags, parseTropeTags } from "../utils/tropeCategories.js";
+import { formatTropeStyles, parseTropeStyles } from "../utils/tropeStyles.js";
 import { t } from "../i18n/index.js";
 
 const inFlight = new Set();
@@ -36,11 +37,24 @@ function parseRefine(raw) {
       ? row.keywords.map((k) => String(k || "").trim()).filter(Boolean)
       : [];
     const tags = parseTropeTags(row.tags || []);
+    const styles = parseTropeStyles(row.styles || []);
     const doText = String(row.do || "").trim();
     const dontText = String(row.dont || "").trim();
     let intensity = String(row.intensity || "").trim();
     if (!/^[1-5]$/.test(intensity)) intensity = "";
-    return { kind, title, titleEn, content, contentEn, keywords, tags, doText, dontText, intensity };
+    return {
+      kind,
+      title,
+      titleEn,
+      content,
+      contentEn,
+      keywords,
+      tags,
+      styles,
+      doText,
+      dontText,
+      intensity,
+    };
   } catch {
     return null;
   }
@@ -58,6 +72,7 @@ function cardPayload(item) {
     do: attrs.do || "",
     dont: attrs.dont || "",
     tags: parseTropeTags(attrs.tags || ""),
+    styles: parseTropeStyles(attrs.styles || ""),
     intensity: String(attrs.intensity || "3"),
   };
 }
@@ -104,6 +119,7 @@ export async function runTropeRefine(item, opts = {}) {
     if (parsed.doText) attrs.do = parsed.doText;
     if (parsed.dontText) attrs.dont = parsed.dontText;
     if (parsed.tags.length) attrs.tags = formatTropeTags(parsed.tags);
+    if (parsed.styles.length) attrs.styles = formatTropeStyles(parsed.styles);
     if (parsed.titleEn) attrs.title_en = parsed.titleEn;
     if (parsed.contentEn) attrs.content_en = parsed.contentEn;
     const kind = isTropeKind(parsed.kind) ? parsed.kind : item.kind;

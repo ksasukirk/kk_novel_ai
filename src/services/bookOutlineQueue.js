@@ -9,6 +9,7 @@ import { runWriting } from "./llmClient.js";
 import { withBranchContext } from "./draftAccept.js";
 import {
   createChapter,
+  deleteChapter,
   getProject,
   loadChapter,
   saveProjectMeta,
@@ -70,13 +71,19 @@ export async function saveBookOutline(text) {
 }
 
 /**
+ * 章正文是否仍可被拆章结果覆盖（无实质正文即可；待写空壳可复用）
  * @param {object} chapter
+ * @param {{ allowPendingOutline?: boolean }} [opts]
+ *   allowPendingOutline=true：已有章纲但正文仍空时也算可复用（避免再生成出一个重复第一章）
  */
-async function chapterIsReusableEmpty(chapter) {
+async function chapterIsReusableEmpty(chapter, opts = {}) {
   if (!chapter) return false;
-  if (String(chapter.summary || "").trim()) return false;
-  if (Array.isArray(chapter.beats) && chapter.beats.length > 0) return false;
   if (chapter.status === "done" || chapter.status === "outline_complete") return false;
+  const hasOutline = !!(
+    String(chapter.summary || "").trim() ||
+    (Array.isArray(chapter.beats) && chapter.beats.length > 0)
+  );
+  if (hasOutline && !opts.allowPendingOutline) return false;
   try {
     const r = await invoke("chapter_read", {
       root: appState.projectRoot,
@@ -84,7 +91,29 @@ async function chapterIsReusableEmpty(chapter) {
     });
     return isChapterBodyEmpty(r.content || "", chapter.title || "");
   } catch {
-    return false;
+    // 读失败时：无章纲占位仍可复用；有章纲且允许覆盖时也按可复用处理，避免重复建章
+    return !hasOutline || !!opts.allowPendingOutline;
+  }
+}
+
+/**
+ * 全量拆章写入后：删掉未使用的空壳占位章（如 ensureChapterContext 留下的「第1章」）
+ * @param {string[]} keepIds
+ */
+async function pruneUnusedEmptyChapters(keepIds) {
+  const keep = new Set((keepIds || []).map(String).filter(Boolean));
+  await getProject(appState.projectRoot);
+  const list = [...((appState.project && appState.project.chapters) || [])];
+  for (const ch of list) {
+    if (!ch || keep.has(String(ch.id))) continue;
+    if (ch.status === "done" || ch.status === "outline_complete") continue;
+    const reusable = await chapterIsReusableEmpty(ch, { allowPendingOutline: true });
+    if (!reusable) continue;
+    try {
+      await deleteChapter(ch.id);
+    } catch (e) {
+      console.warn("[bookOutlineQueue] prune empty chapter", ch.id, e);
+    }
   }
 }
 
@@ -293,11 +322,15 @@ export async function applyChapterPlan(plan, opts = {}) {
   const updatedIds = [];
   let rowIndex = 0;
 
+  // 落盘前刷新目录，避免用过期 chapters 误判「不可复用」而重复建章
+  await getProject(appState.projectRoot);
+
   if (mode !== "append") {
     const ordered = (appState.project.chapters || []).slice();
     for (const ch of ordered) {
       if (rowIndex >= rows.length) break;
-      const reusable = await chapterIsReusableEmpty(ch);
+      // 正文仍空的待写章可被新拆章结果覆盖，避免「待写第一章 + 再新建第一章」
+      const reusable = await chapterIsReusableEmpty(ch, { allowPendingOutline: true });
       if (!reusable) continue;
       const row = rows[rowIndex];
       rowIndex += 1;
@@ -332,8 +365,11 @@ export async function applyChapterPlan(plan, opts = {}) {
     }
   }
 
-  await getProject(appState.projectRoot);
   const writtenIds = [...updatedIds, ...createdIds];
+  if (mode !== "append") {
+    await pruneUnusedEmptyChapters(writtenIds);
+  }
+  await getProject(appState.projectRoot);
   const startChapterId = writtenIds[0] || appState.chapterId;
   if (startChapterId && startChapterId !== appState.chapterId) {
     await loadChapter(startChapterId);

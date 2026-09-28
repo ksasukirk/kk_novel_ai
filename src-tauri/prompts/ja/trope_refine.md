@@ -4,12 +4,13 @@
 
 厳守ルール：
 - **JSON オブジェクトを一つだけ出力する**。Markdown フェンスも説明も出さない
-- 形式：`{"kind":"trope|kink","title":"元の題または微調整","title_en":"english short name","content":"中国語の書き方要点（過程・感覚・台詞制限、約 80～200 字）","content_en":"English writing notes, about 80–200 words","keywords":["キーワード"],"do":"書くこと","dont":"書かないこと","tags":["規範分類"],"intensity":"1-5"}`
+- 形式：`{"kind":"trope|kink","title":"元の題または微調整","title_en":"english short name","content":"中国語の書き方要点（過程・感覚・台詞制限、約 80～200 字）","content_en":"English writing notes, about 80–200 words","keywords":["キーワード"],"do":"書くこと","dont":"書かないこと","tags":["規範分類"],"styles":["規範文風"],"intensity":"1-5"}`
 - `kind` は `trope` または `kink` のみ。原則として元のまま
 - `title` は**できるだけ元の中国語タイトルを保つ**。不通・長すぎ・明らかな誤字のときだけ微調整し、なお 2～12 字
 - 類義の新名でこのカードの身元を置き換えない
 - 元カードに `title_en` / `content_en` が無ければ英語の短い名と英語の書き方を補う。既にあれば保つか微調整し、消さない
 - `tags` は 1～3。次の規範名からのみ選ぶ（自作禁止）：暴露、公开、后庭、口交、性交、排泄、体罚、羞耻、束缚、控制、群戏、道具、体液、禁忌、撞见、秘密。カードにない類は付けない
+- `styles` は 0～2。次の規範文風からのみ選ぶ（自作禁止）：含蓄、露骨、直言不讳、肮脏、细腻、粗口、克制、淫秽。content/do/dont の口調で補正。分からなければ `[]`
 - `keywords` は検索用の短い語 3～8。人物名を積まない
 - `do` / `dont` は過程の制約を一两句。空疎な文句は禁止
 - `intensity` は "1"～"5" の文字列のみ

@@ -27,6 +27,14 @@ import {
   itemIsUncategorized,
   parseTropeTags,
 } from "../utils/tropeCategories.js";
+import {
+  TROPE_STYLE_IDS,
+  formatTropeStyles,
+  itemHasNoStyles,
+  itemStyleTags,
+  parseTropeStyles,
+  styleLabelKey,
+} from "../utils/tropeStyles.js";
 import { tropesScanConfirmText } from "../utils/usageEstimate.js";
 import { runTropeRefine } from "../services/tropeRefine.js";
 import { displayTropeContent, displayTropeTitle } from "../utils/tropeI18n.js";
@@ -43,6 +51,8 @@ const kindFilter = ref("all");
 const searchQuery = ref("");
 /** "" | "__uncat__" | 规范名 */
 const categoryFilter = ref("");
+/** "" | "__nostyle__" | 规范文风名 */
+const styleFilter = ref("");
 const form = ref(emptyForm("trope"));
 const importTitle = ref("");
 const editorOpen = ref(false);
@@ -81,6 +91,7 @@ function emptyForm(kind) {
     doText: "",
     dontText: "",
     tags: "",
+    styles: "",
   };
 }
 
@@ -112,12 +123,36 @@ const categoryCounts = computed(() => {
   };
 });
 
+const styleCounts = computed(() => {
+  const counts = {};
+  let nostyle = 0;
+  for (const it of kindItems.value) {
+    const styles = itemStyleTags(it);
+    if (!styles.length) nostyle += 1;
+    for (const s of styles) {
+      counts[s] = (counts[s] || 0) + 1;
+    }
+  }
+  return {
+    chips: TROPE_STYLE_IDS.filter((id) => counts[id] > 0).map((id) => ({
+      id,
+      n: counts[id],
+    })),
+    nostyle,
+  };
+});
+
 const visibleItems = computed(() => {
   let list = kindItems.value;
   if (categoryFilter.value === "__uncat__") {
     list = list.filter((it) => itemIsUncategorized(it));
   } else if (categoryFilter.value) {
     list = list.filter((it) => itemCategoryTags(it).includes(categoryFilter.value));
+  }
+  if (styleFilter.value === "__nostyle__") {
+    list = list.filter((it) => itemHasNoStyles(it));
+  } else if (styleFilter.value) {
+    list = list.filter((it) => itemStyleTags(it).includes(styleFilter.value));
   }
   const q = searchQuery.value.trim().toLowerCase();
   if (q) {
@@ -129,7 +164,9 @@ const visibleItems = computed(() => {
         it.content || "",
         (it.attrs && it.attrs.content_en) || "",
         itemCategoryTags(it).join(" "),
+        itemStyleTags(it).join(" "),
         String((it.attrs && it.attrs.tags) || ""),
+        String((it.attrs && it.attrs.styles) || ""),
       ]
         .join(" ")
         .toLowerCase();
@@ -188,8 +225,22 @@ function toggleFormTag(id) {
   form.value.tags = formatTropeTags(next);
 }
 
+function formStyleSelected(id) {
+  return parseTropeStyles(form.value.styles).includes(id);
+}
+
+function toggleFormStyle(id) {
+  const cur = parseTropeStyles(form.value.styles);
+  const next = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id];
+  form.value.styles = formatTropeStyles(next);
+}
+
 function toggleCategory(id) {
   categoryFilter.value = categoryFilter.value === id ? "" : id;
+}
+
+function toggleStyleFilter(id) {
+  styleFilter.value = styleFilter.value === id ? "" : id;
 }
 
 function toggleField(id) {
@@ -283,6 +334,7 @@ async function edit(item) {
     doText: attrs.do || "",
     dontText: attrs.dont || "",
     tags: formatTropeTags(attrs.tags || ""),
+    styles: formatTropeStyles(attrs.styles || ""),
   };
   editorOpen.value = true;
   await nextTick();
@@ -310,6 +362,7 @@ function buildPayload() {
   if (form.value.contentEn.trim()) attrs.content_en = form.value.contentEn.trim();
   const tags = formatTropeTags(form.value.tags);
   attrs.tags = tags;
+  attrs.styles = formatTropeStyles(form.value.styles);
   return {
     id: form.value.id || "",
     kind,
@@ -517,6 +570,7 @@ async function onRefine(item) {
         do: form.value.doText.trim(),
         dont: form.value.dontText.trim(),
         tags: formatTropeTags(form.value.tags),
+        styles: formatTropeStyles(form.value.styles),
       },
     };
   }
@@ -567,7 +621,7 @@ async function remove(item) {
 }
 
 watch(
-  () => [kindFilter.value, categoryFilter.value, searchQuery.value],
+  () => [kindFilter.value, categoryFilter.value, styleFilter.value, searchQuery.value],
   () => {
     resetPageLimit();
   }
@@ -714,6 +768,27 @@ onUnmounted(() => {
           {{ $t(categoryLabelKey(chip.id)) }} {{ chip.n }}
         </button>
       </div>
+      <div class="cat-row">
+        <button
+          v-if="styleCounts.nostyle"
+          type="button"
+          class="chip cat-chip-btn style-chip-btn"
+          :class="styleFilter === '__nostyle__' ? 'chip-active' : ''"
+          @click="toggleStyleFilter('__nostyle__')"
+        >
+          {{ $t("trope.noStyle") }} {{ styleCounts.nostyle }}
+        </button>
+        <button
+          v-for="chip in styleCounts.chips"
+          :key="'style-' + chip.id"
+          type="button"
+          class="chip cat-chip-btn style-chip-btn"
+          :class="styleFilter === chip.id ? 'chip-active' : ''"
+          @click="toggleStyleFilter(chip.id)"
+        >
+          {{ $t(styleLabelKey(chip.id)) }} {{ chip.n }}
+        </button>
+      </div>
 
       <div v-if="scan.running" class="scan-meter-wrap">
         <div
@@ -801,6 +876,12 @@ onUnmounted(() => {
                   :key="tag"
                   class="chip kind-tag cat-chip"
                 >{{ $t(categoryLabelKey(tag)) }}</span>
+                <span
+                  v-if="fieldOn('styles')"
+                  v-for="st in itemStyleTags(item)"
+                  :key="'st-' + st"
+                  class="chip kind-tag style-chip"
+                >{{ $t(styleLabelKey(st)) }}</span>
               </div>
               <div v-if="fieldOn('keywords') && keywordChips(item).length" class="tag-row">
                 <span v-for="kw in keywordChips(item)" :key="kw" class="chip kind-tag kw-chip">{{ kw }}</span>
@@ -875,6 +956,21 @@ onUnmounted(() => {
               @click="toggleFormTag(id)"
             >
               {{ $t(categoryLabelKey(id)) }}
+            </button>
+          </div>
+        </div>
+        <div class="field">
+          <label class="field-label">{{ $t("trope.style") }}</label>
+          <div class="tag-row editor-tags">
+            <button
+              v-for="id in TROPE_STYLE_IDS"
+              :key="id"
+              type="button"
+              class="chip"
+              :class="formStyleSelected(id) ? 'chip-active' : ''"
+              @click="toggleFormStyle(id)"
+            >
+              {{ $t(styleLabelKey(id)) }}
             </button>
           </div>
         </div>
@@ -1183,8 +1279,13 @@ onUnmounted(() => {
   box-shadow: none;
 }
 .kw-chip,
-.cat-chip {
+.cat-chip,
+.style-chip {
   font-size: 0.78rem;
+}
+.style-chip,
+.style-chip-btn {
+  border-style: dashed;
 }
 .snippet {
   margin: 0;

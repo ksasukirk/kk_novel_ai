@@ -121,13 +121,14 @@ export function aiPanelLayoutButtonLabel(layout) {
 export const TROPE_CARD_FIELDS_KEY = "kk_trope_card_fields";
 export const TROPE_CARD_DENSITY_KEY = "kk_trope_card_density";
 
-/** @typedef {'keywords' | 'snippet' | 'tags' | 'intensity' | 'doDont' | 'evidence'} TropeCardField */
+/** @typedef {'keywords' | 'snippet' | 'tags' | 'styles' | 'intensity' | 'doDont' | 'evidence'} TropeCardField */
 /** @typedef {'compact' | 'standard'} TropeCardDensity */
 
 export const TROPE_CARD_FIELD_IDS = [
   "keywords",
   "snippet",
   "tags",
+  "styles",
   "intensity",
   "doDont",
   "evidence",
@@ -137,6 +138,7 @@ export const DEFAULT_TROPE_CARD_FIELDS = {
   keywords: true,
   snippet: true,
   tags: true,
+  styles: true,
   intensity: true,
   doDont: false,
   evidence: false,

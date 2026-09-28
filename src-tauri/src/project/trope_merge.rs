@@ -293,6 +293,15 @@ pub fn merge_trope_lore(keep: &LoreEntry, add: &LoreEntry) -> LoreEntry {
     } else {
         out.attrs.insert("tags".into(), merged_tags);
     }
+    let merged_styles = super::trope_styles::merge_style_strings(
+        out.attrs.get("styles").map(|s| s.as_str()).unwrap_or(""),
+        add.attrs.get("styles").map(|s| s.as_str()).unwrap_or(""),
+    );
+    if merged_styles.is_empty() {
+        out.attrs.remove("styles");
+    } else {
+        out.attrs.insert("styles".into(), merged_styles);
+    }
     out
 }
 
