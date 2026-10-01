@@ -48,7 +48,7 @@ fn append_line(path: &Path, line: &str) -> AppResult<()> {
     Ok(())
 }
 
-/// 将一条履历写入作品目录（章级文件 + 作品索引）。无 project.json 则静默跳过（旧/无效路径）。
+/// 将一条履历写入作品目录（章级文件 + 作品索引）。非作品根（无 work.sqlite / project.json）则静默跳过。
 /// `chapter_id` 为空时仍写 `gen_activity.jsonl`，章级落到 `_project.jsonl`。
 pub fn append_entry(entry: &GenLogEntry) -> AppResult<()> {
     let root_s = entry.project_root.trim();
@@ -150,7 +150,7 @@ fn write_jsonl(path: &Path, entries: &[&GenLogEntry]) -> AppResult<()> {
 }
 
 /// 把全局履历按作品整表回写：覆盖 `gen_activity.jsonl` 与各章 `.genlog/*.jsonl`。
-/// 仅处理仍存在 `project.json` 的目录；返回成功同步的作品数。
+/// 仅处理仍为作品根（`work.sqlite` 或 `project.json`）的目录；返回成功同步的作品数。
 pub fn sync_all_from_entries(entries: &[GenLogEntry]) -> AppResult<usize> {
     sync_from_entries(entries, false)
 }

@@ -368,7 +368,7 @@ pub fn project_open(root: &str) -> AppResult<Value> {
     Ok(project::project_to_value(&opened.root, &opened.project))
 }
 
-/// 扫描目录（含自身与最多两级子目录），把找到的 `project.json` 作品登记到最近列表。
+/// 扫描目录（含自身与最多两级子目录），把找到的作品根（`work.sqlite` 或 `project.json`）登记到最近列表。
 /// 不切换当前打开作品；知识库类会进最近知识库列表。
 pub fn project_import_directory(parent: &str, max_depth: Option<u32>) -> AppResult<Value> {
     if crate::paths::is_mobile() {
@@ -387,7 +387,7 @@ pub fn project_import_directory(parent: &str, max_depth: Option<u32>) -> AppResu
             "failed": [],
             "items": [],
             "settings": settings::load_settings()?,
-            "message": format!("未在「{parent}」下发现含 project.json 的作品（扫描深度 {depth}）"),
+            "message": format!("未在「{parent}」下发现含 work.sqlite 或 project.json 的作品（扫描深度 {depth}）"),
         }));
     }
 
@@ -457,12 +457,11 @@ pub fn project_forget_recent(root: &str) -> AppResult<Value> {
     Ok(json!({ "ok": true, "settings": s }))
 }
 
-/// 从最近列表移除；`purge=true` 时若目录含 `project.json` 则删除整目录。
-/// 硬安全：无 project.json 不删；Downloads/Desktop/Documents 等用户根目录永不 purge。
+/// 从最近列表移除；`purge=true` 时若目录为作品根（`work.sqlite` 或 `project.json`）则删除整目录。
+/// 硬安全：无作品根标记不删；Downloads/Desktop/Documents 等用户根目录永不 purge。
 pub fn project_delete(root: &str, purge: bool) -> AppResult<Value> {
     let path = Path::new(root);
-    let meta = path.join("project.json");
-    let had_meta = meta.exists();
+    let had_work_root = crate::storage::is_project_root(path);
     let mut s = settings::load_settings()?;
     s.remove_recent_project(root);
     settings::save_settings(&s)?;
@@ -475,9 +474,9 @@ pub fn project_delete(root: &str, purge: bool) -> AppResult<Value> {
                 &[("reason", reason), ("root", root)],
             ));
         }
-        if !had_meta {
+        if !had_work_root {
             return Err(AppError::t_fmt(
-                "errors.purgeNoProjectJson",
+                "errors.purgeNoWorkRoot",
                 &[("root", root)],
             ));
         }
@@ -496,7 +495,7 @@ pub fn project_delete(root: &str, purge: bool) -> AppResult<Value> {
         "root": root,
         "forgotten": true,
         "purged": purged,
-        "had_project_json": had_meta
+        "had_work_root": had_work_root
     }))
 }
 
@@ -536,7 +535,7 @@ fn purge_path_blocked(path: &Path) -> Option<&'static str> {
     None
 }
 
-/// 清空全部最近「小说」作品；`purge=true` 时删除各自目录（仅含 project.json 的）。
+/// 清空全部最近「小说」作品；`purge=true` 时删除各自目录（仅含作品根标记的）。
 pub fn project_forget_all_novels(purge: bool) -> AppResult<Value> {
     let s = settings::load_settings()?;
     let roots: Vec<String> = s.recent_projects.iter().map(|p| p.path.clone()).collect();
@@ -780,7 +779,7 @@ pub async fn project_suggest_title(root: &str) -> AppResult<Value> {
     }))
 }
 
-/// 将书名写入 project.json，并刷新最近列表标题；可选同步重命名作品文件夹
+/// 将书名写入作品元数据（sqlite / 遗留 json），并刷新最近列表标题；可选同步重命名作品文件夹
 pub fn project_apply_title(root: &str, title: &str, rename_folder: bool) -> AppResult<Value> {
     let title = sanitize_book_title(title)?;
     let path = Path::new(root);

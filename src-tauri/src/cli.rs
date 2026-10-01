@@ -166,7 +166,7 @@ enum ProjectCmd {
     Forget {
         root: String,
     },
-    /// 从最近列表移除；加 --purge 则删除含 project.json 的作品目录
+    /// 从最近列表移除；加 --purge 则删除含作品根标记（work.sqlite / project.json）的目录
     Delete {
         root: String,
         #[arg(long, default_value_t = false)]
@@ -1352,7 +1352,7 @@ fn tools_manifest() -> Value {
             {"cmd": "project_open", "args": ["root"], "desc": "打开作品"},
             {"cmd": "project_get", "args": ["root"], "desc": "读取作品元数据"},
             {"cmd": "project_forget_recent", "args": ["root"], "desc": "从最近列表移除"},
-            {"cmd": "project_delete", "args": ["root", "purge?"], "desc": "移除最近项；purge 时删含 project.json 的目录"},
+            {"cmd": "project_delete", "args": ["root", "purge?"], "desc": "移除最近项；purge 时删含作品根标记的目录"},
             {"cmd": "project_forget_all_novels", "args": ["purge?"], "desc": "清空全部最近小说；可 purge 删盘"},
             {"cmd": "novels_list_projects", "args": [], "desc": "列出 novels 目录与最近列表中的全部小说"},
             {"cmd": "work_catalog_ensure", "args": ["force?"], "desc": "刷新作品页搜索用压缩目录卡缓存"},

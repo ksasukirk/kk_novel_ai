@@ -105,6 +105,32 @@ pub fn is_project_root(dir: &Path) -> bool {
     work_sqlite_path(dir).is_file() || dir.join("project.json").is_file()
 }
 
+#[cfg(test)]
+mod project_root_tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn is_project_root_accepts_sqlite_or_json() {
+        let dir = std::env::temp_dir().join(format!(
+            "kk_novel_ai_root_{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        assert!(!is_project_root(&dir));
+
+        fs::write(dir.join("work.sqlite"), b"").unwrap();
+        assert!(is_project_root(&dir));
+        fs::remove_file(dir.join("work.sqlite")).unwrap();
+        assert!(!is_project_root(&dir));
+
+        fs::write(dir.join("project.json"), b"{}").unwrap();
+        assert!(is_project_root(&dir));
+        let _ = fs::remove_dir_all(&dir);
+    }
+}
+
 pub fn set_progress_emitter(f: Option<ProgressFn>) {
     let cell = PROGRESS_FN.get_or_init(|| Mutex::new(None));
     *cell.lock() = f;

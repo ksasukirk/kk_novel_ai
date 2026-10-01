@@ -185,15 +185,31 @@ pub fn allocate_folder_in_parent(
     try_folder_names_in_parent(parent, &base_name, current)
 }
 
-/// 是否已是作品根（含 project.json）
+/// 是否已是作品根（`work.sqlite` 或遗留 `project.json`）。
+/// 与 `storage::is_project_root` 语义一致；此处不调用 storage，避免 paths↔storage 环依赖。
 #[allow(dead_code)]
 pub fn is_project_root(path: &Path) -> bool {
-    path.join("project.json").is_file()
+    path.join("work.sqlite").is_file() || path.join("project.json").is_file()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::fs;
+
+    #[test]
+    fn is_project_root_matches_sqlite_or_json() {
+        let dir = std::env::temp_dir().join(format!(
+            "kk_novel_ai_paths_root_{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&dir);
+        fs::create_dir_all(&dir).unwrap();
+        assert!(!is_project_root(&dir));
+        fs::write(dir.join("work.sqlite"), b"").unwrap();
+        assert!(is_project_root(&dir));
+        let _ = fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn sanitize_strips_illegal() {

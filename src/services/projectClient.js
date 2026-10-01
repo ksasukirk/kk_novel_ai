@@ -31,7 +31,7 @@ export async function pickImportDirectory() {
 }
 
 /**
- * 扫描父目录下的 project.json，登记到最近作品/知识库列表（不切换当前打开）
+ * 扫描父目录下的作品根（work.sqlite 或 project.json），登记到最近作品/知识库列表（不切换当前打开）
  * @param {string} root
  * @param {{ maxDepth?: number }} [opts]
  */
@@ -474,7 +474,7 @@ export async function forgetRecentProject(root) {
   return r;
 }
 
-/** 从最近列表移除；purge 为 true 时删除含 project.json 的作品目录 */
+/** 从最近列表移除；purge 为 true 时删除含作品根标记的目录 */
 export async function deleteProject(root, { purge = false } = {}) {
   return await invoke("project_delete", { root, purge });
 }
