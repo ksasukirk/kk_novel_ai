@@ -49,6 +49,8 @@ const summaryByPath = reactive({});
 const selectMode = ref(false);
 const selectedPaths = ref([]);
 const bulkBusy = ref(false);
+/** 批量 AI 重命名中途取消标记 */
+let bulkTitleAbort = false;
 const createBackdrop = createBackdropDismiss(() => {
   showCreate.value = false;
 });
@@ -722,43 +724,90 @@ async function onForget(path, ev) {
   }
 }
 
-/** 批量 AI 生成书名并直接应用 */
-async function onBulkSuggestTitles() {
-  const paths = selectedPaths.value.slice();
-  if (!paths.length || bulkBusy.value) return;
+/** 取消进行中的批量 AI 重命名 */
+function cancelBulkAiRename() {
+  bulkTitleAbort = true;
+}
+
+/**
+ * 批量 AI 生成书名并应用，同时重命名作品文件夹。
+ * @param {string[]} paths
+ * @param {{ confirmMsg?: string, confirmTitle?: string }} [opts]
+ */
+async function runBulkAiRename(paths, opts = {}) {
+  const list = (paths || []).filter(Boolean);
+  if (!list.length || bulkBusy.value) return;
   error.value = "";
-  const ok = await appConfirm(t("project.bulkTitleQ", { n: paths.length }), {
-    title: t("project.bulkTitleTitle"),
-    confirmText: t("common.start"),
-    cancelText: t("common.cancel"),
-  });
+  const ok = await appConfirm(
+    opts.confirmMsg || t("project.bulkTitleQ", { n: list.length }),
+    {
+      title: opts.confirmTitle || t("project.bulkTitleTitle"),
+      confirmText: t("common.start"),
+      cancelText: t("common.cancel"),
+    }
+  );
   if (!ok) return;
   bulkBusy.value = true;
+  bulkTitleAbort = false;
   let okN = 0;
+  let renamedN = 0;
   const failed = [];
   try {
-    for (const path of paths) {
+    const total = list.length;
+    for (let i = 0; i < list.length; i += 1) {
+      if (bulkTitleAbort) break;
+      const path = list[i];
+      const item = recentList.value.find((x) => x.path === path);
+      const label = (item && item.title) || shortPath(path);
       titleBusy[path] = true;
+      appState.statusMessage = t("project.bulkTitleProgress", {
+        i: i + 1,
+        total,
+        name: label,
+      });
       try {
         const r = await project.suggestBookTitle(path);
         const next = (r && r.title) || "";
         if (!next) throw new Error(t("project.noTitleGenerated"));
-        await project.applyBookTitle(path, next);
+        const applied = await project.applyBookTitle(path, next, { renameFolder: true });
         okN += 1;
+        if (applied && applied.folder_renamed) renamedN += 1;
+        const newRoot = (applied && applied.root) || path;
+        if (newRoot !== path) {
+          selectedPaths.value = selectedPaths.value.map((p) => (p === path ? newRoot : p));
+        }
       } catch (e) {
-        const item = recentList.value.find((x) => x.path === path);
-        failed.push(`${item && item.title ? item.title : shortPath(path)}: ${e.message || e}`);
+        failed.push(`${label}: ${e.message || e}`);
       } finally {
         titleBusy[path] = false;
       }
     }
     await refreshSettings();
-    const tail = failed.length ? t("project.failTail", { n: failed.length }) : "";
-    appState.statusMessage = `${t("project.bulkTitleResult", { n: okN })}${tail}`;
+    const parts = [t("project.bulkTitleResult", { n: okN })];
+    if (renamedN) parts.push(t("project.bulkTitleFolders", { n: renamedN }));
+    if (bulkTitleAbort) parts.push(t("project.bulkTitleCancelled"));
+    if (failed.length) parts.push(t("project.failTail", { n: failed.length }));
+    appState.statusMessage = parts.join("");
     if (failed.length) error.value = failed.slice(0, 5).join("\n");
   } finally {
     bulkBusy.value = false;
+    bulkTitleAbort = false;
   }
+}
+
+/** 多选：批量 AI 重命名（含文件夹） */
+async function onBulkSuggestTitles() {
+  await runBulkAiRename(selectedPaths.value.slice());
+}
+
+/** 一键：最近列表全部作品 AI 重命名（含文件夹） */
+async function onAiRenameAll() {
+  const paths = recentList.value.map((item) => item.path).filter(Boolean);
+  if (!paths.length || bulkBusy.value) return;
+  await runBulkAiRename(paths, {
+    confirmMsg: t("project.aiRenameAllQ", { n: paths.length }),
+    confirmTitle: t("project.aiRenameAllTitle"),
+  });
 }
 
 /** 批量从最近列表移除 */
@@ -1207,10 +1256,27 @@ function heatCellTitle(d) {
         {{ rescanAllLabel }}
       </button>
       <button
+        type="button"
+        class="app-btn"
+        :disabled="bulkBusy || !recentList.length"
+        :title="$t('project.aiRenameAllHint')"
+        @click="onAiRenameAll"
+      >
+        {{ bulkBusy ? $t("common.processing") : $t("project.aiRenameAll") }}
+      </button>
+      <button
         v-if="tropeScanState.batchRunning"
         type="button"
         class="app-btn"
         @click="cancelTropeScan"
+      >
+        {{ $t("common.cancel") }}
+      </button>
+      <button
+        v-if="bulkBusy"
+        type="button"
+        class="app-btn"
+        @click="cancelBulkAiRename"
       >
         {{ $t("common.cancel") }}
       </button>
