@@ -374,7 +374,9 @@
   "progress": {
     "done": "完成",
     "connecting": "连接模型…",
-    "chars": "{n} 字 · {pct}%"
+    "chars": "{n} 字 · {pct}%",
+    "renamePrep": "准备 AI 重命名…",
+    "renameMeter": "重命名 {current}/{total} · {pct}% · {title}"
   },
   "editor": {
     "title": "写作",

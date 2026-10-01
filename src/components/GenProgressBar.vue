@@ -6,6 +6,7 @@
 import { computed } from "vue";
 import { appState } from "../stores/appState.js";
 import { tropeScanState } from "../services/tropeScan.js";
+import { bulkRenameState } from "../services/bulkRenameProgress.js";
 import { t } from "../i18n/index.js";
 
 defineProps({
@@ -17,16 +18,29 @@ const scanRunning = computed(
   () =>
     (!!tropeScanState.running || !!tropeScanState.batchRunning) && !appState.generating
 );
+const renameRunning = computed(
+  () => !!bulkRenameState.running && !appState.generating && !scanRunning.value
+);
 const visible = computed(
-  () => !!appState.generating || appState.genProgressPct >= 100 || scanRunning.value
+  () =>
+    !!appState.generating ||
+    appState.genProgressPct >= 100 ||
+    scanRunning.value ||
+    renameRunning.value
 );
 const indeterminate = computed(() => {
+  if (renameRunning.value) {
+    return (bulkRenameState.total || 0) <= 0;
+  }
   if (scanRunning.value) {
     return (tropeScanState.steps || 0) <= 0 && (tropeScanState.total || 0) <= 0;
   }
   return !!appState.generating && (appState.genStreamChars || 0) <= 0;
 });
 const pct = computed(() => {
+  if (renameRunning.value) {
+    return Math.max(0, Math.min(100, Number(bulkRenameState.pct) || 0));
+  }
   if (scanRunning.value) {
     return Math.max(0, Math.min(100, Number(tropeScanState.pct) || 0));
   }
@@ -49,6 +63,20 @@ function tidyMeter(s) {
 }
 
 const label = computed(() => {
+  if (renameRunning.value) {
+    const name = shortTitle(bulkRenameState.title, 10);
+    if ((bulkRenameState.total || 0) <= 0) {
+      return t("progress.renamePrep");
+    }
+    return tidyMeter(
+      t("progress.renameMeter", {
+        pct: pct.value,
+        current: bulkRenameState.current,
+        total: bulkRenameState.total,
+        title: name,
+      })
+    );
+  }
   if (scanRunning.value) {
     const chTitle = shortTitle(tropeScanState.title);
     if (tropeScanState.phase === "structure") {
@@ -119,7 +147,7 @@ const label = computed(() => {
     :aria-valuenow="indeterminate ? undefined : pct"
     aria-valuemin="0"
     aria-valuemax="100"
-    :aria-busy="!!appState.generating || scanRunning"
+    :aria-busy="!!appState.generating || scanRunning || renameRunning"
   >
     <div class="track">
       <div

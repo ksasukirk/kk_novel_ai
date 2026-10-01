@@ -17,6 +17,13 @@ import { useToastError } from "../services/toast.js";
 import { isCancelledMsg, msgMatchesKey, t, UI_LOCALES } from "../i18n/index.js";
 import { scanTropesFromRoot, scanTropesQueue, cancelTropeScan, isTropeScanBusy, tropeScanState } from "../services/tropeScan.js";
 import {
+  beginBulkRename,
+  tickBulkRename,
+  endBulkRename,
+  requestBulkRenameAbort,
+  bulkRenameState,
+} from "../services/bulkRenameProgress.js";
+import {
   importAutoSummaryEnabled,
   importNovelFile,
   persistImportAutoSummary,
@@ -49,8 +56,6 @@ const summaryByPath = reactive({});
 const selectMode = ref(false);
 const selectedPaths = ref([]);
 const bulkBusy = ref(false);
-/** 批量 AI 重命名中途取消标记 */
-let bulkTitleAbort = false;
 const createBackdrop = createBackdropDismiss(() => {
   showCreate.value = false;
 });
@@ -726,7 +731,7 @@ async function onForget(path, ev) {
 
 /** 取消进行中的批量 AI 重命名 */
 function cancelBulkAiRename() {
-  bulkTitleAbort = true;
+  requestBulkRenameAbort();
 }
 
 /**
@@ -748,18 +753,19 @@ async function runBulkAiRename(paths, opts = {}) {
   );
   if (!ok) return;
   bulkBusy.value = true;
-  bulkTitleAbort = false;
+  beginBulkRename(list.length);
   let okN = 0;
   let renamedN = 0;
   const failed = [];
   try {
     const total = list.length;
     for (let i = 0; i < list.length; i += 1) {
-      if (bulkTitleAbort) break;
+      if (bulkRenameState.abort) break;
       const path = list[i];
       const item = recentList.value.find((x) => x.path === path);
       const label = (item && item.title) || shortPath(path);
       titleBusy[path] = true;
+      tickBulkRename(i + 1, total, label);
       appState.statusMessage = t("project.bulkTitleProgress", {
         i: i + 1,
         total,
@@ -785,13 +791,13 @@ async function runBulkAiRename(paths, opts = {}) {
     await refreshSettings();
     const parts = [t("project.bulkTitleResult", { n: okN })];
     if (renamedN) parts.push(t("project.bulkTitleFolders", { n: renamedN }));
-    if (bulkTitleAbort) parts.push(t("project.bulkTitleCancelled"));
+    if (bulkRenameState.abort) parts.push(t("project.bulkTitleCancelled"));
     if (failed.length) parts.push(t("project.failTail", { n: failed.length }));
     appState.statusMessage = parts.join("");
     if (failed.length) error.value = failed.slice(0, 5).join("\n");
   } finally {
+    endBulkRename();
     bulkBusy.value = false;
-    bulkTitleAbort = false;
   }
 }
 

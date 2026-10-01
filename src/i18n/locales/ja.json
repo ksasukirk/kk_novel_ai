@@ -374,7 +374,9 @@
   "progress": {
     "done": "完了",
     "connecting": "モデルに接続中…",
-    "chars": "{n} 字 · {pct}%"
+    "chars": "{n} 字 · {pct}%",
+    "renamePrep": "AI リネーム準備中…",
+    "renameMeter": "リネーム {current}/{total} · {pct}% · {title}"
   },
   "editor": {
     "title": "執筆",

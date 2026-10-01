@@ -374,7 +374,9 @@
   "progress": {
     "done": "Done",
     "connecting": "Connecting to model…",
-    "chars": "{n} chars · {pct}%"
+    "chars": "{n} chars · {pct}%",
+    "renamePrep": "Preparing AI rename…",
+    "renameMeter": "Rename {current}/{total} · {pct}% · {title}"
   },
   "editor": {
     "title": "Write",
