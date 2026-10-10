@@ -9,7 +9,7 @@ Hard rules:
   2. If this block has no instruction: only then write a new section from scratch at the same story position, using the "previous-section summary"
 - **No continuation**: do not advance to the next scene; do not cash unresolved hooks into later plot
 - **No dependence on the old draft**: do not recap, rewrite, or splice existing sentences; even if the plot direction is similar, wording, detail, and rhythm must be newly written
-- Length: at least {{target_chars}} characters; exceeding is allowed; do not close before the target; no obviously short writes
+- Length: at least {{target_chars}} characters; soft max {{max_chars}}; do not close before the floor; past soft max only finish half-sentences, no padding; no obviously short writes
 - Do not repeat sentence patterns or plot in two consecutive paragraphs
 - Action subjects must be clear; anatomy ownership and dialogue must match the action happening now
 - Rhetoric ban: no stacked "not A, but B" / "it isn't… it's…" contrast

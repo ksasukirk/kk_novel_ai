@@ -37,6 +37,10 @@ fn default_analytics_page_size() -> u32 {
 }
 
 /// 每轮续写规定字数；0 表示未配置（加载时从 max_tokens 迁移）
+fn default_writing_max_chars() -> u32 {
+    0
+}
+
 fn default_writing_target_chars() -> u32 {
     0
 }
@@ -90,9 +94,12 @@ pub struct AppSettings {
     pub temperature: f32,
     /// 与规定字数对齐的 API 上限（保存时由 writing_target_chars 推导；运行时也以规定字数为准）
     pub max_tokens: u32,
-    /// 每轮续写规定字数（目标篇幅）；最大生成量按此对齐
+    /// 每轮续写规定字数（目标篇幅下限）；未达会补写
     #[serde(default = "default_writing_target_chars")]
     pub writing_target_chars: u32,
+    /// 软上限字数：达到后不再为章纲/凑字扩写；0 = 自动（约规定字数×1.35）。半句仍可补完。
+    #[serde(default = "default_writing_max_chars")]
+    pub writing_max_chars: u32,
     /// OpenAI 兼容：抑制已出现 token 的复读（写作默认 0.55）
     #[serde(default = "default_frequency_penalty")]
     pub frequency_penalty: f32,
@@ -212,6 +219,7 @@ impl Default for AppSettings {
             embedding_model: String::new(),
             temperature: 0.8,
             writing_target_chars: 1800,
+            writing_max_chars: 0,
             max_tokens: ((1800_f64) * 1.15).ceil() as u32,
             frequency_penalty: default_frequency_penalty(),
             presence_penalty: default_presence_penalty(),
@@ -288,14 +296,33 @@ impl AppSettings {
         }
     }
 
-    /// API max_tokens：须能写出「至少规定字数且可超出」；按约 1.8× 规定字数留预算
+    /// 软上限：达到后停止章纲/长度扩写；半句补完仍允许略超。
+    /// `writing_max_chars == 0` 或小于规定字数时自动取约规定×1.35（且至少 +400）。
+    pub fn resolve_writing_max_chars(&self) -> u32 {
+        let min = self.resolve_writing_target_chars();
+        if self.writing_max_chars >= min {
+            return self.writing_max_chars;
+        }
+        let auto = ((min as f64) * 1.35).ceil() as u32;
+        auto.max(min.saturating_add(400)).max(min)
+    }
+
+    /// 绝对刹车（含半句）：软上限再放约 10%，防补写失控。
+    pub fn resolve_writing_hard_cap_chars(&self) -> u32 {
+        let soft = self.resolve_writing_max_chars();
+        soft.saturating_add(soft / 10).max(soft.saturating_add(200))
+    }
+
+    /// API max_tokens：须能写出「至少规定字数且可略超到软上限」；按约 1.8× 软上限留预算，但不少于规定×1.8
     pub fn resolve_writing_max_tokens(&self) -> u32 {
-        let chars = self.resolve_writing_target_chars();
+        let min = self.resolve_writing_target_chars();
+        let soft = self.resolve_writing_max_chars();
+        let chars = soft.max(min);
         let mt = ((chars as f64) * 1.8).ceil() as u32;
         mt.max(256).min(32768)
     }
 
-    /// 保存前：让 max_tokens 与规定字数对齐
+    /// 保存前：让 max_tokens 与规定/软上限对齐；非法 writing_max_chars 归零走自动
     pub fn sync_max_tokens_to_target(&mut self) {
         if self.writing_target_chars < 200 {
             self.writing_target_chars = if self.max_tokens >= 200 {
@@ -303,6 +330,10 @@ impl AppSettings {
             } else {
                 1800
             };
+        }
+        let min = self.resolve_writing_target_chars();
+        if self.writing_max_chars > 0 && self.writing_max_chars < min {
+            self.writing_max_chars = 0;
         }
         self.max_tokens = self.resolve_writing_max_tokens();
     }

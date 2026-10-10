@@ -12,7 +12,7 @@ export function estimateTargetChars(maxTokens, writingTargetChars) {
   const tc = Number(writingTargetChars);
   if (Number.isFinite(tc) && tc >= 200) return Math.round(tc);
   const mt = Number(maxTokens) || 2048;
-  // 与后端一致：max_tokens ≈ 规定字数 × 1.8（允许超出）
+  // 与后端一致：max_tokens ≈ 软上限 × 1.8（无软上限时反推目标）
   return Math.max(480, Math.round(mt / 1.8));
 }
 

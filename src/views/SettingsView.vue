@@ -106,6 +106,7 @@ onMounted(async () => {
       deepseek_pricing_tier: "auto",
       writing_cache_friendly_prompt: true,
       writing_target_chars: 1800,
+      writing_max_chars: 0,
       image_provider: "openai_compat",
       image_base_url: "",
       image_model: "",
@@ -119,6 +120,9 @@ onMounted(async () => {
     // 旧配置无规定字数：用 max_tokens 当作规定字数
     if (!form.value.writing_target_chars || form.value.writing_target_chars < 200) {
       form.value.writing_target_chars = Math.max(200, Number(form.value.max_tokens) || 1800);
+    }
+    if (form.value.writing_max_chars == null || Number(form.value.writing_max_chars) < 0) {
+      form.value.writing_max_chars = 0;
     }
     syncMaxFromTarget();
     form.value.editor_font_family = presetIdFromSettings(form.value);
@@ -243,12 +247,23 @@ async function onHealth() {
   }
 }
 
+function autoSoftMaxChars(minChars) {
+  const min = Math.max(200, Number(minChars) || 1800);
+  return Math.max(Math.ceil(min * 1.35), min + 400);
+}
+
 function syncMaxFromTarget() {
   if (!form.value) return;
   const chars = Math.max(200, Number(form.value.writing_target_chars) || 1800);
   form.value.writing_target_chars = chars;
-  // 与后端 resolve_writing_max_tokens 一致：1.8×，允许超出规定字数
-  form.value.max_tokens = Math.max(256, Math.ceil(chars * 1.8));
+  let soft = Number(form.value.writing_max_chars) || 0;
+  if (soft > 0 && soft < chars) {
+    soft = 0;
+    form.value.writing_max_chars = 0;
+  }
+  const softResolved = soft >= chars ? soft : autoSoftMaxChars(chars);
+  // 与后端 resolve_writing_max_tokens 一致：按软上限×1.8 留 API 预算
+  form.value.max_tokens = Math.max(256, Math.ceil(softResolved * 1.8));
 }
 
 function scheduleSave() {
@@ -767,6 +782,18 @@ async function onRebuildRag() {
           step="100"
           @change="syncMaxFromTarget"
         />
+      </div>
+      <div class="field">
+        <label class="field-label">{{ $t("settings.maxChars") }}</label>
+        <input
+          v-model.number="form.writing_max_chars"
+          type="number"
+          min="0"
+          step="100"
+          :placeholder="String(autoSoftMaxChars(form.writing_target_chars))"
+          @change="syncMaxFromTarget"
+        />
+        <p class="field-hint muted">{{ $t("settings.maxCharsHint") }}</p>
       </div>
       <div class="field">
         <label class="field-label">{{ $t("settings.maxTokens") }}</label>
