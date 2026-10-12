@@ -219,7 +219,7 @@
     "targetChars": "規定字数（各章の下限）",
     "maxChars": "軟上限字数（筋の拡張上限）",
     "maxCharsHint": "0 = 自動（約規定×1.35）。到達後は章綱埋めを止め、途中文だけ收束します。",
-    "maxTokens": "max_tokens（自動 = 軟上限×1.8、途中切断防止）",
+    "maxTokens": "max_tokens（自動 = 軟上限×1.25、軟上限付近に抑制）",
     "frequencyPenalty": "frequency_penalty（繰り返し抑制、目安 0.4～0.8）",
     "presencePenalty": "presence_penalty（新しい内容を促す、目安 0.1～0.4）",
     "llmTimeout": "llm_timeout_secs（大規模モデルは 600+ 推奨）",

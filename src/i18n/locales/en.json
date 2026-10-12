@@ -219,7 +219,7 @@
     "targetChars": "Target length (minimum per chapter)",
     "maxChars": "Soft max chars (plot expansion cap)",
     "maxCharsHint": "0 = auto (~target × 1.35). Past this, no outline padding; half-sentences still finish.",
-    "maxTokens": "max_tokens (auto = soft max × 1.8, anti-truncation)",
+    "maxTokens": "max_tokens (auto = soft max × 1.25, stay near soft max)",
     "frequencyPenalty": "frequency_penalty (cut repetition, try 0.4–0.8)",
     "presencePenalty": "presence_penalty (encourage new content, try 0.1–0.4)",
     "llmTimeout": "llm_timeout_secs (600+ for large models)",

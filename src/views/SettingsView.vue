@@ -262,8 +262,12 @@ function syncMaxFromTarget() {
     form.value.writing_max_chars = 0;
   }
   const softResolved = soft >= chars ? soft : autoSoftMaxChars(chars);
-  // 与后端 resolve_writing_max_tokens 一致：按软上限×1.8 留 API 预算
-  form.value.max_tokens = Math.max(256, Math.ceil(softResolved * 1.8));
+  // 与后端 resolve_writing_max_tokens 一致：约软上限×1.25（防一次写过软上限后半句补不了）
+  form.value.max_tokens = Math.max(
+    256,
+    Math.ceil(softResolved * 1.25),
+    Math.ceil(chars * 1.15)
+  );
 }
 
 function scheduleSave() {

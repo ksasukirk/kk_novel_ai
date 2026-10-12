@@ -815,12 +815,13 @@ fn outline_split_max_tokens(prompt_chars: u32, current: u32) -> u32 {
     current.max(estimated).clamp(1024, 16384)
 }
 
-/// 按纲整章续写：在软上限预算内按章纲略抬，避免一轮顶满 API 上限写出超长章。
+/// 按纲整章续写：在软上限预算内略抬，避免一轮 token 过大写出远超软上限的半截章。
 fn outline_continue_max_tokens(base: u32, outline_chars: u32, soft_max_chars: u32) -> u32 {
-    let extra = ((outline_chars as f64 / 2.0).ceil() as u32).min(1024);
-    let raised = base.saturating_add(extra).max(base).max(2048);
-    let soft_budget = ((soft_max_chars.max(200) as f64) * 1.8).ceil() as u32;
-    raised.min(soft_budget.max(base)).min(8192)
+    let extra = ((outline_chars as f64 / 4.0).ceil() as u32).min(512);
+    let raised = base.saturating_add(extra).max(base);
+    // 与 resolve_writing_max_tokens 一致：约 1.25× 软上限；软预算优先于过大的 base
+    let soft_budget = ((soft_max_chars.max(200) as f64) * 1.25).ceil() as u32;
+    raised.min(soft_budget).max(256).min(8192)
 }
 
 fn request_is_outline_run(req: &WritingRequest) -> bool {
@@ -2153,17 +2154,12 @@ pub async fn run_writing(
         let outline_run = request_is_outline_run(req);
         let fill_ctx = build_length_fill_context(settings, req);
         let mut fill_i = 0u32;
+        let mut sentence_fills = 0u32;
         while fill_i < MAX_FILLS {
             if cancel.load(Ordering::Relaxed) {
                 break;
             }
             let have = text.chars().count();
-            if have >= hard_cap {
-                eprintln!(
-                    "[writing] completeness hard-cap {have} >= {hard_cap}; stop"
-                );
-                break;
-            }
             let need = min_chars.saturating_sub(have);
             let need_length = have < min_chars;
             let need_sentence = continuity::prose_incomplete(&text);
@@ -2172,7 +2168,7 @@ pub async fn run_writing(
                 && !need_length
                 && have < soft_max
                 && continuity::outline_hook_missing(&text, &fill_ctx.outline);
-            let mode = if need_length {
+            let mode = if need_length && have < soft_max {
                 "length"
             } else if need_sentence {
                 "sentence"
@@ -2181,14 +2177,35 @@ pub async fn run_writing(
             } else {
                 break;
             };
-            // 已过软上限：只允许半句收束
-            if have >= soft_max && mode != "sentence" {
+            // 硬顶只挡扩写；半句收束仍放行（首轮若冲过硬顶，否则会留下「低头」「坐得」这类半截）
+            if have >= hard_cap && mode != "sentence" {
+                eprintln!(
+                    "[writing] completeness hard-cap {have} >= {hard_cap}; skip {mode}"
+                );
+                break;
+            }
+            if mode == "sentence" {
+                if sentence_fills >= 2 {
+                    eprintln!("[writing] sentence-fill budget exhausted; stop incomplete");
+                    break;
+                }
+                // 半句补写也设绝对顶，避免无限加戏
+                if have >= hard_cap.saturating_add(400) {
+                    eprintln!(
+                        "[writing] sentence hard-ceiling {have}; stop"
+                    );
+                    break;
+                }
+            } else if have >= soft_max {
                 eprintln!(
                     "[writing] soft-max {have} >= {soft_max}; skip {mode}"
                 );
                 break;
             }
             fill_i += 1;
+            if mode == "sentence" {
+                sentence_fills += 1;
+            }
             eprintln!(
                 "[writing] completeness-fill {fill_i}/{MAX_FILLS} mode={mode} have={have} min={min_chars} soft={soft_max}"
             );
@@ -2257,13 +2274,13 @@ pub async fn run_writing(
             let fill_mt = if mode == "sentence" {
                 512
             } else if mode == "outline" {
-                // 按纲补写：预算贴软上限剩余，避免单轮再写爆
-                (((remain_soft as f64) * 1.8).ceil() as u32)
+                // 按纲补写：预算贴软上限剩余
+                (((remain_soft as f64) * 1.25).ceil() as u32)
                     .max(400)
-                    .min(2048)
+                    .min(1536)
             } else {
                 let room = need.max(remain_soft.min(need.saturating_mul(2)));
-                (((room as f64) * 2.0).ceil() as u32).max(400).min(4096)
+                (((room as f64) * 1.25).ceil() as u32).max(400).min(2048)
             };
             fill_opts.max_tokens = Some(fill_mt);
 
@@ -2605,11 +2622,11 @@ mod tests {
 
     #[test]
     fn continue_tokens_raise_but_cap() {
-        // soft 2765 → budget ≈ 4977；不会再顶到 8192
+        // soft 2765 → budget ≈ 3457（1.25×）
         let n = outline_continue_max_tokens(1844, 800, 2765);
         assert!(n >= 1844, "got {n}");
-        assert!(n <= 4977, "got {n}");
-        let soft_budget = ((4000_f64) * 1.8).ceil() as u32;
+        assert!(n <= 3457, "got {n}");
+        let soft_budget = ((4000_f64) * 1.25).ceil() as u32;
         assert_eq!(outline_continue_max_tokens(7000, 50_000, 4000), soft_budget.min(8192));
     }
 
@@ -2624,6 +2641,8 @@ mod tests {
         assert!(soft >= 2048 + 400, "got {soft}");
         assert!(soft <= ((2048_f64) * 1.35).ceil() as u32 + 1, "got {soft}");
         assert!(s.resolve_writing_hard_cap_chars() > soft);
+        let mt = s.resolve_writing_max_tokens();
+        assert!(mt <= ((soft as f64) * 1.25).ceil() as u32 + 1, "got {mt} soft={soft}");
     }
 
     #[test]

@@ -313,13 +313,16 @@ impl AppSettings {
         soft.saturating_add(soft / 10).max(soft.saturating_add(200))
     }
 
-    /// API max_tokens：须能写出「至少规定字数且可略超到软上限」；按约 1.8× 软上限留预算，但不少于规定×1.8
+    /// API max_tokens：贴软上限留一点收束余量。
+    /// 中文约 1 字/token，用 1.25× 软上限即可；过大（旧 1.8×）会一次写出远超软上限并被硬顶掐掉半句补写。
     pub fn resolve_writing_max_tokens(&self) -> u32 {
         let min = self.resolve_writing_target_chars();
         let soft = self.resolve_writing_max_chars();
         let chars = soft.max(min);
-        let mt = ((chars as f64) * 1.8).ceil() as u32;
-        mt.max(256).min(32768)
+        let mt = ((chars as f64) * 1.25).ceil() as u32;
+        mt.max(((min as f64) * 1.15).ceil() as u32)
+            .max(256)
+            .min(32768)
     }
 
     /// 保存前：让 max_tokens 与规定/软上限对齐；非法 writing_max_chars 归零走自动
