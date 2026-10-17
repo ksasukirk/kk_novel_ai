@@ -73,6 +73,8 @@
     "dirAlreadyHasProject": "フォルダに既に作品があります。別のフォルダにするか、そのまま開いてください",
     "dirAlreadyHasProjectOrKb": "フォルダに既に作品/知識庫があります。別のフォルダにするか、そのまま開いてください",
     "projectJsonMissing": "project.json が見つかりません: {path}",
+    "projectRootMissing": "作品パスがありません（AI リネームまたは削除済みの可能性）: {path}",
+    "projectRootInvalid": "有効な作品ルートではありません（work.sqlite / project.json なし。リネーム後の空フォルダの可能性）: {path}",
     "jsonEmpty": "ファイルが空で、有効な JSON ではありません: {path}",
     "jsonInvalid": "JSON が壊れています: {path}（{e}）",
     "dirMissing": "フォルダが存在しません: {path}",

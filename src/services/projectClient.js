@@ -6,6 +6,7 @@ import { invoke } from "./tauri.js";
 import { appState } from "../stores/appState.js";
 import { t } from "../i18n/index.js";
 import { syncBookOutlineFromProject } from "../stores/aiPanelState.js";
+import { normalizeRoot } from "../utils/novelSearchScore.js";
 import {
   blocksFromContent,
 } from "../utils/genBlock.js";
@@ -452,17 +453,58 @@ export async function getContentSubstance(root) {
   return await invoke("project_content_substance", { root });
 }
 
+/** 文件夹重命名后，把内存里的旧 root 全部换成新路径 */
+export function remapOpenProjectRoot(oldRoot, newRoot) {
+  const from = normalizeRoot(oldRoot);
+  const to = String(newRoot || "");
+  if (!from || !to || from === normalizeRoot(to)) return;
+  if (normalizeRoot(appState.projectRoot) === from) {
+    appState.projectRoot = to;
+  }
+  const snap = appState.writingSnapshot;
+  if (snap && normalizeRoot(snap.root) === from) {
+    snap.root = to;
+  }
+}
+
 /** 写入书名并刷新最近列表；可选同步重命名作品文件夹（重名自动加数字） */
 export async function applyBookTitle(root, title, { renameFolder = false } = {}) {
   const r = await invoke("project_apply_title", { root, title, renameFolder });
   if (r.settings) appState.settings = r.settings;
   const newRoot = (r && r.root) || root;
+  const prev = (r && r.previous_root) || root;
   const payload = r.project;
-  if (payload && payload.project && appState.projectRoot === root) {
-    const renamed = newRoot !== root;
+  const renamed = normalizeRoot(newRoot) !== normalizeRoot(prev);
+  if (renamed) {
+    remapOpenProjectRoot(prev, newRoot);
+  }
+  if (payload && payload.project && normalizeRoot(appState.projectRoot) === normalizeRoot(newRoot)) {
+    appState.project = payload.project;
+    syncBookOutlineFromProject(payload.project, { force: renamed });
+  } else if (
+    payload &&
+    payload.project &&
+    normalizeRoot(appState.projectRoot) === normalizeRoot(prev)
+  ) {
     appState.projectRoot = newRoot;
     appState.project = payload.project;
     syncBookOutlineFromProject(payload.project, { force: renamed });
+  }
+  return r;
+}
+
+/** 自动检测并清理失效的最近作品路径（重命名后空壳 / 已删目录） */
+export async function pruneStaleRecentProjects() {
+  const r = await invoke("recent_projects_prune_stale");
+  if (r && r.settings) appState.settings = r.settings;
+  if (appState.projectRoot) {
+    const activeGone = ((r && r.removed) || []).some(
+      (x) => normalizeRoot(x.path) === normalizeRoot(appState.projectRoot)
+    );
+    if (activeGone) {
+      appState.projectRoot = "";
+      appState.project = null;
+    }
   }
   return r;
 }

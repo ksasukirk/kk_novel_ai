@@ -611,6 +611,7 @@
     "aiRenameAllHint": "AI-generate titles for every recent work and rename their folders",
     "aiRenameAllQ": "AI-generate and apply titles for all {n} works?\nFolders will be renamed too (duplicates get 2, 3…). Thin content and knowledge bases are skipped.",
     "aiRenameAllTitle": "AI rename all works",
+    "stalePruned": "Removed {n} stale work path(s) (renamed away or missing)",
     "tropeSummary": "Scan",
     "tropeSummaryHint": "Scan this book into the global library and rebuild outlines/gen blocks from prose; does not change chapter checkboxes",
     "tropeSummaryNone": "Not scanned",

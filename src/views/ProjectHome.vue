@@ -388,10 +388,28 @@ watch(searchQuery, () => {
 });
 onMounted(async () => {
   await refreshSettings();
+  try {
+    const pruned = await project.pruneStaleRecentProjects();
+    const n = Number((pruned && pruned.removed_count) || 0);
+    if (n > 0) {
+      appState.statusMessage = t("project.stalePruned", { n });
+      await refreshSettings();
+    }
+  } catch {
+    /* 清理失败不挡进页 */
+  }
   await refreshSummaryStatus();
   void warmupCatalog();
 });
 onActivated(() => {
+  void project.pruneStaleRecentProjects().then((pruned) => {
+    const n = Number((pruned && pruned.removed_count) || 0);
+    if (n > 0) {
+      appState.statusMessage = t("project.stalePruned", { n });
+      return refreshSettings();
+    }
+    return null;
+  });
   void warmupCatalog();
 });
 onUnmounted(() => {
@@ -779,14 +797,26 @@ async function runBulkAiRename(paths, opts = {}) {
         okN += 1;
         if (applied && applied.folder_renamed) renamedN += 1;
         const newRoot = (applied && applied.root) || path;
-        if (newRoot !== path) {
-          selectedPaths.value = selectedPaths.value.map((p) => (p === path ? newRoot : p));
+        if (normalizeRoot(newRoot) !== normalizeRoot(path)) {
+          selectedPaths.value = selectedPaths.value.map((p) =>
+            normalizeRoot(p) === normalizeRoot(path) ? newRoot : p
+          );
+          // 后续批量列表若还含旧路径则替换，避免再打开已搬走目录
+          list[i] = newRoot;
+          for (let j = i + 1; j < list.length; j += 1) {
+            if (normalizeRoot(list[j]) === normalizeRoot(path)) list[j] = newRoot;
+          }
         }
       } catch (e) {
         failed.push(`${label}: ${e.message || e}`);
       } finally {
         titleBusy[path] = false;
       }
+    }
+    try {
+      await project.pruneStaleRecentProjects();
+    } catch {
+      /* ignore */
     }
     await refreshSettings();
     const parts = [t("project.bulkTitleResult", { n: okN })];

@@ -167,8 +167,7 @@ fn project_json_mtime(root: &Path) -> Option<SystemTime> {
         .ok()
 }
 
-/// 丢弃指定作品的 project.json 元数据缓存
-#[allow(dead_code)]
+/// 丢弃指定作品的元数据缓存（重命名文件夹前后必须调用）
 pub fn invalidate_project_cache(root: &Path) {
     if let Ok(mut guard) = PROJECT_META_CACHE.lock() {
         if let Some(map) = guard.as_mut() {
@@ -732,12 +731,21 @@ pub fn open_project_fs(root: &Path) -> AppResult<OpenedProject> {
 }
 
 pub fn open_project(root: &Path) -> AppResult<OpenedProject> {
+    // 缓存命中也必须仍是作品根；否则 AI 重命名后可能用旧路径「复活」空目录
     if let Some(project) = get_cached_project(root) {
-        let _ = fs::create_dir_all(root);
-        return Ok(OpenedProject {
-            root: root.to_path_buf(),
-            project,
-        });
+        if crate::storage::is_project_root(root) {
+            return Ok(OpenedProject {
+                root: root.to_path_buf(),
+                project,
+            });
+        }
+        invalidate_project_cache(root);
+    }
+    if !root.exists() {
+        return Err(AppError::t_fmt(
+            "errors.projectRootMissing",
+            &[("path", &root.display().to_string())],
+        ));
     }
     if use_characters_db(root) {
         if let Some(project) = crate::storage::characters_store::load_meta()? {
@@ -764,6 +772,12 @@ pub fn open_project(root: &Path) -> AppResult<OpenedProject> {
             root: root.to_path_buf(),
             project,
         });
+    }
+    if !project_json(root).is_file() {
+        return Err(AppError::t_fmt(
+            "errors.projectRootInvalid",
+            &[("path", &root.display().to_string())],
+        ));
     }
     let opened = open_project_fs(root)?;
     if !memory_json(root).exists() {

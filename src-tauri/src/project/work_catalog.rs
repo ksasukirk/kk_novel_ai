@@ -221,6 +221,38 @@ fn save_cache(file: &CatalogFile) -> AppResult<()> {
     Ok(())
 }
 
+/// 从目录卡缓存移除指定作品根（文件夹重命名 / 失效清理时用）
+pub fn forget_root(root: &str) -> AppResult<()> {
+    let key = normalize_root(root);
+    if key.is_empty() {
+        return Ok(());
+    }
+    let mut cache = load_cache();
+    let before = cache.items.len();
+    cache.items.retain(|k, _| k != &key);
+    if cache.items.len() != before {
+        cache.updated_at = Utc::now().to_rfc3339();
+        let _ = save_cache(&cache);
+    }
+    Ok(())
+}
+
+/// 清理目录卡里已不存在或非作品根的条目
+pub fn prune_missing_roots() -> AppResult<usize> {
+    let mut cache = load_cache();
+    let before = cache.items.len();
+    cache.items.retain(|_, card| {
+        let p = Path::new(&card.root);
+        p.is_dir() && crate::storage::is_project_root(p)
+    });
+    let removed = before.saturating_sub(cache.items.len());
+    if removed > 0 {
+        cache.updated_at = Utc::now().to_rfc3339();
+        let _ = save_cache(&cache);
+    }
+    Ok(removed)
+}
+
 pub fn build_card(root: &Path, title_hint: Option<&str>) -> AppResult<WorkCatalogCard> {
     let opened = open_project(root)?;
     if is_knowledge_kind(&opened.project.kind) {

@@ -83,6 +83,7 @@ pub fn run() {
             commands::project_open,
             commands::project_import_directory,
             commands::project_forget_recent,
+            commands::recent_projects_prune_stale,
             commands::project_delete,
             commands::project_get,
             commands::project_save_meta,

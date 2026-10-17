@@ -611,6 +611,7 @@
     "aiRenameAllHint": "最近リストの全作品に AI 書名を付け、フォルダも同時に改名",
     "aiRenameAllQ": "全 {n} 作品の書名を AI で生成して適用しますか？\nフォルダ名も同時に変更します（重複時は 2、3…）。内容が少ないものやナレッジはスキップします。",
     "aiRenameAllTitle": "一括 AI リネーム",
+    "stalePruned": "無効な作品パスを {n} 件自動削除しました（リネーム後の旧パスなど）",
     "tropeSummary": "抽出",
     "tropeSummaryHint": "本文を筋庫へ入れ、章綱と生成ブロック指示も本文から再構築。章のチェックは変えません",
     "tropeSummaryNone": "未抽出",

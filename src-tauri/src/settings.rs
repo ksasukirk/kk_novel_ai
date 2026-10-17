@@ -593,7 +593,13 @@ impl AppSettings {
         self.last_project_path = Some(path);
     }
 
-    /// 作品目录重命名后，把最近列表里的旧路径换成新路径
+    fn path_key(p: &str) -> String {
+        p.replace('\\', "/")
+            .trim_end_matches('/')
+            .to_lowercase()
+    }
+
+    /// 作品目录重命名后，把最近列表里的旧路径换成新路径（路径大小写/斜杠不敏感）
     pub fn replace_recent_project_path(&mut self, old_path: &str, new_path: &str, title: &str) {
         let new_path = new_path.to_string();
         let title = if title.is_empty() {
@@ -601,21 +607,35 @@ impl AppSettings {
         } else {
             title.to_string()
         };
+        let old_key = Self::path_key(old_path);
+        let new_key = Self::path_key(&new_path);
         let mut item = None;
-        if let Some(i) = self.recent_projects.iter().position(|p| p.path == old_path) {
-            item = Some(self.recent_projects.remove(i));
-        }
-        let entry = item.unwrap_or(RecentProject {
+        self.recent_projects.retain(|p| {
+            let k = Self::path_key(&p.path);
+            if k == old_key {
+                if item.is_none() {
+                    item = Some(p.clone());
+                }
+                return false;
+            }
+            // 避免新旧路径并存成重复项
+            k != new_key
+        });
+        let mut entry = item.unwrap_or(RecentProject {
             path: new_path.clone(),
             title: title.clone(),
             opened_at: chrono::Utc::now().to_rfc3339(),
         });
-        let mut entry = entry;
         entry.path = new_path.clone();
         entry.title = title;
         entry.opened_at = chrono::Utc::now().to_rfc3339();
         self.recent_projects.insert(0, entry);
-        if self.last_project_path.as_deref() == Some(old_path) {
+        if self
+            .last_project_path
+            .as_ref()
+            .map(|p| Self::path_key(p) == old_key)
+            .unwrap_or(false)
+        {
             self.last_project_path = Some(new_path);
         }
     }

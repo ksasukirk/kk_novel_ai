@@ -73,6 +73,8 @@
     "dirAlreadyHasProject": "目录已存在作品，请换目录或直接打开",
     "dirAlreadyHasProjectOrKb": "目录已存在作品/知识库，请换目录或直接打开",
     "projectJsonMissing": "未找到 project.json: {path}",
+    "projectRootMissing": "作品路径已不存在（可能已被 AI 重命名或删除）：{path}",
+    "projectRootInvalid": "路径不是有效作品根（无 work.sqlite / project.json，可能是重命名后的空壳）：{path}",
     "jsonEmpty": "文件是空的，不是有效 JSON：{path}",
     "jsonInvalid": "JSON 损坏：{path}（{e}）",
     "dirMissing": "目录不存在: {path}",

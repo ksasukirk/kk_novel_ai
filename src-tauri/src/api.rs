@@ -450,6 +450,69 @@ pub fn project_import_directory(parent: &str, max_depth: Option<u32>) -> AppResu
     }))
 }
 
+fn is_named_global_kb_dir(path: &Path) -> bool {
+    path.file_name()
+        .and_then(|n| n.to_str())
+        .map(|n| n == "universal_kb" || n == "character_roster")
+        .unwrap_or(false)
+}
+
+/// 检测最近列表：路径不存在或没有作品根标记的项自动移除；并清理目录卡脏键。
+pub fn recent_projects_prune_stale() -> AppResult<Value> {
+    let mut s = settings::load_settings()?;
+    let mut removed: Vec<Value> = Vec::new();
+    s.recent_projects.retain(|p| {
+        let path = Path::new(&p.path);
+        let ok = path.is_dir() && crate::storage::is_project_root(path);
+        if !ok {
+            removed.push(json!({
+                "path": p.path,
+                "title": p.title,
+                "reason": if !path.exists() { "missing" } else { "no_work_root" },
+            }));
+        }
+        ok
+    });
+    let mut removed_kb: Vec<Value> = Vec::new();
+    s.recent_knowledge_bases.retain(|p| {
+        let path = Path::new(&p.path);
+        let ok = if is_named_global_kb_dir(path) {
+            path.is_dir()
+        } else {
+            path.is_dir() && crate::storage::is_project_root(path)
+        };
+        if !ok {
+            removed_kb.push(json!({
+                "path": p.path,
+                "title": p.title,
+            }));
+        }
+        ok
+    });
+    let mut last_fixed = false;
+    if let Some(last) = s.last_project_path.clone() {
+        let p = Path::new(&last);
+        if !(p.is_dir() && crate::storage::is_project_root(p)) {
+            s.last_project_path = s.recent_projects.first().map(|x| x.path.clone());
+            last_fixed = true;
+        }
+    }
+    let catalog_pruned = crate::project::work_catalog::prune_missing_roots().unwrap_or(0);
+    let changed =
+        !removed.is_empty() || !removed_kb.is_empty() || catalog_pruned > 0 || last_fixed;
+    if changed {
+        settings::save_settings(&s)?;
+    }
+    Ok(json!({
+        "ok": true,
+        "removed": removed,
+        "removed_knowledge": removed_kb,
+        "removed_count": removed.len(),
+        "catalog_pruned": catalog_pruned,
+        "settings": s,
+    }))
+}
+
 pub fn project_forget_recent(root: &str) -> AppResult<Value> {
     let mut s = settings::load_settings()?;
     s.remove_recent_project(root);
@@ -804,6 +867,8 @@ pub fn project_apply_title(root: &str, title: &str, rename_folder: bool) -> AppR
             .ok_or_else(|| AppError::t_fmt("errors.cannotResolveProjectParent", &[("root", root)]))?;
         let dest = crate::paths::allocate_folder_in_parent(parent, &title, path)?;
         if dest != path {
+            // 先丢掉旧路径缓存，避免改名后旧 root 命中缓存并 create_dir 复活空壳
+            project::invalidate_project_cache(path);
             fs::rename(path, &dest).map_err(|e| {
                 AppError::t_fmt(
                     "errors.renameProjectFolderFailed",
@@ -821,6 +886,7 @@ pub fn project_apply_title(root: &str, title: &str, rename_folder: bool) -> AppR
                 .and_then(|n| n.to_str())
                 .unwrap_or("")
                 .to_string();
+            project::invalidate_project_cache(&final_path);
         }
     }
 
@@ -828,6 +894,7 @@ pub fn project_apply_title(root: &str, title: &str, rename_folder: bool) -> AppR
     let mut s = settings::load_settings()?;
     if folder_renamed {
         s.replace_recent_project_path(root, &final_root, &title);
+        let _ = crate::project::work_catalog::forget_root(root);
     } else {
         s.touch_recent_project(root, &title);
     }
@@ -1548,6 +1615,7 @@ pub async fn dispatch_rpc(req: Value) -> AppResult<Value> {
             }
         }
         "project_forget_recent" => project_forget_recent(req_str(&req, "root")?),
+        "recent_projects_prune_stale" => recent_projects_prune_stale(),
         "project_import_directory" => {
             let root = req_str(&req, "root")?;
             let max_depth = req

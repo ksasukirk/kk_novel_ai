@@ -210,6 +210,11 @@ pub fn project_forget_recent(root: String) -> Result<Value, String> {
 }
 
 #[tauri::command]
+pub fn recent_projects_prune_stale() -> Result<Value, String> {
+    api::recent_projects_prune_stale().map_err(Into::into)
+}
+
+#[tauri::command]
 pub fn project_delete(root: String, purge: Option<bool>) -> Result<Value, String> {
     api::project_delete(&root, purge.unwrap_or(false)).map_err(Into::into)
 }

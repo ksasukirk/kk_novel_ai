@@ -611,6 +611,7 @@
     "aiRenameAllHint": "为最近列表全部作品 AI 生成书名，并同步重命名文件夹",
     "aiRenameAllQ": "为全部 {n} 部作品 AI 生成书名并应用？\n将同步重命名作品文件夹（重名自动加 2、3…）；内容过少或知识库会跳过。",
     "aiRenameAllTitle": "一键 AI 重命名全部",
+    "stalePruned": "已自动清理 {n} 条失效作品路径（重命名后旧目录或不存在）",
     "tropeSummary": "总结",
     "tropeSummaryHint": "扫描本书正文写入情节库，并按正文重写章纲与生成块指令；不改本章勾选",
     "tropeSummaryNone": "未总结",
