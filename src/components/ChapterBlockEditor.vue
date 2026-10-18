@@ -128,18 +128,25 @@ const polishingKey = ref("");
 const digestingKey = ref("");
 const illustratingKey = ref("");
 const translatingKey = ref("");
-const blockTranslateLocale = ref(
-  normalizeLocale(
-    props.translateLocale ||
-      (appState.settings && appState.settings.ui_locale)
-  )
-);
 
-watch(
-  () => props.translateLocale,
-  (v) => {
-    if (v) blockTranslateLocale.value = normalizeLocale(v);
-  }
+/** 块上不再各挂一份语种下拉，统一用编辑器顶栏「译成」 */
+function resolveTranslateLocale(override = "") {
+  const raw =
+    String(override || "").trim() || String(props.translateLocale || "").trim();
+  return normalizeLocale(
+    raw || (appState.settings && appState.settings.ui_locale) || "zh-CN"
+  );
+}
+
+const translateTargetLabel = computed(() => {
+  const id = resolveTranslateLocale();
+  const hit = UI_LOCALES.find((l) => l.id === id);
+  return hit ? hit.native : id;
+});
+
+const translateBlockTitle = computed(
+  () =>
+    `${t("editor.translateBlockHint")}（${t("editor.translateTo")} ${translateTargetLabel.value}）`
 );
 const illusUrls = reactive({});
 const illusStale = reactive({});
@@ -626,11 +633,7 @@ async function onForkBranch(block) {
 async function onTranslateBlock(block, localeOverride = "", force = true) {
   blockError.value = "";
   if (!block?.key || blockBusy(block) || translatingKey.value) return;
-  const target =
-    String(localeOverride || "").trim() ||
-    blockTranslateLocale.value ||
-    props.readingLocale ||
-    props.translateLocale;
+  const target = resolveTranslateLocale(localeOverride);
   translatingKey.value = block.key;
   try {
     await translateBlock(block.key, target, { force: !!force });
@@ -642,7 +645,7 @@ async function onTranslateBlock(block, localeOverride = "", force = true) {
 }
 
 async function onTranslateMissing(block) {
-  const loc = String(props.readingLocale || "").trim() || blockTranslateLocale.value;
+  const loc = String(props.readingLocale || "").trim() || resolveTranslateLocale();
   await onTranslateBlock(block, loc, true);
 }
 
@@ -1020,6 +1023,24 @@ defineExpose({
           </button>
           <button
             type="button"
+            class="block-act"
+            :disabled="
+              readonly ||
+              !!translatingKey ||
+              blockBusy(block) ||
+              !String(block.text || '').trim()
+            "
+            :title="translateBlockTitle"
+            @click.stop="onTranslateBlock(block)"
+          >
+            {{
+              translatingKey === block.key
+                ? $t("editor.translating")
+                : $t("editor.translateBlock")
+            }}
+          </button>
+          <button
+            type="button"
             class="block-act danger"
             :disabled="readonly || blockBusy(block)"
             @click.stop="onDeleteBlock(block)"
@@ -1045,12 +1066,8 @@ defineExpose({
             {{ $t("common.delete") }}
           </button>
         </div>
-        <div
-          v-if="!isIllustrationBlock(block)"
-          class="block-sticky-actions block-translate-row"
-        >
+        <div v-else class="block-sticky-actions">
           <button
-            v-if="block.type !== 'gen'"
             type="button"
             class="block-act"
             :disabled="
@@ -1068,17 +1085,6 @@ defineExpose({
                 : $t("editor.summaryBlock")
             }}
           </button>
-          <select
-            v-model="blockTranslateLocale"
-            class="block-translate-locale"
-            :disabled="readonly || !!translatingKey || blockBusy(block)"
-            :title="$t('editor.translateTo')"
-            @click.stop
-          >
-            <option v-for="loc in UI_LOCALES" :key="loc.id" :value="loc.id">
-              {{ loc.native }}
-            </option>
-          </select>
           <button
             type="button"
             class="block-act"
@@ -1088,7 +1094,7 @@ defineExpose({
               blockBusy(block) ||
               !String(block.text || '').trim()
             "
-            :title="$t('editor.translateBlockHint')"
+            :title="translateBlockTitle"
             @click.stop="onTranslateBlock(block)"
           >
             {{
@@ -1407,19 +1413,6 @@ defineExpose({
   align-items: center;
   justify-content: flex-end;
   gap: 6px;
-}
-.block-translate-row {
-  flex: 1 1 100%;
-  justify-content: flex-end;
-}
-.block-translate-locale {
-  min-width: 88px;
-  padding: 3px 8px;
-  font-size: 11px;
-  border-radius: var(--radius-pill);
-  border: 1px solid color-mix(in srgb, var(--muted) 28%, transparent);
-  background: var(--surface-solid, #fff);
-  color: var(--text);
 }
 .block-act.block-act-emphasis {
   background: var(--accent-soft);
