@@ -2,6 +2,8 @@
 
 Goal: {{goal}}
 
+Already written: {{have_chars}} characters. Target range: {{min_chars}}–{{max_chars}}. Finish only the unfinished last sentence. Do not add scenes to reach the top of the range, and do not stop mid-sentence.
+
 Hard rules:
 - Output only new paragraphs that continue after the already written prose; do not repeat sentences; no title, no explanation
 - Follow the goal above; do not jump to the next chapter, the next day, or an unrelated new scene

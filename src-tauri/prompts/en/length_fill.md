@@ -1,11 +1,11 @@
 # Fill this turn's length
 
-This turn has already written {{have_chars}} characters. Floor {{min_chars}}, soft max {{max_chars}}. About {{need_chars}} characters still needed to the floor.
+This turn has already written {{have_chars}} characters. Bring the prose into {{min_chars}}–{{max_chars}} characters. About {{need_chars}} characters are still needed to reach the floor. Stop yourself inside the range; the program will not trim the prose.
 
 Hard rules:
 - Output only new paragraphs that continue after the "already written prose"; do not repeat sentences already written; no title, no explanation
 - Stay in the same scene / same beat and add detail (action process, senses, dialogue, interiority); do not jump to the next scene or next beat
-- Reach the floor first; near or past the soft max, only finish half-sentences—no outline padding or new plot
+- Reach the floor first; near the top of the range, finish the current sentence and stop. Never stop mid-sentence, and do not open new plot just to hit the outline.
 - Do not close mid-sentence just because length is met; no padding, no repetition loops, no jumping scenes to fill space
 - Strictly follow the "active beat" and "narrative direction anchor"; do not go off-topic
 - **Trope / kink library**: if selected tropes are not "(none)" and their process is unfinished, this fill must continue fulfilling them; do not name-drop only; listed prose styles must show in narration and dialogue

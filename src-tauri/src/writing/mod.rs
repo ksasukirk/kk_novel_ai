@@ -290,23 +290,6 @@ fn scrub_dump_memory(s: &str) -> String {
     }
 }
 
-/// 同位置变体目标字数：不低于设定续写字数；参考更长时对齐参考，避免越变越短
-fn same_slot_target_chars(settings_target: u32, selection_chars: usize) -> u32 {
-    let base = settings_target.max(200);
-    if selection_chars > 200 {
-        base.max(selection_chars as u32)
-    } else {
-        base
-    }
-}
-
-fn same_slot_max_tokens(settings_target: u32, selection_chars: usize) -> u32 {
-    let chars = same_slot_target_chars(settings_target, selection_chars);
-    // 与 resolve_writing_max_tokens 一致：允许超出规定字数
-    let mt = ((chars as f64) * 1.8).ceil() as u32;
-    mt.max(256).min(32768)
-}
-
 fn approx_tokens(text: &str) -> u32 {
     // 中文粗估：约 1.5 字/token
     ((text.chars().count() as f32) / 1.5).ceil() as u32
@@ -901,10 +884,7 @@ fn resolve_writing_options(
         req.max_tokens
             .or(Some(settings.max_tokens.min(2048).max(512)))
     } else {
-        let aligned = if matches!(task, WritingTask::SameSlotVariant) {
-            // 与设定续写字数对齐（不再跟 selection/总结长度走）
-            same_slot_max_tokens(settings.resolve_writing_target_chars(), 0)
-        } else if matches!(task, WritingTask::Continue) && request_is_outline_run(req) {
+        let aligned = if matches!(task, WritingTask::Continue) && request_is_outline_run(req) {
             outline_continue_max_tokens(
                 settings.resolve_writing_max_tokens(),
                 req.instruction.chars().count() as u32,
@@ -2142,7 +2122,7 @@ pub async fn run_writing(
         }
     }
 
-    // 续写 / 同位置重写：先补规定字数下限，再补半句；按纲未收束仅在软上限内补
+    // 续写 / 同位置重写：未到下限才补篇幅；半句未收束则补完。超出范围不再扩写，也不按字数截断已写正文。
     if matches!(
         task,
         WritingTask::Continue | WritingTask::SameSlotVariant
@@ -2154,7 +2134,6 @@ pub async fn run_writing(
         let outline_run = request_is_outline_run(req);
         let fill_ctx = build_length_fill_context(settings, req);
         let mut fill_i = 0u32;
-        let mut sentence_fills = 0u32;
         while fill_i < MAX_FILLS {
             if cancel.load(Ordering::Relaxed) {
                 break;
@@ -2177,35 +2156,20 @@ pub async fn run_writing(
             } else {
                 break;
             };
-            // 硬顶只挡扩写；半句收束仍放行（首轮若冲过硬顶，否则会留下「低头」「坐得」这类半截）
+            // 硬顶只挡继续扩写。半句不按字数停：篇幅靠提示里的字数范围，正文不截断。
             if have >= hard_cap && mode != "sentence" {
                 eprintln!(
                     "[writing] completeness hard-cap {have} >= {hard_cap}; skip {mode}"
                 );
                 break;
             }
-            if mode == "sentence" {
-                if sentence_fills >= 2 {
-                    eprintln!("[writing] sentence-fill budget exhausted; stop incomplete");
-                    break;
-                }
-                // 半句补写也设绝对顶，避免无限加戏
-                if have >= hard_cap.saturating_add(400) {
-                    eprintln!(
-                        "[writing] sentence hard-ceiling {have}; stop"
-                    );
-                    break;
-                }
-            } else if have >= soft_max {
+            if mode != "sentence" && have >= soft_max {
                 eprintln!(
                     "[writing] soft-max {have} >= {soft_max}; skip {mode}"
                 );
                 break;
             }
             fill_i += 1;
-            if mode == "sentence" {
-                sentence_fills += 1;
-            }
             eprintln!(
                 "[writing] completeness-fill {fill_i}/{MAX_FILLS} mode={mode} have={have} min={min_chars} soft={soft_max}"
             );
@@ -2248,6 +2212,9 @@ pub async fn run_writing(
                     crate::prompt_i18n::prompt("scene_complete.md"),
                     &[
                         ("goal", &goal),
+                        ("have_chars", &have.to_string()),
+                        ("min_chars", &min_chars.to_string()),
+                        ("max_chars", &soft_max.to_string()),
                         ("draft", &text),
                         ("instruction", instr),
                         ("outline", &fill_ctx.outline),
